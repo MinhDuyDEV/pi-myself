@@ -39,7 +39,7 @@ Controlled loops: run one cycle at a time (measure → select → change → ver
 
 ## Foundational skills
 
-`memory` (when `<repo-root>/.pi/MEMORY.md` exists) loads at the start of non-trivial work; `verification-before-completion` loads only at completion as a mandatory gate; `tdd` drives behavior-changing implementation; `code-review` closes any non-trivial change. Stack companions (`typescript-coding-standards`, `api-and-interface-design`, `deprecation-and-migration`, `security-and-hardening`) load when the task touches their domain. Skills never override system, user, authorization, and read-only scope constraints; conflict → stop and ask.
+`memory` (read when `<repo-root>/.pi/MEMORY.md` exists; create the file when the first durable learning appears) loads at the start of non-trivial work; `verification-before-completion` loads only at completion as a mandatory gate; `tdd` drives behavior-changing implementation; `code-review` closes any non-trivial change. Stack companions (`typescript-coding-standards`, `api-and-interface-design`, `deprecation-and-migration`, `security-and-hardening`) load when the task touches their domain. Skills never override system, user, authorization, and read-only scope constraints; conflict → stop and ask.
 
 ## Completion
 
@@ -54,6 +54,8 @@ At phase boundaries, decide in order: continue (if this phase is a primary sourc
 ## Memory & domain docs
 
 `.pi/MEMORY.md` stores distilled durable project knowledge (the `memory` skill owns the discipline). Project vocabulary belongs in `CONTEXT.md`; hard-to-reverse decisions in `docs/adr/`; work units in the issue tracker. Never duplicate across the three tiers.
+
+**Saving is part of the work, not an afterthought.** When a turn surfaces a durable learning — a pattern, a gotcha, a debugging outcome, an environment fact, a decision with its reason — append one tagged bullet to `<repo-root>/.pi/MEMORY.md` before ending the turn (create the file when the project has none; the `memory` skill owns the format). If nothing durable surfaced, write nothing. Reading the file at the start of non-trivial work is how you find out the project already knows something you were about to rediscover.
 
 ## Anti-Patterns
 
