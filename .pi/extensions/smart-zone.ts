@@ -14,6 +14,13 @@ export const SMART_ZONE_LIMIT = 150_000;
 const WATCH_RATIO = 0.6;
 const BOUNDARY_RATIO = 0.85;
 
+/** PI_SMART_ZONE_LIMIT overrides the limit (min 1k) — for small-context
+ * models and for exercising the thresholds in short test sessions. */
+export function smartZoneLimit(): number {
+	const env = Number(process.env.PI_SMART_ZONE_LIMIT);
+	return Number.isFinite(env) && env >= 1000 ? env : SMART_ZONE_LIMIT;
+}
+
 export type SmartZoneLevel = "ok" | "watch" | "boundary" | "over";
 
 export interface SmartZoneReading {
@@ -68,23 +75,23 @@ export default function smartZoneExtension(pi: ExtensionAPI): void {
 	pi.on("agent_end", (event, ctx) => {
 		const used = lastTurnTokens(event.messages);
 		if (used === undefined) return;
-		const next = smartZone(used);
+		const next = smartZone(used, smartZoneLimit());
 		reading = next;
 		if (next.level === "ok") return;
 		if (!ctx.hasUI) return;
-		ctx.ui.notify(`${METER} ${next.pct}% (~${k(next.used)}/${k(SMART_ZONE_LIMIT)}) — ${next.note}`, next.level === "over" ? "warning" : "info");
+		ctx.ui.notify(`${METER} ${next.pct}% (~${k(next.used)}/${k(smartZoneLimit())}) — ${next.note}`, next.level === "over" ? "warning" : "info");
 	});
 
 	pi.registerCommand("smartzone", {
 		description: "Show the smart-zone reading and phase-boundary guidance",
 		async handler(_args, ctx) {
 			if (!reading) {
-				ctx.ui?.notify?.(`${METER}: no reading yet (measured after each agent turn). Limit ${k(SMART_ZONE_LIMIT)} tokens.`, "info");
+				ctx.ui?.notify?.(`${METER}: no reading yet (measured after each agent turn). Limit ${k(smartZoneLimit())} tokens.`, "info");
 				return;
 			}
 			ctx.ui?.notify?.(
 				[
-					`${METER}: ${reading.pct}% (~${k(reading.used)}/${k(SMART_ZONE_LIMIT)}) — ${reading.level}`,
+					`${METER}: ${reading.pct}% (~${k(reading.used)}/${k(smartZoneLimit())}) — ${reading.level}`,
 					"",
 					reading.note,
 				].join("\n"),
