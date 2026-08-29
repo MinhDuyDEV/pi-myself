@@ -105,7 +105,7 @@ pi-myself/
 - **Phase 1**: ✅ scaffold, vendored skills + lock + wrapper generation, ports (skills/extensions/agents/tests), skill-tool, docs, CI.
 - **Phase 2**: ✅ `tracker` extension (local `.scratch/`, 11 ops + `/frontier`); ✅ `smart-zone` meter; ✅ `.pi/settings.json` (dogfood defaults). Remaining: dogfood pi-myself on itself with grill-with-docs → to-spec → to-tickets.
 - **Phase 3**: ✅ GitHub tracker backend (`gh-*` ops in the `tracker` tool). Remaining: ⏸ themes; polish.
-- **Phase 4**: ⏸ polish, docs for publishing as `pi install` package.
+- **Phase 4**: ✅ initial commit (`d0af56c`); ✅ verified in a real pi turn (0.84.3, headless): `skill`/`tracker`/`recall`/`task` registered, both backends dispatch (`tracker list` → empty-tracker message; `gh-list` surfaces the gh no-remote error cleanly), vendored + local skills both discoverable, and the skill tool refuses user-invoked skills live (told the human to run `/wayfinder`). ⏸ themes dropped by decision (2026-08-29). Remaining: publish (git remote + `pi install git:…`), dogfood, tests debt.
 
 ## 9. Deferred / open ⏸
 
