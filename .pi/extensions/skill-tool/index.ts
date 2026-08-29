@@ -23,6 +23,7 @@ import { join, resolve } from "node:path";
 import type { ExtensionCommandContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
+import { fileURLToPath } from "node:url";
 import { buildRegistry, type Registry } from "./registry.js";
 export { buildRegistry, parseFrontmatter, type Registry, type SkillEntry } from "./registry.js";
 
@@ -33,24 +34,56 @@ interface SkillDetails {
 	loaded: boolean;
 }
 
-function findRepoRoot(start: string): string {
+function isVendorRoot(dir: string): boolean {
+	return existsSync(join(dir, "vendor", "mattpocock-skills", ".claude-plugin", "plugin.json"));
+}
+
+function findRepoRoot(start: string): string | undefined {
 	let current = resolve(start);
 	for (;;) {
-		if (existsSync(join(current, "vendor", "mattpocock-skills", ".claude-plugin", "plugin.json"))) return current;
+		if (isVendorRoot(current)) return current;
 		const parent = join(current, "..");
-		if (parent === current) return resolve(start);
+		if (parent === current) return undefined;
 		current = parent;
 	}
+}
+
+/** Package root: the dir three levels above this module
+ * (<pkg>/.pi/extensions/skill-tool/index.ts), valid in both the checkout
+ * (template) and the installed-package (pi install) layouts. */
+function packageRoot(): string | undefined {
+	const here = fileURLToPath(new URL("./", import.meta.url)); // .../.pi/extensions/skill-tool/
+	const piDir = resolve(here, "..", "..", "..");
+	if (isVendorRoot(piDir)) return piDir;
+	return undefined;
+}
+
+/** The user's project-local skills, when the checkout provides them. */
+function localSkillsRoot(cwd: string): string {
+	return join(cwd, ".pi", "skills");
+}
+
+function defaultSkillRoots(cwd: string): string[] {
+	const roots: string[] = [];
+	const repoRoot = findRepoRoot(cwd) ?? packageRoot();
+	if (repoRoot) {
+		roots.push(
+			join(repoRoot, "vendor", "mattpocock-skills", "skills", "engineering"),
+			join(repoRoot, "vendor", "mattpocock-skills", "skills", "productivity"),
+			join(repoRoot, ".pi", "skills"),
+		);
+	} else {
+		// neither layout detected: still scan the local skills dir so the tool
+		// works for plain project-local skill sets
+		roots.push(localSkillsRoot(cwd));
+	}
+	return roots;
 }
 
 export default function skillToolExtension(pi: ExtensionAPI): void {
 	const skillRoots = process.env.PI_SKILL_TOOL_DIRS
 		? process.env.PI_SKILL_TOOL_DIRS.split(":").filter(Boolean)
-		: [
-				join(findRepoRoot(process.cwd()), "vendor", "mattpocock-skills", "skills", "engineering"),
-				join(findRepoRoot(process.cwd()), "vendor", "mattpocock-skills", "skills", "productivity"),
-				join(findRepoRoot(process.cwd()), ".pi", "skills"),
-			];
+		: defaultSkillRoots(process.cwd());
 	const registry = buildRegistry(skillRoots);
 
 	if (registry.duplicates.length > 0) {
