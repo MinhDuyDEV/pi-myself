@@ -29,6 +29,10 @@ GitHub shares one number space across issues and PRs, so a bare `#42` may be eit
 
 Create a GitHub issue.
 
+## Parents are indexes, not work units
+
+A parent (spec, epic, wayfinder map) is excluded from the frontier by construction: children reference it with a `Part of: #NN` line in their body — the tracker tool's gh-frontier collects that set and drops those issues from its takeable list (reporting them in a footer). Keep parent issues label-free of triage roles: they are not agent-grabbable work.
+
 ## When a skill says "fetch the relevant ticket"
 
 Run `gh issue view <number> --comments`.

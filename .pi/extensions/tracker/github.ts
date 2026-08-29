@@ -80,9 +80,9 @@ function issueLine(issue: { number: number; title: string; labels: string[]; ass
 	return `#${issue.number} — ${issue.title}${labels}${assignee}`;
 }
 
-/** Issue numbers referenced by a body's `**Blocked by:**` line. */
-export function issueRefs(body: string): number[] {
-	const raw = labelValue(body, "Blocked by");
+/** Issue numbers referenced by a body's `**<label>:**` line (`Blocked by` by default). */
+export function issueRefs(body: string, label = "Blocked by"): number[] {
+	const raw = labelValue(body, label);
 	if (!raw || /^(none|unblocked)\b/i.test(raw)) return [];
 	return raw
 		.split(/,|\band\b/i)
@@ -99,18 +99,45 @@ function reqNumber(token: string | undefined, op: string): string {
 
 const LIST_FIELDS = "number,title,state,body,labels,assignees,url";
 
+function issueList(root: string, state: "open" | "all", run: GhRun): GhIssue[] {
+	return parseList(run(root, ["issue", "list", "--state", state, "--limit", "300", "--json", LIST_FIELDS]));
+}
+
+function issueView(root: string, token: string, run: GhRun, fields = "number,title,state,body,labels,assignees,url"): GhIssue {
+	return parseOne(run(root, ["issue", "view", reqNumber(token, "show"), "--json", fields]));
+}
+
 export function ghListOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	void params;
-	const open = parseList(run(root, ["issue", "list", "--state", "open", "--limit", "300", "--json", LIST_FIELDS]));
+	const open = issueList(root, "open", run);
 	if (open.length === 0) return "No open issues in this GitHub repo.";
 	return [`## GitHub issues (${open.length} open)`, ...open.map((issue) => `- ${issueLine(issue)}`)].join("\n");
 }
 
-/** gh-frontier: open, unassigned, not a map, every `Blocked by` ref closed. */
+/** gh-frontier: open, unassigned, not a map, not a parent, every `Blocked by` ref closed.
+ * Parents are indexes, not work units: any issue named by another issue's
+ * `Part of: #NN` line is excluded from both lists (never silently — the
+ * footer reports which numbers were dropped). */
 export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	void params;
-	const all = parseList(run(root, ["issue", "list", "--state", "all", "--limit", "300", "--json", LIST_FIELDS]));
-	const open = all.filter((issue) => issue.state === "OPEN" && !issue.labels.includes("wayfinder:map"));
+	const all = issueList(root, "all", run);
+	const parentSet = new Set<number>();
+	for (const issue of all) {
+		for (const ref of issueRefs(issue.body, "Part of")) parentSet.add(ref);
+	}
+	const excluded = new Set<number>();
+	const open = all.filter((issue) => {
+		if (issue.state !== "OPEN") return false;
+		if (issue.labels.includes("wayfinder:map")) {
+			excluded.add(issue.number);
+			return false;
+		}
+		if (parentSet.has(issue.number)) {
+			excluded.add(issue.number);
+			return false;
+		}
+		return true;
+	});
 	const takeable = open.filter((issue) => {
 		if (issue.assignees.length > 0) return false;
 		for (const ref of issueRefs(issue.body)) {
@@ -132,7 +159,14 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
 					return `  ${issueLine(issue)} · ${reason}`;
 				})
 			: ["  (none)"]),
+		...(excluded.size
+			? ["", indexFooter(excluded)]
+			: []),
 	].join("\n");
+}
+
+function indexFooter(excluded: Set<number>): string {
+	return `_(excluded from the frontier as indexes: ${[...excluded].sort((a, b) => a - b).map((n) => `#${n}`).join(", ")} — maps and parents)_`;
 }
 
 /** gh-show: one issue, fields + body + last comments. */
