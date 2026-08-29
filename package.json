@@ -1,0 +1,66 @@
+{
+	"name": "pi-myself",
+	"type": "module",
+	"version": "0.1.0",
+	"private": true,
+	"description": "pi coding-agent harness around mattpocock/skills — extensions, task roles, prompts, and hygiene tests",
+	"keywords": [
+		"pi-package"
+	],
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/minhduydev/pi-myself"
+	},
+	"scripts": {
+		"test": "npm run test:all",
+		"test:all": "npm run test:extensions && npm run test:skills",
+		"test:skills": "node --test tests/*.test.ts",
+		"test:extensions": "node scripts/run-extension-tests.mjs",
+		"typecheck": "tsc --noEmit",
+		"extensions:typecheck": "npx tsc -p .pi/extensions/tsconfig.json --noEmit",
+		"sync:skills": "node scripts/sync-skills.mjs",
+		"sync:check": "node scripts/sync-skills.mjs --check",
+		"postinstall": "cd .pi/extensions && npm install --ignore-scripts",
+		"install:hooks": "node scripts/install-git-hooks.mjs",
+		"setup": "npm run install:hooks && npm run sync:check && echo 'Ready.'"
+	},
+	"pi": {
+		"extensions": [
+			".pi/extensions"
+		],
+		"skills": [
+			".pi/skills",
+			"vendor/mattpocock-skills/skills/engineering",
+			"vendor/mattpocock-skills/skills/productivity"
+		],
+		"prompts": [
+			".pi/prompts"
+		]
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*",
+		"typebox": "*"
+	},
+	"peerDependenciesMeta": {
+		"@earendil-works/pi-ai": {
+			"optional": true
+		},
+		"@earendil-works/pi-coding-agent": {
+			"optional": true
+		},
+		"@earendil-works/pi-tui": {
+			"optional": true
+		},
+		"typebox": {
+			"optional": true
+		}
+	},
+	"devDependencies": {
+		"@types/node": "^22.20.1",
+		"tsx": "^4.19.2",
+		"typescript": "^5.9.3"
+	}
+}

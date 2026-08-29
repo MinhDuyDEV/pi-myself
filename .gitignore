@@ -1,0 +1,51 @@
+# Reference material (not part of this package)
+pikit-template/
+reference/
+
+# OS noise
+.DS_Store
+
+# Pi auto-generated sandbox profiles
+.pi/sandbox/
+
+# Node / package manager noise
+node_modules/
+coverage/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+*.tgz
+.env
+.env.*
+!.env.example
+
+# Pi local runtime state (pi-task, compaction, caches)
+.pi/artifacts/
+.pi/task-registry.json
+.pi/checkpoints/
+.pi/harness-runs/
+.pi/git/
+.pi/npm/
+.pi/extensions/node_modules/
+.pi/extensions/bun.lock
+.pi/extensions/package-lock.json
+.pi/extensions/**/package-lock.json
+.pi/extensions/**/node_modules/
+.pi/tasks/
+.pi/cache/
+.pi/dcp-state/
+.pi/sessions/
+.pi/task-exits/
+.pi/task-session-history.json
+.pi/models-store.json
+.pi/MEMORY.md
+
+# Matt's local-markdown issue tracker (disposable work units)
+.scratch/
+
+# SQLite databases (local state, not source code)
+*.db
+*.db-shm
+*.db-wal
+*.db-journal

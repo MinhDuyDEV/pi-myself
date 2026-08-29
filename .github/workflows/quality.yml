@@ -1,0 +1,41 @@
+name: Quality
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.20.0
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify vendored skills lock
+        run: npm run sync:check
+
+      - name: Run extension and skill tests
+        run: npm test
+
+      - name: Typecheck root project
+        run: npm run typecheck
+
+      - name: Typecheck extensions
+        run: npx tsc -p .pi/extensions/tsconfig.json --noEmit

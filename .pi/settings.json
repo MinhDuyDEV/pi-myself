@@ -1,0 +1,18 @@
+{
+	"enableSkillCommands": true,
+	"skills": [".pi/skills/"],
+	"prompts": [".pi/prompts/"],
+	"extensions": [".pi/extensions/"],
+	"compaction": {
+		"enabled": true,
+		"reserveTokens": 16384,
+		"keepRecentTokens": 20000
+	},
+	"retry": {
+		"enabled": true,
+		"maxRetries": 3,
+		"baseDelayMs": 2000
+	},
+	"defaultProjectTrust": "always",
+	"defaultTools": ["read", "bash", "write", "edit"]
+}
