@@ -51,3 +51,17 @@ Priority: narrowest behavior check → typecheck for touched code → lint for t
 - `XXX` — maybe someday; lowest priority.
 
 Write markers as `TAG: note` in comments only; `tests/markers.test.ts` fails on any `FIXME:` in tracked code.
+
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues on `MinhDuyDEV/pi-myself` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical default labels: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: `CONTEXT.md` at the repo root + `docs/adr/`. See `docs/agents/domain.md`.
