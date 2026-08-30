@@ -73,5 +73,5 @@ Each step is done only when its completion criterion is met.
 State: location, claimed behavior, actual observation, disconfirming scenario,
 and smallest replacement.
 
-For batch bug hunting across a branch or diff, run `/ultra-review`; this skill
+For batch bug hunting across a branch or diff, run `/skill:ultra-review`; this skill
 audits one named claim and its proof route.

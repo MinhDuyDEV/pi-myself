@@ -6,21 +6,25 @@ The philosophy: **one process, one vocabulary**. Matt's 25 promoted skills are v
 
 ## Install
 
+pi-myself is a **per-project package** — run this in each repository that should use the harness (not globally: installing it user-scope while also working inside its checkout loads two copies of the extensions and conflicts the `tracker`/`skill` tools):
+
 ```bash
-pi install git:github.com/MinhDuyDEV/pi-myself
-pi install npm:@heyhuynhgiabuu/pi-task
-pi install npm:@heyhuynhgiabuu/pi-search        # or any web-research package you already run,
-                                                 # e.g. pi-web-access — the harness is name-agnostic
+pi install git:github.com/MinhDuyDEV/pi-myself -l
+pi install npm:@heyhuynhgiabuu/pi-task -l      # task tool + role catalog
+pi install npm:@heyhuynhgiabuu/pi-search       # or any web-research package you already run,
+                                               # e.g. pi-web-access — the harness is name-agnostic
 ```
+
+(`-l` = project-local. The web-research package and `pi-task` may stay global if you want them everywhere; `pi-myself` should be project-local.)
 
 Then inside the repository, once:
 
 ```text
-/setup-pi-myself              # copies the packaged task roles (designer, researcher, ultra-*) into .pi/agents/
+/setup-pi-myself                  # copies the packaged task roles (designer, researcher, ultra-*) into .pi/agents/
 /skill:setup-matt-pocock-skills   # per-repo config for the process core (issue tracker, domain docs, triage labels)
 ```
 
-`pi-task` provides the `task` tool and its built-in roles; pi-myself's roles are provisioned by `/setup-pi-myself` (idempotent — re-run after upgrades to refresh). Any web-research package supplies the tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here.
+`pi-task` provides the `task` tool and its built-in roles; pi-myself's roles are provisioned by `/setup-pi-myself` (idempotent — re-run after upgrades to refresh). Any web-research package supplies the tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here. Tasks that declare skills resolve only in **trusted** projects — pi asks for project trust on the first interactive session in a new repo.
 
 ## What the harness contributes
 
@@ -29,7 +33,7 @@ Then inside the repository, once:
 | `skill` tool | Extension registering a real skill-invocation tool whose enum is exactly the model-invoked skill set — `Call the Skill tool with "grilling"` works verbatim, and user-invoked skills stay human-only by construction |
 | `tracker` tool | Deterministic ops over the tracker `to-tickets`/`triage`/`wayfinder` write by hand — local markdown (`.scratch/`) **and** GitHub Issues via `gh-*` ops on the `gh` CLI (blocked-by refs, triage labels, claims, resolution comments, frontier) |
 | Skill invocation | Model-invoked skills run through the `skill` tool; user-invoked ones run through pi's native `/skill:<name>` slash commands (`enableSkillCommands`) — no generated wrapper layer |
-| Task roles | `explore` / `scout` / `general` / `reviewer` overrides for `pi-task` plus harness-authored `designer` (design-it-twice parallel candidates), `researcher` (writes the cited research artifact), and `ultra-scout` / `ultra-verifier` (the `/ultra-review` bug-hunt pipeline) — delegation contracts and a 1-writer + 1-reviewer WIP cap |
+| Task roles | `explore` / `scout` / `general` / `reviewer` overrides for `pi-task` plus harness-authored `designer` (design-it-twice parallel candidates), `researcher` (writes the cited research artifact), and `ultra-scout` / `ultra-verifier` (the `/skill:ultra-review` bug-hunt pipeline) — delegation contracts and a 1-writer + 1-reviewer WIP cap |
 | Session recall | `recall` searches persisted session JSONL (including compaction summaries) before agents guess about lost context |
 | Safety | `tool_call` guardrails (block/confirm), audit log, `/safety` status command |
 | Compaction continuity | Auto-resume after compaction; APPEND_SYSTEM phase-boundary rules mirror `PHASE-BOUNDARIES.md` |
@@ -52,7 +56,7 @@ Run them as `/skill:<name>` (or ask in conversation); `/skill:ask-matt` routes w
 ## Upgrading the vendored core
 
 ```bash
-npm run sync:skills    # fast-forward vendor/mattpocock-skills, rehash skills-lock.json, regen wrappers
+npm run sync:skills    # fast-forward vendor/mattpocock-skills, rehash skills-lock.json
 npm run sync:check     # verify lock integrity (also runs in CI)
 ```
 
@@ -75,7 +79,7 @@ This repository declares no root `lint` script. Do not report lint as passing un
 
 - Add a skill at `.pi/skills/<name>/SKILL.md`; the hygiene tests govern it.
 - Add a task role at `.pi/agents/<name>.md` (fields supported by the installed task package).
-- Add a prompt at `.pi/prompts/<name>.md` (anything not AUTO-GENERATED).
+- Add a prompt at `.pi/prompts/<name>.md` (a typed slash command like `/verify`; skills need no wrapper — pi exposes them natively as `/skill:<name>`).
 - Add a top-level extension file or one-level extension directory with `index.ts`.
 - Process changes belong upstream in mattpocock/skills.
 

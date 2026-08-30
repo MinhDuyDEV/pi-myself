@@ -114,5 +114,5 @@ Preserve these headings:
 End with:
 
 ```text
-Run /ultra-review-receive to verify <report path> and implement confirmed owner-clean fixes.
+Run /skill:ultra-review-receive to verify <report path> and implement confirmed owner-clean fixes.
 ```

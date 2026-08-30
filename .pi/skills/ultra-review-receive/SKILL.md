@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Ultra Review Receive
 
-Close the loop after an `/ultra-review` report: verify every reported finding, preserve rejected or uncertain candidates as dispositions, and implement only confirmed fixes owned by the current scope.
+Close the loop after a `/skill:ultra-review` report: verify every reported finding, preserve rejected or uncertain candidates as dispositions, and implement only confirmed fixes owned by the current scope.
 
 ## Authority and safety
 

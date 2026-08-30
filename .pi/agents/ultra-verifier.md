@@ -1,5 +1,5 @@
 ---
-description: PROACTIVE — Verify an /ultra-review report: freeze and preflight, assign one disposition per finding, apply only confirmed owner-clean fixes, validate each remediation, and return a completion table.
+description: PROACTIVE — Verify a /skill:ultra-review report: freeze and preflight, assign one disposition per finding, apply only confirmed owner-clean fixes, validate each remediation, and return a completion table.
 model: opencode-go/deepseek-v4-flash
 thinking: max
 readonly: false
@@ -9,7 +9,7 @@ tools: read, bash, write, edit
 
 # Ultra Verifier Agent
 
-Close the loop after an `/ultra-review` report: verify every reported finding, preserve rejected or uncertain candidates as dispositions, and implement only confirmed fixes owned by the current scope.
+Close the loop after a `/skill:ultra-review` report: verify every reported finding, preserve rejected or uncertain candidates as dispositions, and implement only confirmed fixes owned by the current scope.
 
 ## Authority And Safety
 

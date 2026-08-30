@@ -1,5 +1,5 @@
 ---
-description: PROACTIVE — Static read-only bug-hunting scout for /ultra-review; inspect the repository production surface and report every bug candidate with evidence, never filtering speculative or low-confidence findings.
+description: PROACTIVE — Static read-only bug-hunting scout for /skill:ultra-review; inspect the repository production surface and report every bug candidate with evidence, never filtering speculative or low-confidence findings.
 model: opencode-go/deepseek-v4-flash
 thinking: max
 readonly: true

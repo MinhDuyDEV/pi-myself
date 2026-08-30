@@ -2,7 +2,7 @@
 
 Specialist agents for the `task` tool. Each file is the agent's **role prompt**, appended to the child's normal system prompt via `--append-system-prompt`. Task children still load the `AGENTS.md` context chain and `APPEND_SYSTEM.md` for their cwd like any pi session, so do not re-paste repo rules in the task `prompt`; pass only task-specific rules and scope.
 
-The **session agent** is always the parent. Task agents match **OpenCode-style** builtins where applicable — `explore`, `scout`, `general`, `reviewer` (these also exist as pi-task's package defaults when this package is not installed) — plus harness-authored specialists: `designer`, `researcher`, and the ultra-review pipeline pair `ultra-scout` / `ultra-verifier` (serving the local `/ultra-review` + `/ultra-review-receive` skills).
+The **session agent** is always the parent. Task agents match **OpenCode-style** builtins where applicable — `explore`, `scout`, `general`, `reviewer` (these also exist as pi-task's package defaults when this package is not installed) — plus harness-authored specialists: `designer`, `researcher`, and the ultra-review pipeline pair `ultra-scout` / `ultra-verifier` (serving the local `/skill:ultra-review` + `/skill:ultra-review-receive` skills).
 
 The parent routes from `APPEND_SYSTEM.md`; task agents inherit the `AGENTS.md` context files for their cwd, so the task prompt should add assignment-specific rules (scope, authority, verification) rather than repeat repo rules.
 
@@ -55,7 +55,7 @@ pi-task parses frontmatter line-by-line rather than as full YAML. Keep descripti
 | Review diff / changes | `reviewer` |
 | Design candidate for an interface (several in parallel) | `designer` |
 | Research ticket that must land as a cited file | `researcher` |
-| One bug-hunt scout in a /ultra-review round | `ultra-scout` |
+| One bug-hunt scout in a /skill:ultra-review round | `ultra-scout` |
 | Verify + remediate an ultra-review report | `ultra-verifier` |
 | Product from short prompt | Workflow-style orchestration with `task` |
 
