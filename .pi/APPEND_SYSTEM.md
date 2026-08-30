@@ -47,7 +47,7 @@ Non-trivial = behavior-changing code, >1 file, >2 repair loops, or research need
 
 ## Context & Web
 
-Trust repo reality: disk → project memory → delegated exploration → docs/web. Use `recall` before guessing about compacted context; verify recalled claims on disk. Web: `websearch`/`codesearch` → `web_fetch` → browser only when JS is required; prefer official docs; specific queries.
+Trust repo reality: disk → project memory → delegated exploration → docs/web. Use `recall` before guessing about compacted context; verify recalled claims on disk. Web research uses whatever web package the host has installed — pi-search names (`websearch`/`codesearch` → `web_fetch`) or pi-web-access names (`web_search`/`get_search_content` → `fetch_content`); prefer official docs; specific queries; cite the primary source.
 
 At phase boundaries, decide in order: continue (if this phase is a primary source for the next) → start new → handoff (new harness/directory/colleague) → subagent → compact. Never compact mid-phase; see `ask-matt/PHASE-BOUNDARIES.md`.
 

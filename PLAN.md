@@ -113,4 +113,5 @@ pi-myself/
 - Whether `.scratch/` state gets its own recall provenance (needs dogfooding).
 - Themes (catppuccin/tokyo-night) — port on request.
 - GitHub Issues tracker backend for the future `tracker` extension.
+- Web-research package choice (decided 2026-08-29): name-agnostic by design — this repo's host runs `pi-web-access` (`web_search`/`get_search_content`/`fetch_content`, incl. `source_check` for citations); `pi-search` (`websearch`/`codesearch`/`web_fetch`/`context7`/`deepwiki`) is the README's optional alternative. Both covered in APPEND_SYSTEM + scout; never install both alongside each other.
 - `pi-review-loop`, `pi-pretty`, `pi-diff` — third-party QoL, not wired by default.

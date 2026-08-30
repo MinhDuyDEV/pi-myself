@@ -7,9 +7,10 @@ The philosophy: **one process, one vocabulary**. Matt's 25 promoted skills are v
 ## Install
 
 ```bash
-pi install git:github.com/minhduydev/pi-myself
+pi install git:github.com/MinhDuyDEV/pi-myself
 pi install npm:@heyhuynhgiabuu/pi-task
-pi install npm:@heyhuynhgiabuu/pi-search
+pi install npm:@heyhuynhgiabuu/pi-search        # or any web-research package you already run,
+                                                 # e.g. pi-web-access — the harness is name-agnostic
 ```
 
 `pi-task` provides the `task` tool with four focused roles; `pi-search` provides the web tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here.
