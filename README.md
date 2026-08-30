@@ -13,9 +13,14 @@ pi install npm:@heyhuynhgiabuu/pi-search        # or any web-research package yo
                                                  # e.g. pi-web-access — the harness is name-agnostic
 ```
 
-`pi-task` provides the `task` tool with four focused roles; `pi-search` provides the web tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here.
+Then inside the repository, once:
 
-For per-repo skill configuration (issue tracker, triage labels, domain docs), run the generated `/setup-matt-pocock-skills` command once per project.
+```text
+/setup-pi-myself              # copies the packaged task roles (designer, researcher, ultra-*) into .pi/agents/
+/setup-matt-pocock-skills     # per-repo config for the process core (issue tracker, domain docs, triage labels)
+```
+
+`pi-task` provides the `task` tool and its built-in roles; pi-myself's roles are provisioned by `/setup-pi-myself` (idempotent — re-run after upgrades to refresh). Any web-research package supplies the tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here.
 
 ## What the harness contributes
 
