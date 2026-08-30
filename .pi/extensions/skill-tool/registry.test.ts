@@ -98,7 +98,7 @@ test("vendored registry: full promoted set plus local skills", () => {
 	]);
 
 	const names = new Set(registry.skills.map((s) => s.name));
-	assert.equal(registry.skills.length, 34, `expected 34 skills (25 vendored + 9 local), got ${registry.skills.length}`);
+	assert.equal(registry.skills.length, 36, `expected 36 skills (25 vendored + 11 local), got ${registry.skills.length}`);
 	for (const promoted of ["wayfinder", "grilling", "tdd", "implement", "code-review", "setup-matt-pocock-skills", "handoff"]) {
 		assert.ok(names.has(promoted), `missing promoted skill ${promoted}`);
 	}

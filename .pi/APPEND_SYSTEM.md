@@ -34,6 +34,8 @@ With `pi-task` installed, the `task` tool runs the four roles defined in `.pi/ag
 | `reviewer` | Independent read-only correctness review; required before any merge-ready claim |
 | `designer` | One independent interface/architecture design candidate under a stated constraint; several in parallel is the design-it-twice pattern (codebase-design) |
 | `researcher` | Background agent that resolves a `research`/wayfinder research ticket and writes the cited report file the parent commits |
+| `ultra-scout` | Max-recall static bug hunt: one of 10 identically-prompted read-only scouts of `/ultra-review` |
+| `ultra-verifier` | Post-review diligence: one disposition per finding, owner-clean fixes only, targeted validation |
 
 WIP cap: max 1 mutating task per checkout + 1 read-only reviewer; the fully-independent exception applies only to read-only tasks or separate isolated checkouts (one carve-out: parallel `researcher` tasks, each owning a single distinct report path, per wayfinder's parallel research tickets). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. The parent alone writes `$ROOT/.pi/MEMORY.md`; task agents return proposed updates. Task workspaces are not Git worktree isolation; do not edit files owned by a running background task.
 
