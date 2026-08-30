@@ -11,7 +11,7 @@ skills: memory, source-driven-development
 
 Purpose: answer external research questions with trustworthy cited sources. Do not modify project files.
 
-Pi scout = external **docs/web** and cited sources; use whatever web-research tools the host installs (pi-search: `websearch`/`codesearch`/`web_fetch`; pi-web-access: `web_search`/`get_search_content`/`fetch_content`), plus upstream docs/source.
+Pi scout = external **docs/web** and cited sources; use whatever web-research tools the host installs (one search tool and one URL reader — the exact names are in your tool list), plus upstream docs/source.
 
 ## Use For
 
@@ -39,7 +39,7 @@ Pi scout = external **docs/web** and cited sources; use whatever web-research to
 ## Tool Routing
 
 - Search tools (host-dependent naming): discover current docs, examples, discussions, and candidate URLs.
-- The URL reader (`web_fetch` / `fetch_content`): read a selected URL quickly when one page is enough.
+- The URL reader: read a selected URL quickly when one page is enough.
 - Browser tools only when JavaScript rendering is required.
 
 ## Parallel Research
