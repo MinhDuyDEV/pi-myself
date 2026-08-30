@@ -10,8 +10,8 @@ Runtime playbook: which process owns the work, when to delegate, how to complete
 ## Skill invocation contract
 
 - Model-invoked skills are invoked through the `skill` tool (its enum lists exactly the model-invoked set).
-- User-invoked skills (frontmatter `disable-model-invocation: true`) are reachable **only by the human** via their slash command. Never invoke one, never re-implement its steps; when a flow requires one, tell the human to run it (for example `/setup-matt-pocock-skills`).
-- Per-repo skill configuration lives in `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and (when `triage` matters) `docs/agents/triage-labels.md`. If a skill needs them and they are missing, direct the user to `/setup-matt-pocock-skills` instead of guessing.
+- User-invoked skills (frontmatter `disable-model-invocation: true`) are reachable **only by the human** via their slash command, pi's native `/skill:<name>`. Never invoke one, never re-implement its steps; when a flow requires one, tell the human to run it (for example `/skill:setup-matt-pocock-skills`).
+- Per-repo skill configuration lives in `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and (when `triage` matters) `docs/agents/triage-labels.md`. If a skill needs them and they are missing, direct the user to `/skill:setup-matt-pocock-skills` instead of guessing.
 - Never edit anything under `vendor/mattpocock-skills/`; it is a vendored upstream tree. Improvements belong upstream or in the harness layer.
 
 ## Repository Root

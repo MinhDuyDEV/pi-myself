@@ -102,7 +102,7 @@ export default function skillToolExtension(pi: ExtensionAPI): void {
 		promptSnippet: "Load a named skill's instructions and follow them.",
 		promptGuidelines: [
 			'When a workflow says \'Call the Skill tool with "name"\', call this tool with that name and follow the loaded instructions.',
-			"User-invoked skills are not available here: direct the human to run the slash command (e.g. /wayfinder) instead of improvising its steps.",
+			"User-invoked skills are not available here: direct the human to run the slash command (e.g. /skill:wayfinder) instead of improvising its steps.",
 		],
 		parameters: Type.Object({
 			name:
@@ -149,7 +149,7 @@ export default function skillToolExtension(pi: ExtensionAPI): void {
 		description: "List the skill registry: model-loadable vs human-only",
 		async handler(_args, ctx: ExtensionCommandContext) {
 			const loadable = registry.modelInvoked.map((s) => `  ${s.name} — ${s.description}`);
-			const humanOnly = registry.userInvoked.map((s) => `  /${s.name} — ${s.description}`);
+			const humanOnly = registry.userInvoked.map((s) => `  /skill:${s.name} — ${s.description}`);
 			ctx.ui?.notify?.(
 				[
 					"## `skill` tool — loadable (model-invoked)",
@@ -168,7 +168,7 @@ function unavailableText(registry: Registry, requested: string): string {
 	const loadable = registry.modelInvoked.map((s) => s.name);
 	const userOnly = registry.userInvoked.some((s) => s.name === requested);
 	if (userOnly) {
-		return `\`${requested}\` is user-invoked: only the human can run it. Tell them to type \`/${requested}\`; do not re-implement its steps.`;
+		return `\`${requested}\` is user-invoked: only the human can run it. Tell them to type \`/skill:${requested}\`; do not re-implement its steps.`;
 	}
 	return `Unknown skill ${JSON.stringify(requested)}. Loadable through this tool: ${loadable.join(", ") || "(none)"}.`;
 }
