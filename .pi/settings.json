@@ -1,8 +1,16 @@
 {
 	"enableSkillCommands": true,
-	"skills": [".pi/skills/"],
-	"prompts": [".pi/prompts/"],
-	"extensions": [".pi/extensions/"],
+	"skills": [
+		".pi/skills/",
+		"../vendor/mattpocock-skills/skills/engineering",
+		"../vendor/mattpocock-skills/skills/productivity"
+	],
+	"prompts": [
+		".pi/prompts/"
+	],
+	"extensions": [
+		".pi/extensions/"
+	],
 	"compaction": {
 		"enabled": true,
 		"reserveTokens": 16384,
@@ -14,5 +22,10 @@
 		"baseDelayMs": 2000
 	},
 	"defaultProjectTrust": "always",
-	"defaultTools": ["read", "bash", "write", "edit"]
+	"defaultTools": [
+		"read",
+		"bash",
+		"write",
+		"edit"
+	]
 }

@@ -29,11 +29,13 @@ With `pi-task` installed, the `task` tool runs the four roles defined in `.pi/ag
 | Agent | Use for |
 | --- | --- |
 | `explore` | Read-only repository mapping with `path:line` evidence (grilling's fact-finding, to-spec exploration) |
-| `scout` | Official docs and external research — the background agent behind `research` and wayfinder research tickets |
+| `scout` | Official docs and external research answered in conversation with citations |
 | `general` | Bounded multi-step implementation (`implement`'s step execution when the parent stays orchestrating) |
 | `reviewer` | Independent read-only correctness review; required before any merge-ready claim |
+| `designer` | One independent interface/architecture design candidate under a stated constraint; several in parallel is the design-it-twice pattern (codebase-design) |
+| `researcher` | Background agent that resolves a `research`/wayfinder research ticket and writes the cited report file the parent commits |
 
-WIP cap: max 1 mutating task per checkout + 1 read-only reviewer; the fully-independent exception applies only to read-only tasks or separate isolated checkouts. Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. The parent alone writes `$ROOT/.pi/MEMORY.md`; task agents return proposed updates. Task workspaces are not Git worktree isolation; do not edit files owned by a running background task.
+WIP cap: max 1 mutating task per checkout + 1 read-only reviewer; the fully-independent exception applies only to read-only tasks or separate isolated checkouts (one carve-out: parallel `researcher` tasks, each owning a single distinct report path, per wayfinder's parallel research tickets). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. The parent alone writes `$ROOT/.pi/MEMORY.md`; task agents return proposed updates. Task workspaces are not Git worktree isolation; do not edit files owned by a running background task.
 
 Controlled loops: run one cycle at a time (measure → select → change → verify → record) and never start the next unit while the current one fails, is unverified, or awaits review. Report only verified completion as `success`, else `no-op`/`blocked`/`stalled`/`exhausted`; in task envelopes map to the parser's four statuses (`no-op` → `success` with a no-change summary; `stalled`/`exhausted` → `blocked`/`partial` with the remaining gap). Pass each cycle's unit and gate explicitly.
 

@@ -2,7 +2,7 @@
 
 Specialist agents for the `task` tool. Each file is the agent's **role prompt**, appended to the child's normal system prompt via `--append-system-prompt`. Task children still load the `AGENTS.md` context chain and `APPEND_SYSTEM.md` for their cwd like any pi session, so do not re-paste repo rules in the task `prompt`; pass only task-specific rules and scope.
 
-The **session agent** is always the parent. Task agents match **OpenCode-style** builtins where applicable: `explore`, `scout`, `general`, plus `reviewer`.
+The **session agent** is always the parent. Task agents match **OpenCode-style** builtins where applicable — `explore`, `scout`, `general`, `reviewer` (these also exist as pi-task's package defaults when this package is not installed) — plus two harness-authored specialists: `designer` and `researcher`.
 
 The parent routes from `APPEND_SYSTEM.md`; task agents inherit the `AGENTS.md` context files for their cwd, so the task prompt should add assignment-specific rules (scope, authority, verification) rather than repeat repo rules.
 
@@ -40,6 +40,8 @@ pi-task parses frontmatter line-by-line rather than as full YAML. Keep descripti
 | `explore` | Read-only code exploration, path:line | Single known file (`read`) |
 | `general` | Multi-step tasks, implementation, parallel tracks | Trivial 1–2 file parent work |
 | `reviewer` | Post-change audit, path:line evidence | Before code exists |
+| `designer` | One design candidate under a stated constraint (design-it-twice parallel pattern) | Implementation or audit |
+| `researcher` | Resolve a research assignment and write one cited report file | Answer-only questions (`scout`) |
 
 ## Pick by task
 
@@ -49,6 +51,8 @@ pi-task parses frontmatter line-by-line rather than as full YAML. Keep descripti
 | Best practice / docs for Y? | `scout` |
 | Implement or multi-step delegated work | `general` |
 | Review diff / changes | `reviewer` |
+| Design candidate for an interface (several in parallel) | `designer` |
+| Research ticket that must land as a cited file | `researcher` |
 | Product from short prompt | Workflow-style orchestration with `task` |
 
 ## Prompt template (parent → `task`)
@@ -59,7 +63,7 @@ Include: goal, non-goals, write/read policy, expected output, stop condition, ve
 
 ## Proactive delegation
 
-**explore, scout, general, reviewer** use `proactive: true`. Parent rules: `APPEND_SYSTEM.md`.
+**explore, scout, general, reviewer, designer, researcher** use `proactive: true`. Parent rules: `APPEND_SYSTEM.md`.
 
 ## Final message XML
 

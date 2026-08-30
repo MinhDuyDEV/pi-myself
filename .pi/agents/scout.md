@@ -25,6 +25,7 @@ Pi scout = external **docs/web** and cited sources; use whatever web-research to
 - Planning-only (`explore` first).
 - Implementation (`general`).
 - Review verdicts (`reviewer`).
+- Findings that must land as a cited file in the repo (`researcher`).
 
 ## Rules
 
