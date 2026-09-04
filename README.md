@@ -2,7 +2,7 @@
 
 A pi coding-agent harness built around [mattpocock/skills](https://github.com/mattpocock/skills) as the process core: runtime extensions, task-agent roles, slash-command adapters, and hygiene tests — assembled from [pikit](https://github.com/heyhuynhgiabuu/pikit) and rebuilt where Matt's skills need pi-specific support.
 
-The philosophy: **one process, one vocabulary**. Matt's 25 promoted skills are vendored verbatim and are the only process narrative; this package contributes the runtime that makes them first-class in pi — a real `skill` tool, deterministic prompts, delegation roles, session recall, and safety guardrails.
+The philosophy: **one process, one vocabulary**. Matt's 25 promoted skills are vendored verbatim and are the only process narrative; this package contributes the runtime that makes them first-class in pi — a real `skill` tool, deterministic prompts, delegation roles, and session recall.
 
 ## Install
 
@@ -35,7 +35,6 @@ Then inside the repository, once:
 | Skill invocation | Model-invoked skills run through the `skill` tool; user-invoked ones run through pi's native `/skill:<name>` slash commands (`enableSkillCommands`) — no generated wrapper layer |
 | Task roles | `explore` / `scout` / `general` / `reviewer` overrides for `pi-task` plus harness-authored `designer` (design-it-twice parallel candidates), `researcher` (writes the cited research artifact), and `ultra-scout` / `ultra-verifier` (the `/skill:ultra-review` bug-hunt pipeline) — delegation contracts and a 1-writer + 1-reviewer WIP cap |
 | Session recall | `recall` searches persisted session JSONL (including compaction summaries) before agents guess about lost context |
-| Safety | `tool_call` guardrails (block/confirm), audit log, `/safety` status command |
 | Compaction continuity | Auto-resume after compaction; APPEND_SYSTEM phase-boundary rules mirror `PHASE-BOUNDARIES.md` |
 | Smart-zone meter | Measures context against ~150k after every turn; boundary-grade warnings carry the PHASE-BOUNDARIES.md decision order (`/smartzone`) |
 | Memory | `.pi/MEMORY.md` discipline kept strictly apart from `CONTEXT.md` (domain) and the tracker (work units) — see `PLAN.md` §3 |

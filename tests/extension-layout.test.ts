@@ -18,11 +18,11 @@ test("no test files at the extension top level (pi would load them as extensions
 
 // Subdirectory taxonomy: pi loads only top-level *.ts plus <subdir>/index.ts,
 // so subdirs are either full extensions (have index.ts: dcp, skill-tool,
-// tracker) or support code for the wrapper file beside them (safety/ behind
-// safety.ts — deliberately WITHOUT index.ts, which pi would load as a second
-// extension). Pin the support list so a new non-index subdir is a conscious
-// decision; stray test files at the top level are covered by the guard above.
-const SUPPORT_DIRS = new Set(["safety"]);
+// tracker) or support code for a wrapper file beside them — deliberately
+// WITHOUT index.ts, which pi would load as a second extension. Pin the support
+// list so a new non-index subdir is a conscious decision; stray test files at
+// the top level are covered by the guard above.
+const SUPPORT_DIRS = new Set<string>([]);
 
 test("extension subdirectory layout stays known", () => {
 	const offenders: string[] = [];

@@ -28,7 +28,7 @@ There is no bundled root `lint` script; do not report lint as passing unless a d
 - `.pi/MEMORY.md` is durable distilled project knowledge (the `memory` skill owns its discipline); domain vocabulary belongs in `CONTEXT.md`, real tradeoffs in `docs/adr/`, work units in the issue tracker.
 - Do not edit generated or runtime state under `node_modules/`, `.pi/node_modules/`, `.pi/git/`, `.pi/sessions/`, `.pi/dcp-state/`, `.pi/task-exits/`, `.pi/artifacts/`, and `.pi/task-session-history.json`.
 - Inspect `git status --short` before editing. Preserve unrelated user changes.
-- Treat `.pi/extensions/safety*`, `.pi/extensions/dcp/`, `.pi/extensions/skill-tool/`, `.pi/extensions/tracker/`, `.pi/settings.json`, shell hooks, and package lifecycle scripts as sensitive. Add focused tests before behavior changes.
+- Treat `.pi/extensions/dcp/`, `.pi/extensions/skill-tool/`, `.pi/extensions/tracker/`, `.pi/settings.json`, shell hooks, and package lifecycle scripts as sensitive. Add focused tests before behavior changes.
 - Do not remove a skill from `.pi/skills/` without moving its unique guidance first; the vendored trees are governed by upstream, not us.
 - Keep public names search-discriminable, modules concept-focused, diffs small, and project guidance free of stale counts or nonexistent paths.
 

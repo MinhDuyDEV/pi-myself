@@ -5,7 +5,7 @@
 ## Shipped pi Surface
 
 - `vendor/mattpocock-skills/` — vendored upstream mattpocock/skills (process core; read-only; its `skills/engineering` + `skills/productivity` trees are registered with pi).
-- `.pi/extensions/` — runtime extensions: `skill-tool` (the `skill` tool), `tracker` (two backends: `.scratch/` local markdown + GitHub Issues via `gh-*` ops; `/frontier`), `smart-zone` (smart-zone meter + `/smartzone`), `safety/` (command/tool guardrails), `dcp/` (session-history `recall`), `continue-after-compaction`, `tps`, `shortcut-continue`.
+- `.pi/extensions/` — runtime extensions: `skill-tool` (the `skill` tool), `tracker` (two backends: `.scratch/` local markdown + GitHub Issues via `gh-*` ops; `/frontier`), `smart-zone` (smart-zone meter + `/smartzone`), `dcp/` (session-history `recall`), `continue-after-compaction`, `tps`, `shortcut-continue`.
 - `.pi/settings.json` — dogfood defaults (skill commands, compaction reserves, trust, default tools).
 - `.pi/skills/` — our own skills: `memory`, `verification-before-completion`, `typescript-coding-standards`, `api-and-interface-design`, `deprecation-and-migration`, `security-and-hardening`, `source-driven-development`, `browser-tools`.
 
@@ -30,7 +30,6 @@ Not source of truth, do not edit: `node_modules/`, `.pi/node_modules/`, `.pi/npm
 
 ## Sensitive Areas
 
-- `.pi/extensions/safety/` — command and tool safety policy.
 - `.pi/extensions/dcp/` — session-history recall.
 - `.pi/extensions/skill-tool/` — skill invocation surface and its enum (must equal the model-invoked set; tested).
 - `.pi/extensions/tracker/` — local backend writes under `.scratch/` only (slug-validated paths); GitHub backend shells out to `gh` with the repo as cwd and needs `gh auth login`.

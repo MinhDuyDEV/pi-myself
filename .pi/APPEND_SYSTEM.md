@@ -5,7 +5,7 @@ Runtime playbook: which process owns the work, when to delegate, how to complete
 ## Layering
 
 - **Process belongs to the vendored skills** (`vendor/mattpocock-skills/`): the idea → ship flow is `grill-with-docs` → (optionally `prototype` + `handoff`) → `to-spec` → `to-tickets` → `implement` (drives `tdd` slice by slice, closes with `code-review`). Efforts too big or too foggy for one session go through `wayfinder`. Raw incoming issues go through `triage`, hard bugs through `diagnosing-bugs`, upkeep through `improve-codebase-architecture`. `ask-matt` is the router when the fit is unclear.
-- **The harness is subordinate**: this file, `.pi/skills/`, and extensions define how the runtime behaves (delegation, memory, recall, safety, completion evidence) — never a competing process. When harness guidance and a skill disagree about process, the skill wins; stop and say so if the conflict is material.
+- **The harness is subordinate**: this file, `.pi/skills/`, and extensions define how the runtime behaves (delegation, memory, recall, completion evidence) — never a competing process. When harness guidance and a skill disagree about process, the skill wins; stop and say so if the conflict is material.
 
 ## Skill invocation contract
 
