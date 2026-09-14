@@ -25,7 +25,7 @@ Then inside the repository, once:
 /skill:setup-matt-pocock-skills   # per-repo config for the process core (issue tracker, domain docs, triage labels)
 ```
 
-pi loads task roles, `APPEND_SYSTEM.md`, and project settings only from a repository's own `.pi/`, never from an installed package, so `/setup-pi-myself` copies them in (idempotent — re-run after upgrades to refresh; a settings key the project already sets is never overwritten). `pi-task` provides the `task` tool; `pi-memory-md` provides the `memory_*` tools the `memory` skill uses; any web-research package supplies the tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here. Tasks that declare skills resolve only in **trusted** projects — pi asks for project trust on the first interactive session in a new repo.
+pi loads task roles, `APPEND_SYSTEM.md`, and project settings only from a repository's own `.pi/`, never from an installed package, so `/setup-pi-myself` (a command the `provision` extension registers) copies them in — idempotent, and a settings key the project already sets is never overwritten. After `pi update --extensions` the extension notices the copies are stale at the next session start and tells you to run it again. `pi-task` provides the `task` tool; `pi-memory-md` provides the `memory_*` tools the `memory` skill uses; any web-research package supplies the tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here. Tasks that declare skills resolve only in **trusted** projects — pi asks for project trust on the first interactive session in a new repo.
 
 ## What the harness contributes
 
@@ -39,7 +39,7 @@ pi loads task roles, `APPEND_SYSTEM.md`, and project settings only from a reposi
 | Compaction continuity | Auto-resume after compaction (recall → memory_search → reconcile → continue); APPEND_SYSTEM phase-boundary rules mirror `PHASE-BOUNDARIES.md` |
 | Smart-zone meter | Measures context against ~150k after every turn; the reading sits in the footer past 60% and the PHASE-BOUNDARIES.md decision order toasts once at 85%/100% (`/smartzone`) |
 | Memory | The `memory` skill and `/remember` drive `pi-memory-md` records (`state` facts, `event` findings), kept strictly apart from `CONTEXT.md` (domain) and the tracker (work units) — see `PLAN.md` §3 and ADR 0002 |
-| Project provisioning | `/setup-pi-myself` copies what pi only loads from a repo's own `.pi/`: task roles, `APPEND_SYSTEM.md`, `enableSkillCommands` |
+| Project provisioning | `provision` extension: `/setup-pi-myself` copies what pi only loads from a repo's own `.pi/` (task roles, `APPEND_SYSTEM.md`, `enableSkillCommands`) and a session-start drift check warns when an upgrade left those copies stale |
 
 ## The process core
 

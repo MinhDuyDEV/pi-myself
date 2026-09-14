@@ -28,9 +28,6 @@ pnpm-debug.log*
 .pi/git/
 .pi/npm/
 .pi/extensions/node_modules/
-.pi/extensions/bun.lock
-.pi/extensions/package-lock.json
-.pi/extensions/**/package-lock.json
 .pi/extensions/**/node_modules/
 .pi/tasks/
 .pi/cache/

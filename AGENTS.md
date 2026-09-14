@@ -8,12 +8,12 @@
 - `.pi/extensions/` contains runtime TypeScript extensions. Pi discovers top-level `.ts` files and one-level subdirectories with `index.ts`; keep tests beside their owner.
 - `.pi/skills/<name>/SKILL.md` defines our own model-visible skills; progressive references and executable helpers stay with their owning skill.
 - `vendor/mattpocock-skills/` is the **vendored upstream** `mattpocock/skills` tree. It is read-only by rule: never edit files under it. Upgrade it with `npm run sync:skills` (re-clone + rehash `skills-lock.json`).
-- `.pi/prompts/<name>.md` defines the hand-written user slash commands (`/verify`, `/init`, `/remember`, `/setup-pi-myself`). Skills need no wrapper: pi exposes every skill natively as `/skill:<name>`.
-- `scripts/sync-skills.mjs` is the gate for all vendored-tree changes; `--check` verifies lock integrity and is run in CI and by `npm run sync:check`. `scripts/setup-project.mjs` provisions a consuming repo (`/setup-pi-myself`).
+- `.pi/prompts/<name>.md` defines the hand-written user slash commands (`/verify`, `/init`, `/remember`). Skills need no wrapper: pi exposes every skill natively as `/skill:<name>`. `/setup-pi-myself` is a command the `provision` extension registers.
+- `scripts/sync-skills.mjs` is the gate for all vendored-tree changes; `--check` verifies lock integrity and is run in CI and by `npm run sync:check`. `scripts/setup-project.mjs` provisions a consuming repo (run by `/setup-pi-myself`).
 
 ## Commands
 
-- Install: `npm install` (runs the `postinstall` hook for extension deps).
+- Install: `npm install` (dev types for the extensions live in the root `devDependencies`; a consuming repo's `pi install` pulls none of them).
 - Tests: `npm test` (extensions + skills).
 - Skill/catalog tests: `node --test tests/*.test.ts`.
 - Root TypeScript: `npm run typecheck`.

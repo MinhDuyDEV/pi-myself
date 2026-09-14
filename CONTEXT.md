@@ -27,7 +27,7 @@ Which issue-tracker implementation the `tracker` tool uses: the **local backend*
 _Avoid_: "mode", "driver"
 
 **Prompt**:
-A hand-written slash command at `.pi/prompts/<name>.md` (`/verify`, `/init`, `/remember`, `/setup-pi-myself`). Skills are never wrapped: pi exposes each one natively as `/skill:<name>`.
+A hand-written slash command at `.pi/prompts/<name>.md` (`/verify`, `/init`, `/remember`). Skills are never wrapped: pi exposes each one natively as `/skill:<name>`; `/setup-pi-myself` is an extension command, not a prompt.
 _Avoid_: "wrapper" (the generated wrapper layer was removed 2026-08-30), "alias"
 
 **Memory record**:

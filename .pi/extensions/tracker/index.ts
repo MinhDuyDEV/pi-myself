@@ -17,23 +17,16 @@
  * Also registers `/frontier` (whole-tracker readout).
  */
 
-import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { resolveRepoRoot } from "../lib/repo-root.js";
 import { runAllFrontiers, runOp } from "./ops.js";
 import { trackerSchema, type TrackerParams } from "./params.js";
 import { TrackerError } from "./tracker.js";
 
-function findRepoRoot(start: string): string {
-	let current = resolve(start);
-	for (;;) {
-		if (existsSync(join(current, "vendor", "mattpocock-skills", ".claude-plugin", "plugin.json"))) return current;
-		const parent = join(current, "..");
-		if (parent === current) return resolve(start);
-		current = parent;
-	}
-}
+/** The consuming repository's root (git top-level, else cwd): `.scratch/`
+ * lives there and `gh` runs there, wherever pi was launched inside the repo. */
+const findRepoRoot = resolveRepoRoot;
 
 export default function trackerExtension(pi: ExtensionAPI): void {
 	pi.registerTool({

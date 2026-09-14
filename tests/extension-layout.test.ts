@@ -22,7 +22,7 @@ test("no test files at the extension top level (pi would load them as extensions
 // WITHOUT index.ts, which pi would load as a second extension. Pin the support
 // list so a new non-index subdir is a conscious decision; stray test files at
 // the top level are covered by the guard above.
-const SUPPORT_DIRS = new Set<string>([]);
+const SUPPORT_DIRS = new Set<string>(["lib"]); // shared helpers (repo-root); no index.ts on purpose
 
 test("extension subdirectory layout stays known", () => {
 	const offenders: string[] = [];

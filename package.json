@@ -3,7 +3,7 @@
 	"type": "module",
 	"version": "0.1.0",
 	"private": true,
-	"description": "pi coding-agent harness around mattpocock/skills — extensions, task roles, prompts, and hygiene tests",
+	"description": "pi coding-agent harness around mattpocock/skills \u2014 extensions, task roles, prompts, and hygiene tests",
 	"keywords": [
 		"pi-package"
 	],
@@ -21,7 +21,6 @@
 		"extensions:typecheck": "npx tsc -p .pi/extensions/tsconfig.json --noEmit",
 		"sync:skills": "node scripts/sync-skills.mjs",
 		"sync:check": "node scripts/sync-skills.mjs --check",
-		"postinstall": "cd .pi/extensions && npm install --ignore-scripts",
 		"setup:project": "node scripts/setup-project.mjs"
 	},
 	"pi": {
@@ -59,8 +58,12 @@
 		}
 	},
 	"devDependencies": {
+		"@earendil-works/pi-ai": "^0.84.3",
+		"@earendil-works/pi-coding-agent": "^0.84.3",
+		"@earendil-works/pi-tui": "^0.84.3",
 		"@types/node": "^22.20.1",
 		"tsx": "^4.19.2",
+		"typebox": "1.3.7",
 		"typescript": "^5.9.3"
 	}
 }
