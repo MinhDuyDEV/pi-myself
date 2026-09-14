@@ -103,7 +103,7 @@ test("vendored registry: full promoted set plus local skills", () => {
 	for (const promoted of ["wayfinder", "grilling", "tdd", "implement", "code-review", "setup-matt-pocock-skills", "handoff"]) {
 		assert.ok(names.has(promoted), `missing promoted skill ${promoted}`);
 	}
-	for (const local of ["memory", "verification-before-completion", "browser-tools"]) {
+	for (const local of ["memory", "verification-before-completion", "source-driven-development"]) {
 		assert.ok(names.has(local), `missing local skill ${local}`);
 	}
 	// invocation invariant: every user-invoked skill is absent from the model-invoked set

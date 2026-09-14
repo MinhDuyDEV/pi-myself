@@ -47,15 +47,9 @@ When unsure, write an `event`. Merge a cluster of related records with `memory_w
 - **Decisions with real tradeoffs** belong in `docs/adr/`, not here.
 - **Work units** belong in the issue tracker, not here.
 - **Research reports** the `research` skill produces belong in the repo as files; memory may hold a one-line `event` pointing at the path.
-- Memory holds distilled operational knowledge: patterns, gotchas, environment facts, debugging outcomes. Nothing that already lives in a tracked file.
+- **Project rules** belong in `AGENTS.md`; session scratch stays in the conversation.
+- Memory holds distilled operational knowledge: patterns, gotchas, environment facts, debugging outcomes. Nothing that already lives in a tracked file, and never secrets, tokens, or credential paths.
 
 ## Who writes
 
 The session parent alone calls `memory_write` and `memory_delete`. Task children (any `task` role) return proposed records in their result; the parent decides what is durable. Memory is local to this machine and is not in git: anything a collaborator must know goes into a tracked file instead.
-
-## When NOT to use
-
-- Session-internal scratch work — use the conversation.
-- Ephemeral task tracking — use the issue tracker.
-- Project rules — those go in `AGENTS.md`.
-- Secrets, tokens, credential paths — never; the tool refuses to inject them and you should not write them.

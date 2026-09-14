@@ -7,7 +7,7 @@
 - `vendor/mattpocock-skills/` — vendored upstream mattpocock/skills (process core; read-only; its `skills/engineering` + `skills/productivity` trees are registered with pi).
 - `.pi/extensions/` — runtime extensions: `skill-tool` (the `skill` tool), `tracker` (two backends: `.scratch/` local markdown + GitHub Issues via `gh-*` ops; `/frontier`), `smart-zone` (footer meter + `/smartzone`), `dcp/` (session-history `recall`), `continue-after-compaction`.
 - `.pi/settings.json` — dogfood defaults (skill commands, compaction reserves, retry).
-- `.pi/skills/` — our own skills: `memory` (pi-memory-md workflow), `verification-before-completion`, `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, `browser-tools`, `test-proof-debt-audit`, `ultra-review`, `ultra-review-receive`.
+- `.pi/skills/` — our own skills: `memory` (pi-memory-md workflow), `verification-before-completion`, `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, `test-proof-debt-audit`, `ultra-review`, `ultra-review-receive`.
 - `.pi/prompts/` — hand-written slash commands: `/verify`, `/init`, `/remember`, `/setup-pi-myself`.
 - `.pi/APPEND_SYSTEM.md` — the workflow rules; provisioned into consuming repos by `scripts/setup-project.mjs` because pi loads it only from a project's own `.pi/`.
 

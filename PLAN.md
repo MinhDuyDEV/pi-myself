@@ -55,8 +55,8 @@ pi-myself/
 │   ├── APPEND_SYSTEM.md    # workflow rules (provisioned into consuming repos by setup-project)
 │   ├── skills/             # OUR layer: memory, verification-before-completion,
 │   │                       #   typescript-coding-standards, security-and-hardening,
-│   │                       #   source-driven-development, browser-tools,
-│   │                       #   test-proof-debt-audit, ultra-review, ultra-review-receive
+│   │                       #   source-driven-development, test-proof-debt-audit,
+│   │                       #   ultra-review, ultra-review-receive
 │   ├── extensions/         # skill-tool/, tracker/, dcp/ (recall),
 │   │                       #   continue-after-compaction, smart-zone
 │   ├── agents/             # pi-task roles: explore, scout, general, reviewer,
@@ -89,7 +89,9 @@ pi-myself/
 
 **Extensions**: keep `dcp/`, `continue-after-compaction` (+ harness-authored `skill-tool/`, `tracker/`, `smart-zone`). Dropped: `todo.ts` (artifacts are gone per D1), `herdr-agent-state.ts` (Herdr-specific), `safety/` (2026-09-05, unused), `tps` (2026-09-14, pi's footer shows tokens/cost; the per-turn toast was noise), `shortcut-continue` (2026-09-14, personal QoL, not harness — user-scope if wanted), `memory-nudge` (2026-09-14, D4).
 
-**Skills** (keep in `.pi/skills/`): `memory`, `verification-before-completion`, `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, `browser-tools`, `test-proof-debt-audit`, `ultra-review`, `ultra-review-receive`. Everything overlapping Matt: dropped (list in §2). Dropped 2026-09-14 as textbook knowledge with no harness mechanism: `api-and-interface-design` (interfaces are `codebase-design`'s job), `deprecation-and-migration` (its HARD-GATE fired on any dependency upgrade). `source-driven-development` lost its `opensrc` reference (tool never installed; the host's `srcwalk` is named generically instead).
+**Skills** (keep in `.pi/skills/`): `memory`, `verification-before-completion`, `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, `test-proof-debt-audit`, `ultra-review`, `ultra-review-receive`. Everything overlapping Matt: dropped (list in §2). Dropped 2026-09-14 as textbook knowledge with no harness mechanism: `api-and-interface-design` (interfaces are `codebase-design`'s job), `deprecation-and-migration` (its HARD-GATE fired on any dependency upgrade), `browser-tools` (pi's own example skill, uninstalled deps, nothing referenced it; `pi-web-access` fetches JS-rendered pages). `source-driven-development` lost its `opensrc` reference (tool never installed; the host's `srcwalk` is named generically instead).
+
+**Skill content rule (2026-09-14 second pass)**: a section survives in a local skill only if no other loaded text already says it. Cut accordingly: `typescript-coding-standards` lost Module Boundaries/Adapters (→ `codebase-design`), Testing (→ `tdd`), Anti-Patterns (≡ Red Flags); `source-driven-development` lost its 8-step workflow and output section (→ `research` skill + role envelopes) and the `scout`/`researcher` roles stopped restating its evidence hierarchy; `verification-before-completion` lost Workflow and Report (≡ its Evidence table + AGENTS.md Verification); `security-and-hardening` lost Red Flags (≡ Controls negated). The `ultra-review` pair keeps coordination only — the scout lenses and the verifier's disposition rules live once, in `.pi/agents/ultra-scout.md` and `.pi/agents/ultra-verifier.md`, which `agent_type` delivers to the child. pikit's unused frontmatter fields (`tags`, `dependencies`, `agent_types`, `tools`) are gone.
 
 **Prompts**: keep `/verify`, `/init`, `/remember`, `/setup-pi-myself`; drop `/create` `/plan` `/ship` `/research` `/is` and (2026-09-14) `/fix` — it re-narrated `diagnosing-bugs` + `tdd` + `codebase-design`. `.pi/cli/` browser helpers dropped the same day: dead pikit residue (talked about `PROGRESS.md`/`/ship`, needed an uninstalled `playwright`, duplicated `browser-tools`).
 

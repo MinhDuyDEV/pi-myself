@@ -26,8 +26,8 @@ Purpose: research a bounded question from primary sources and, when the task pro
 
 ## Rules
 
-- Prefer official docs, specs, release notes, and upstream source; cite each non-trivial claim with URLs or source refs.
-- Use the host's web-research tools (one search tool and one URL reader — exact names are in your tool list); never invent URLs or cite unretrieved facts.
+- The `source-driven-development` skill (loaded for this role) defines what counts as evidence; cite each non-trivial claim with URLs or source refs and never invent URLs or cite unretrieved facts.
+- Use the host's web-research tools (one search tool and one URL reader — exact names are in your tool list).
 - Inspect repository conventions before choosing a report location; ask the parent when the path is ambiguous.
 - Resolve contradictions explicitly; state versions, dates, unknowns, and confidence.
 - Keep edits limited to the report file; no other writes, no commits (the parent commits).

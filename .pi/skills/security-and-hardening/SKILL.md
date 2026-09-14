@@ -27,27 +27,20 @@ description: Use when auditing security, implementing authentication or authoriz
 | Internal typed function call | Trust types unless the call changes trust/domain |
 | Database write | Parameterized query plus database constraints (`NOT NULL`, `UNIQUE`, `CHECK`, FK) |
 
-Validate at boundaries, not randomly inside business logic. Service code enforces domain preconditions; the database protects invariants and races. Return validation failures as typed errors, not unclassified exceptions.
+Validate at boundaries, not randomly inside business logic. Service code enforces domain preconditions; the database protects invariants and races. Return validation failures as typed errors.
 
-## Security Controls
+## Controls
 
 - **Injection:** parameterized queries; never concatenate untrusted SQL or shell input.
 - **Authentication:** Argon2/bcrypt, MFA where sensitive, rate limit by account and IP.
 - **Sessions:** random signed identifiers, `httpOnly`, `secure`, short expiry, refresh rotation.
 - **Authorization:** check every action and object; test that user A cannot access user B.
-- **XSS/CSRF:** output encoding, CSP, safe templating, appropriate same-site/CSRF protection.
+- **XSS/CSRF:** output encoding, CSP, safe templating, same-site/CSRF protection.
 - **Dependencies:** lock versions, review advisories and major upgrades; do not apply audit fixes blindly.
 - **Logging:** record failed auth, denials, and anomalous access; redact credentials and tokens.
-- **Headers:** HSTS, CSP, `nosniff`, frame protection, and restrictive referrer policy.
-
-## Secrets
-
-Use local environment variables, CI secret stores, and a production vault. Rotate on exposure. Never print secrets during debugging or transmit them to tools without explicit authorization.
+- **Headers:** HSTS, CSP, `nosniff`, frame protection, restrictive referrer policy.
+- **Secrets:** local env vars, CI secret stores, a production vault; rotate on exposure; never print them while debugging or send them to tools without explicit authorization.
 
 ## Verification
 
-Test negative paths: malformed boundary input, missing permission, cross-tenant access, replay/rate-limit behavior, invalid queue payload, invalid environment configuration, and persistence constraint violations.
-
-## Red Flags
-
-`as any` at a boundary; trusting frontend IDs; validation only in the controller; unvalidated queue/DB/env data; plaintext or fast-hashed passwords; permissive CORS; secrets in logs; default credentials; auth “later”; database invariants enforced only in application code.
+Test the negative paths: malformed boundary input, missing permission, cross-tenant access, replay and rate-limit behavior, invalid queue payload, invalid environment configuration, persistence constraint violations.

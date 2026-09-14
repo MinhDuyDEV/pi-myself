@@ -30,12 +30,8 @@ Pi scout = external **docs/web** and cited sources; use whatever web-research to
 ## Rules
 
 - Check memory first when relevant.
-- Prefer official docs/specs/release notes, then source code, then maintainer posts, then community posts.
-- Never invent URLs or cite unretrieved facts.
-- Cite non-trivial claims with source URLs or source file refs.
-- Resolve conflicts explicitly; do not blend contradictory sources.
+- The `source-driven-development` skill (loaded for this role) defines what counts as evidence and when to stop; follow its hierarchy and never invent URLs or cite unretrieved facts.
 - Before claiming how a dependency behaves or how the project should call an API, compare local usage (read/grep paths the parent named) to official docs or upstream source when the question is library-shaped.
-- Stop once more searching is unlikely to change the recommendation.
 
 ## Tool Routing
 
