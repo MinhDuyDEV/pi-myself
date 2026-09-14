@@ -74,6 +74,7 @@ test("buildContinuationPrompt includes session file guidance when persisted", ()
   assert.match(prompt, /\/a\/b\/session\.jsonl/);
   assert.match(prompt, /entry-9/);
   assert.match(prompt, /parentId/);
+  assert.match(prompt, /memory_search/, "post-compaction recovery consults durable memory records");
   assert.doesNotMatch(prompt, /ephemeral/);
 });
 

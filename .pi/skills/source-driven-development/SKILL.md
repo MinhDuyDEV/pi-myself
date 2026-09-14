@@ -25,7 +25,7 @@ Docs describe intended public behavior; version-matched code and tests establish
 
 1. **Question** — state one precise question or testable hypothesis.
 2. **Version** — identify the project's exact package/runtime version from lockfiles or manifests.
-3. **Retrieve** — start with local docs/source, then official docs and repository source. Use web search for discovery and fetch the authoritative page. For dependency source not otherwise available, follow `references/opensrc-cli.md`.
+3. **Retrieve** — start with local docs/source (`node_modules/<pkg>` for the installed version), then official docs and repository source. Use the host's web-research tools for discovery and fetch the authoritative page. When the host provides a code-navigation tool (for example `srcwalk`), use it for source reads; do not install fetchers or run unpinned `npx` packages without approval.
 4. **Navigate** — find the public entry point, then follow only the relevant call graph. Do not read a repository without a question.
 5. **Read the tests** — confirm intended edge cases, examples, error contracts, and version history.
 6. **Probe** — write a tiny test or minimal reproduction that predicts observable output.

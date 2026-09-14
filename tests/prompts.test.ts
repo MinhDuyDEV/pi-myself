@@ -6,8 +6,9 @@ import { test } from "node:test";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const PROMPTS = join(ROOT, ".pi", "prompts");
-const PROMPTS_WE_WRITE = new Set(["verify.md", "fix.md", "init.md"]);
-const DROPPED_PROCESS_RE = /\/create|\/plan\b|\/ship\b/;
+const PROMPTS_WE_WRITE = new Set(["verify.md", "init.md"]);
+// /fix was dropped 2026-09-14: it re-narrated diagnosing-bugs + tdd + codebase-design.
+const DROPPED_PROCESS_RE = /\/create|\/plan\b|\/ship\b|\/fix\b/;
 
 function frontmatterOf(content: string, file: string): string {
 	const fm = content.match(/^---\n([\s\S]*?)\n---/)?.[1];
@@ -41,7 +42,8 @@ test("hand-written prompts keep the evidence contract and stay off the dropped p
 		assert.ok(frontmatterField(fm, "argument-hint"), `${file} needs an argument-hint`);
 		assert.match(content, /NOT DECLARED/, `${file} lost the NOT DECLARED ≠ PASS rule`);
 		assert.doesNotMatch(content, /\.pi\/artifacts\//, `${file} references the dropped artifacts system`);
-		assert.doesNotMatch(content, DROPPED_PROCESS_RE, `${file} routes to a dropped prompt (/create, /plan, /ship)`);
+		assert.doesNotMatch(content, /\.pi\/MEMORY\.md/, `${file} references the retired .pi/MEMORY.md memory file (memory lives in pi-memory-md now)`);
+		assert.doesNotMatch(content, DROPPED_PROCESS_RE, `${file} routes to a dropped prompt (/create, /plan, /ship, /fix)`);
 	}
 });
 

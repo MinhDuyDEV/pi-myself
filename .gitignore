@@ -39,7 +39,6 @@ pnpm-debug.log*
 .pi/task-exits/
 .pi/task-session-history.json
 .pi/models-store.json
-.pi/MEMORY.md
 
 # Matt's local-markdown issue tracker (disposable work units)
 .scratch/

@@ -1,11 +1,13 @@
 ---
 name: memory
-description: ALWAYS read durable project context from `<repo-root>/.pi/MEMORY.md`; append learnings to it. File-based, on-demand, observable.
+description: ALWAYS check durable project memory (memory_search) before non-trivial work and record durable learnings with memory_write; state records for facts still true, event records for findings.
 ---
 
 # Memory
 
-Durable project knowledge lives in `<repo-root>/.pi/MEMORY.md`. Resolve the repository root before reading or writing it. Read it on demand when relevant, append to it when new learnings surface.
+Durable project knowledge lives in the `pi-memory-md` extension: per-project records under `~/.pi/memory-md/projects/<project-slug>/records/`, reached through the `memory_search`, `memory_read`, `memory_write`, and `memory_delete` tools. The extension injects the newest records' metadata into the first turn; everything else is on demand.
+
+If the memory tools are absent from the tool list, the host has not installed `pi-memory-md` (`pi install git:github.com/sting8k/pi-memory-md`). Say so once and continue without memory; never fall back to an ad-hoc file.
 
 ## When to load
 
@@ -13,60 +15,47 @@ Durable project knowledge lives in `<repo-root>/.pi/MEMORY.md`. Resolve the repo
 
 - involves a decision, design choice, or architectural call
 - references prior work, past sessions, or "what we did before"
-- is in a project the user has memory for (`<repo-root>/.pi/MEMORY.md` exists)
+- touches the host, install layout, tooling, or environment
 - the user mentions "memory", "before", "last time", "we used to", or similar
 
 For trivial edits, single-line fixes, or pure code questions with no project context — skip.
 
-## Where memory lives
+## Workflow
 
-- `<repo-root>/.pi/MEMORY.md` — project-specific memory (per repository root)
-- `~/.pi/MEMORY.md` — global personal memory (cross-project, cross-session)
-
-The user creates and owns these files. They are not part of this skill.
-
-Sections in MEMORY.md: architecture, decisions, patterns, gotchas. Grep-friendly keywords.
-
-## Boundary with the domain layer
-
-- Project **vocabulary and ubiquitous language** belong in `CONTEXT.md` (domain-modeling), not here.
-- **Decisions with real tradeoffs** belong in `docs/adr/` (ADRs), not here.
-- **Work units** belong in the issue tracker (`.scratch/` or the configured tracker), not here.
-- MEMORY.md holds distilled operational knowledge: patterns, gotchas, environment facts, past debugging outcomes.
-
-## Usage
-
-**Resolve the repository root once:**
-
-```bash
-ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"
+```text
+START: memory_search({ query: "<task keywords>", searchIn: "all" })
+READ:  memory_read({ path: "@<id>", view: "knowledge" })      # full only when the notes matter
+END:   memory_write({ path: "records/<kind>.<slug>.md", kind, description, summary, claims, facts })
 ```
 
-**Recall prior context:**
+- Search with two or three distinct keywords; the search is regex and multi-term OR.
+- Read the `knowledge` view first; it carries summary, concepts, claims, facts, relations without the prose.
+- Write structured fields (`summary`, `claims`, `facts`, `concepts`), not a prose dump. One record per learning.
 
-```bash
-rg -n "<topic>" "$ROOT/.pi/MEMORY.md"
-```
+## Record kinds
 
-For a small file, use the `read` tool with the absolute path `$ROOT/.pi/MEMORY.md`.
+| Kind | Use for | ID rule |
+| --- | --- | --- |
+| `state` | Facts still true tomorrow: environment, host behaviour, install layout, conventions, active architecture | No dates in the id; update in place, never snapshot |
+| `event` | Findings with a moment: a debugging outcome, an investigation, a benchmark, a decision with its reason | Append-only; a date in the id is fine |
 
-**Save a new learning this session:**
+When unsure, write an `event`. Merge a cluster of related records with `memory_write({ supersedes: ["@a", "@b"] })` and the distilled content; never delete to tidy.
 
-1. Resolve `<repo-root>` and check for duplicates: `rg -n "<topic>" <repo-root>/.pi/MEMORY.md`
-2. If the learning is durable, append a bullet via `edit` using the resolved absolute path. Keep entries short.
+## Boundary with the other tiers
 
-**Compact when the file grows:**
+- Project **vocabulary** belongs in `CONTEXT.md` (domain-modeling), not here.
+- **Decisions with real tradeoffs** belong in `docs/adr/`, not here.
+- **Work units** belong in the issue tracker, not here.
+- **Research reports** the `research` skill produces belong in the repo as files; memory may hold a one-line `event` pointing at the path.
+- Memory holds distilled operational knowledge: patterns, gotchas, environment facts, debugging outcomes. Nothing that already lives in a tracked file.
 
-- Read the file, then rewrite, dropping low-signal entries.
-- Target: under 5KB. If it grows past that, compact.
+## Who writes
 
-## Conventions for entries
-
-- One bullet per learning, with type tag in brackets: `[decision]`, `[bugfix]`, `[pattern]`, `[feature]`, `[discovery]`, `[learning]`, `[warning]`.
-- Prefer concise titles; narrative only when essential.
+The session parent alone calls `memory_write` and `memory_delete`. Task children (any `task` role) return proposed records in their result; the parent decides what is durable. Memory is local to this machine and is not in git: anything a collaborator must know goes into a tracked file instead.
 
 ## When NOT to use
 
-- For session-internal scratch work — use the conversation, not MEMORY.md.
-- For ephemeral task tracking — use the issue tracker, not MEMORY.md.
-- For project rules — those go in `AGENTS.md`, not MEMORY.md.
+- Session-internal scratch work — use the conversation.
+- Ephemeral task tracking — use the issue tracker.
+- Project rules — those go in `AGENTS.md`.
+- Secrets, tokens, credential paths — never; the tool refuses to inject them and you should not write them.

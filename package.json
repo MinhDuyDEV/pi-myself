@@ -22,8 +22,7 @@
 		"sync:skills": "node scripts/sync-skills.mjs",
 		"sync:check": "node scripts/sync-skills.mjs --check",
 		"postinstall": "cd .pi/extensions && npm install --ignore-scripts",
-		"install:hooks": "node scripts/install-git-hooks.mjs",
-		"setup": "npm run install:hooks && npm run sync:check && echo 'Ready.'"
+		"setup:project": "node scripts/setup-project.mjs"
 	},
 	"pi": {
 		"extensions": [

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { test } from "node:test";
@@ -98,7 +98,8 @@ test("vendored registry: full promoted set plus local skills", () => {
 	]);
 
 	const names = new Set(registry.skills.map((s) => s.name));
-	assert.equal(registry.skills.length, 36, `expected 36 skills (25 vendored + 11 local), got ${registry.skills.length}`);
+	const localCount = readdirSync(join(repoRoot, ".pi", "skills")).filter((d) => existsSync(join(repoRoot, ".pi", "skills", d, "SKILL.md"))).length;
+	assert.equal(registry.skills.length, 25 + localCount, `expected ${25 + localCount} skills (25 vendored + ${localCount} local), got ${registry.skills.length}`);
 	for (const promoted of ["wayfinder", "grilling", "tdd", "implement", "code-review", "setup-matt-pocock-skills", "handoff"]) {
 		assert.ok(names.has(promoted), `missing promoted skill ${promoted}`);
 	}

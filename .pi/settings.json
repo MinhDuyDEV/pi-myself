@@ -20,12 +20,5 @@
 		"enabled": true,
 		"maxRetries": 3,
 		"baseDelayMs": 2000
-	},
-	"defaultProjectTrust": "always",
-	"defaultTools": [
-		"read",
-		"bash",
-		"write",
-		"edit"
-	]
+	}
 }

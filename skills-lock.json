@@ -3,7 +3,7 @@
 	"upstream": {
 		"repo": "mattpocock/skills",
 		"ref": "main",
-		"head": "6654f6b60cd9d5be8b54c6fafe44346dabeb3b76"
+		"head": "3cca18b368ae95cdbdebbff572ccafa662551015"
 	},
 	"promotedManifest": "vendor/mattpocock-skills/.claude-plugin/plugin.json",
 	"skillCount": 25,

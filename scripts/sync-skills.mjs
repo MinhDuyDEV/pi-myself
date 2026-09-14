@@ -133,7 +133,10 @@ function syncUpstream() {
 		const cloneDir = join(temp, "upstream");
 		const head = git(["rev-parse", "HEAD"], cloneDir, "rev-parse");
 		rmSync(CLONE, { recursive: true, force: true });
-		cpSync(cloneDir, CLONE, { recursive: true });
+		// verbatimSymlinks: upstream's AGENTS.md -> CLAUDE.md is a relative link;
+		// the default (false) rewrites it to an absolute path inside the temp
+		// clone, which dangles the moment the temp dir is removed.
+		cpSync(cloneDir, CLONE, { recursive: true, verbatimSymlinks: true });
 		rmSync(join(CLONE, ".git"), { recursive: true, force: true });
 		return head;
 	} finally {

@@ -1,5 +1,6 @@
-import { describe, expect, it } from "bun:test";
+import { describe, it } from "node:test";
 
+import { expect } from "../tests/expect.js";
 import dcpExtension from "./index.js";
 
 function createMockPi() {

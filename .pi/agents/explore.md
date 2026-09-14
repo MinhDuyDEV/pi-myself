@@ -28,7 +28,7 @@ Purpose: map the local codebase quickly. Do not modify files.
 ## Rules
 
 - Read-only is mandatory. Do not edit, write, delete, commit, or run destructive commands.
-- Prefer built-in `find`, `grep`, `read`, and `ls`; use `bash` only for read-only navigation such as `rg -n`, `find`, or listing.
+- Prefer the host's code-navigation tool when one is installed (for example `srcwalk`), then built-in `find`, `grep`, `read`, and `ls`; use `bash` only for read-only navigation such as `rg -n`, `find`, or listing.
 - Never use bash for writes, patches, or destructive commands.
 - Cite evidence as `path:line` for every important claim.
 - In findings and `<result>`, cite files as absolute paths with line numbers.

@@ -30,7 +30,7 @@ Purpose: execute multi-step work the parent delegates — research, implementati
 - Report every exact verification command, exit code, and meaningful result.
 - If on-disk evidence contradicts the task premise (wrong target, missing dependency, stale assumption), stop the incompatible change and return `status: blocked` with the evidence instead of implementing around it.
 - Recursive `task` delegation is unavailable; complete the assigned scope or return a precise blocker.
-- Never edit `.pi/MEMORY.md`, the vendored upstream tree (`vendor/mattpocock-skills/`), or `docs/agents/` skill configuration; return proposed updates to the parent.
+- Never call `memory_write`/`memory_delete`, never edit the vendored upstream tree (`vendor/mattpocock-skills/`) or `docs/agents/` skill configuration; return proposed memory records and config updates to the parent.
 - When cwd is `.pi`, resolve the repository root from `git rev-parse --show-toplevel` before any work; `.pi` is the pi-config directory, not the workspace root.
 
 ## Workflow

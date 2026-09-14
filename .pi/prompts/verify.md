@@ -91,5 +91,5 @@ Only for a full verification — complete evidence, all required gates, zero ope
 
 | Need | Command |
 | --- | --- |
-| Fix what verification found | `/fix <description>` (drives `diagnosing-bugs` when the failure resists a first glance) |
-| Continue the work | `/implement <ticket>` |
+| Fix what verification found | `/skill:diagnosing-bugs` for a failure that resists a first glance; `tdd` (red → green) for the regression test |
+| Continue the work | `/skill:implement <ticket>` |

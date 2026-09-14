@@ -1,9 +1,10 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
-import { expect, test } from "bun:test";
+import { test } from "node:test";
 
-import { isPathWithin, searchDcpRecall, activeLineageIds } from "./recall";
+import { expect } from "../tests/expect.js";
+import { isPathWithin, searchDcpRecall, activeLineageIds } from "./recall.js";
 
 function withSession(
   entries: unknown[],

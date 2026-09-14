@@ -1,6 +1,6 @@
 ---
 description: Initialize concise repository-local agent guidance from current repository evidence
-argument-hint: "[--deep] [--memory|--user|--all]"
+argument-hint: "[--deep]"
 ---
 
 # Init: $ARGUMENTS
@@ -16,17 +16,14 @@ The prose standard for anything written here is the `writing-for-agents` skill (
 | Argument | Default | Description |
 | --- | --- | --- |
 | `--deep` | false | Inspect history and subsystem boundaries in addition to the normal repository pass |
-| `--memory` | false | Record stable project facts in `.pi/MEMORY.md` (the `memory` skill owns its format) |
-| `--user` | false | Ask before recording stable user preferences in `.pi/MEMORY.md` |
-| `--all` | false | Core guidance, then memory, then user, in that order |
 
-No flags means core project guidance only.
+No flags means core project guidance only. Durable project facts discovered on the way are not written here: propose them as memory records at the end (the `memory` skill owns that tier) and let the user decide.
 
 ## 2. Safety and Idempotency
 
 - Inspect `git status --short` before writing and preserve unrelated changes.
 - Read the existing `AGENTS.md` (or `CLAUDE.md` — never create the second one when either exists) before editing; improve in place.
-- Do not create nested `AGENTS.md` files or new memory directories by default.
+- Do not create nested `AGENTS.md` files or any memory file by default.
 - Ask before replacing intentional guidance or recording personal preferences.
 - Never record credentials, tokens, private identifiers, or inferred personal details.
 - Do not touch `vendor/mattpocock-skills/`, `.pi/skills/`, `.pi/prompts/` (except repo-local usage notes), or generated runtime state.
@@ -65,21 +62,7 @@ Keep the repository-local file compact and evidence-based. Include only useful l
 
 Do not copy the harness constitution (`.pi/APPEND_SYSTEM.md`), the skill catalog, generic coding advice, or a speculative roadmap into this file. Cite source paths for non-obvious claims. If nested `AGENTS.md`s look justified under `--deep`, report candidates and rationale; ask before creating files.
 
-## 6. Optional Tracks
-
-### `--memory`
-
-Read `.pi/MEMORY.md` if present (create only when facts earn it). Append only stable project facts not already documented that would change future work. Follow the `memory` skill's entry conventions and boundaries — vocabulary goes to `CONTEXT.md`, decisions to `docs/adr/`, work to the tracker.
-
-### `--user`
-
-Ask for the specific stable preference first, and say it will be recorded. Append only with explicit approval; skip temporary preferences and anything sensitive.
-
-### `--all`
-
-Core setup, then memory, then user.
-
-## 7. Verify and Report
+## 6. Verify and Report
 
 Review the diff and report:
 

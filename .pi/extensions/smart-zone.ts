@@ -6,8 +6,10 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
  * runtime signal. The smart zone (~150k tokens on state-of-the-art models) is
  * the window within which the model still reasons sharply; past it, phase
  * boundaries get decided in order (continue → /clear → /handoff → subagent →
- * /compact). This extension measures the last agent turn's usage and nudges
- * at the thresholds — it never compacts or clears on its own.
+ * /compact). This extension measures the last agent turn's usage, shows the
+ * reading in the footer status past 60%, and toasts the decision order once
+ * when the level crosses into boundary/over — it never compacts or clears on
+ * its own.
  */
 
 export const SMART_ZONE_LIMIT = 150_000;
@@ -76,10 +78,17 @@ export default function smartZoneExtension(pi: ExtensionAPI): void {
 		const used = lastTurnTokens(event.messages);
 		if (used === undefined) return;
 		const next = smartZone(used, smartZoneLimit());
+		const previous = reading;
 		reading = next;
-		if (next.level === "ok") return;
 		if (!ctx.hasUI) return;
-		ctx.ui.notify(`${METER} ${next.pct}% (~${k(next.used)}/${k(smartZoneLimit())}) — ${next.note}`, next.level === "over" ? "warning" : "info");
+		// The reading itself lives in the footer (persistent, quiet); a toast
+		// fires only when the level crosses into boundary/over, so the advice
+		// interrupts once per crossing instead of after every turn.
+		ctx.ui.setStatus(METER, next.level === "ok" ? undefined : `${METER} ${next.pct}% (${next.level})`);
+		const crossed = previous?.level !== next.level;
+		if (crossed && (next.level === "boundary" || next.level === "over")) {
+			ctx.ui.notify(`${METER} ${next.pct}% (~${k(next.used)}/${k(smartZoneLimit())}) — ${next.note}`, next.level === "over" ? "warning" : "info");
+		}
 	});
 
 	pi.registerCommand("smartzone", {

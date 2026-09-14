@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 function run(command, args) {
@@ -32,9 +32,5 @@ if (testFiles.length === 0) {
 	process.exit(1);
 }
 
-const bunTests = testFiles.filter((file) => readFileSync(file, "utf8").includes("bun:test"));
-const nodeTests = testFiles.filter((file) => !bunTests.includes(file));
-
-if (nodeTests.length > 0) run("npx", ["tsx", "--test", ...nodeTests]);
-if (bunTests.length > 0) run("bun", ["test", ...bunTests.map((file) => `./${file}`)]);
+run("npx", ["tsx", "--test", ...testFiles]);
 

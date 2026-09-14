@@ -60,10 +60,11 @@ The new compaction entry ID is ${JSON.stringify(compactionEntryId)}.
 Before continuing:
 
 1. Recover context before guessing: use the recall tool first (it searches exactly this history, including compaction summaries), and inspect the session file directly with read/bash for anything it leaves out. Focus first on messages and tool calls immediately before compaction, searching earlier history only as needed. Remember that JSONL append order can include abandoned branches, so follow parentId links rather than blindly treating every entry as active.
-2. Reconstruct the original goal, user constraints, decisions made, files changed, commands and tests run, unresolved issues, and intended next action.
-3. Reconcile the recovered history with the compaction summary and current repository state. Treat the current worktree as authoritative for file state and the original session history as authoritative for user intent.
-4. Briefly state the context you recovered.
-5. Immediately perform the next unfinished step. Do not stop after the recap and do not ask the user to repeat prior context unless the session data is genuinely unavailable or ambiguous.`;
+2. If a memory_search tool is available, run it once with the task's keywords: durable project records written in earlier sessions may already answer what the summary flattened.
+3. Reconstruct the original goal, user constraints, decisions made, files changed, commands and tests run, unresolved issues, and intended next action.
+4. Reconcile the recovered history with the compaction summary and current repository state. Treat the current worktree as authoritative for file state and the original session history as authoritative for user intent.
+5. Briefly state the context you recovered.
+6. Immediately perform the next unfinished step. Do not stop after the recap and do not ask the user to repeat prior context unless the session data is genuinely unavailable or ambiguous.`;
 };
 
 /**

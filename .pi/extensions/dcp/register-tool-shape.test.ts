@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
-import { registerRecallTool } from "./recall.ts";
+import { describe, test } from "node:test";
+import { expect } from "../tests/expect.js";
+import { registerRecallTool } from "./recall.js";
 
 type RegisteredTool = {
   name?: string;

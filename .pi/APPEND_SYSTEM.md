@@ -37,13 +37,13 @@ With `pi-task` installed, the `task` tool runs the four roles defined in `.pi/ag
 | `ultra-scout` | Max-recall static bug hunt: one of 10 identically-prompted read-only scouts of `/skill:ultra-review` |
 | `ultra-verifier` | Post-review diligence: one disposition per finding, owner-clean fixes only, targeted validation |
 
-WIP cap: max 1 mutating task per checkout + 1 read-only reviewer; the fully-independent exception applies only to read-only tasks or separate isolated checkouts (one carve-out: parallel `researcher` tasks, each owning a single distinct report path, per wayfinder's parallel research tickets). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. The parent alone writes `$ROOT/.pi/MEMORY.md`; task agents return proposed updates. Task workspaces are not Git worktree isolation; do not edit files owned by a running background task.
+WIP cap: max 1 mutating task per checkout + 1 read-only reviewer; the fully-independent exception applies only to read-only tasks or separate isolated checkouts (one carve-out: parallel `researcher` tasks, each owning a single distinct report path, per wayfinder's parallel research tickets). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. The parent alone calls `memory_write`; task agents return proposed records. Task workspaces are not Git worktree isolation; do not edit files owned by a running background task.
 
 Controlled loops: run one cycle at a time (measure → select → change → verify → record) and never start the next unit while the current one fails, is unverified, or awaits review. Report only verified completion as `success`, else `no-op`/`blocked`/`stalled`/`exhausted`; in task envelopes map to the parser's four statuses (`no-op` → `success` with a no-change summary; `stalled`/`exhausted` → `blocked`/`partial` with the remaining gap). Pass each cycle's unit and gate explicitly.
 
 ## Foundational skills
 
-`memory` (read when `<repo-root>/.pi/MEMORY.md` exists; create the file when the first durable learning appears) loads at the start of non-trivial work; `verification-before-completion` loads only at completion as a mandatory gate; `tdd` drives behavior-changing implementation; `code-review` closes any non-trivial change. Stack companions (`typescript-coding-standards`, `api-and-interface-design`, `deprecation-and-migration`, `security-and-hardening`) load when the task touches their domain. Skills never override system, user, authorization, and read-only scope constraints; conflict → stop and ask.
+`memory` (a `memory_search` on the task's keywords) loads at the start of non-trivial work; `verification-before-completion` loads only at completion as a mandatory gate; `tdd` drives behavior-changing implementation; `code-review` closes any non-trivial change. Stack companions (`typescript-coding-standards`, `security-and-hardening`, `source-driven-development`) load when the task touches their domain. Skills never override system, user, authorization, and read-only scope constraints; conflict → stop and ask.
 
 ## Completion
 
@@ -51,15 +51,15 @@ Non-trivial = behavior-changing code, >1 file, >2 repair loops, or research need
 
 ## Context & Web
 
-Trust repo reality: disk → project memory → delegated exploration → docs/web. Use `recall` before guessing about compacted context; verify recalled claims on disk. Web: use the host's installed web-research tools — one search tool and one URL reader, whatever package provides them — rather than their names; prefer official docs, specific queries, and cite the primary source.
+Trust repo reality: disk → project memory (`memory_search`) → delegated exploration → docs/web. Use `recall` before guessing about compacted context; verify recalled claims on disk. Web: use the host's installed web-research tools — one search tool and one URL reader, whatever package provides them — rather than their names; prefer official docs, specific queries, and cite the primary source.
 
 At phase boundaries, decide in order: continue (if this phase is a primary source for the next) → start new → handoff (new harness/directory/colleague) → subagent → compact. Never compact mid-phase; see `ask-matt/PHASE-BOUNDARIES.md`.
 
 ## Memory & domain docs
 
-`.pi/MEMORY.md` stores distilled durable project knowledge (the `memory` skill owns the discipline). Project vocabulary belongs in `CONTEXT.md`; hard-to-reverse decisions in `docs/adr/`; work units in the issue tracker. Never duplicate across the three tiers.
+Durable project knowledge lives in `pi-memory-md` records (`memory_search` / `memory_read` / `memory_write`; the `memory` skill owns the discipline, ADR 0002). Project vocabulary belongs in `CONTEXT.md`; hard-to-reverse decisions in `docs/adr/`; work units in the issue tracker; research reports in repo files. Never duplicate across the tiers.
 
-**Saving is part of the work, not an afterthought.** When a turn surfaces a durable learning — a pattern, a gotcha, a debugging outcome, an environment fact, a decision with its reason — append one tagged bullet to `<repo-root>/.pi/MEMORY.md` before ending the turn (create the file when the project has none; the `memory` skill owns the format). If nothing durable surfaced, write nothing. Reading the file at the start of non-trivial work is how you find out the project already knows something you were about to rediscover. Backstops: the `memory-nudge` extension reminds at quit when a session appended nothing, and `/remember` re-runs the review on demand (ADR 0001).
+**Saving is part of the work, not an afterthought.** When a turn surfaces a durable learning — a pattern, a gotcha, a debugging outcome, an environment fact, a decision with its reason — write one record with `memory_write` before ending the turn (`state` for what stays true, `event` for a finding tied to a moment; structured fields, not a prose dump). If nothing durable surfaced, write nothing. Searching memory at the start of non-trivial work is how you find out the project already knows something you were about to rediscover. `/remember` re-runs the review on demand. If the memory tools are absent, say so once and continue; never create an ad-hoc memory file.
 
 ## Anti-Patterns
 

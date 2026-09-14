@@ -1,5 +1,7 @@
 # ADR 0001: Session-end memory capture — a shutdown-hook nudge plus an in-turn discipline
 
+**Status: superseded by [ADR 0002](0002-memory-moves-to-pi-memory-md.md) (2026-09-14).** The `memory-nudge` extension and `.pi/MEMORY.md` are gone; the in-turn discipline and `/remember` survive, retargeted at `pi-memory-md` records.
+
 ## Context
 
 An audit of the memory wiring found the gap precisely: the agent reliably knows how to *read* `.pi/MEMORY.md` (skill description in the system prompt, APPEND_SYSTEM foundational rule, task-role frontmatter) and, after our fix, knows *when to save during a turn* (APPEND_SYSTEM: durable learning → tagged bullet before the turn ends). What had no mechanism at all was the **session end**: nothing fired when a session quit, so a session that learned something durable and forgot to save left no trace until the work was needed again. GitHub issue #4 (dogfood round 1) asked for a decision, conditional on a fact: does pi expose a session-end event?

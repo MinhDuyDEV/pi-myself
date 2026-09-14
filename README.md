@@ -11,20 +11,21 @@ pi-myself is a **per-project package** — run this in each repository that shou
 ```bash
 pi install git:github.com/MinhDuyDEV/pi-myself -l
 pi install npm:@heyhuynhgiabuu/pi-task -l      # task tool + role catalog
+pi install git:github.com/sting8k/pi-memory-md # durable memory records (global, once per machine)
 pi install npm:@heyhuynhgiabuu/pi-search       # or any web-research package you already run,
                                                # e.g. pi-web-access — the harness is name-agnostic
 ```
 
-(`-l` = project-local. The web-research package and `pi-task` may stay global if you want them everywhere; `pi-myself` should be project-local.)
+(`-l` = project-local. `pi-task`, `pi-memory-md`, and the web-research package may stay global; `pi-myself` should be project-local.)
 
 Then inside the repository, once:
 
 ```text
-/setup-pi-myself                  # copies the packaged task roles (designer, researcher, ultra-*) into .pi/agents/
+/setup-pi-myself                  # provisions .pi/: task roles, APPEND_SYSTEM.md workflow rules, enableSkillCommands
 /skill:setup-matt-pocock-skills   # per-repo config for the process core (issue tracker, domain docs, triage labels)
 ```
 
-`pi-task` provides the `task` tool and its built-in roles; pi-myself's roles are provisioned by `/setup-pi-myself` (idempotent — re-run after upgrades to refresh). Any web-research package supplies the tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here. Tasks that declare skills resolve only in **trusted** projects — pi asks for project trust on the first interactive session in a new repo.
+pi loads task roles, `APPEND_SYSTEM.md`, and project settings only from a repository's own `.pi/`, never from an installed package, so `/setup-pi-myself` copies them in (idempotent — re-run after upgrades to refresh; a settings key the project already sets is never overwritten). `pi-task` provides the `task` tool; `pi-memory-md` provides the `memory_*` tools the `memory` skill uses; any web-research package supplies the tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here. Tasks that declare skills resolve only in **trusted** projects — pi asks for project trust on the first interactive session in a new repo.
 
 ## What the harness contributes
 
@@ -35,9 +36,10 @@ Then inside the repository, once:
 | Skill invocation | Model-invoked skills run through the `skill` tool; user-invoked ones run through pi's native `/skill:<name>` slash commands (`enableSkillCommands`) — no generated wrapper layer |
 | Task roles | `explore` / `scout` / `general` / `reviewer` overrides for `pi-task` plus harness-authored `designer` (design-it-twice parallel candidates), `researcher` (writes the cited research artifact), and `ultra-scout` / `ultra-verifier` (the `/skill:ultra-review` bug-hunt pipeline) — delegation contracts and a 1-writer + 1-reviewer WIP cap |
 | Session recall | `recall` searches persisted session JSONL (including compaction summaries) before agents guess about lost context |
-| Compaction continuity | Auto-resume after compaction; APPEND_SYSTEM phase-boundary rules mirror `PHASE-BOUNDARIES.md` |
-| Smart-zone meter | Measures context against ~150k after every turn; boundary-grade warnings carry the PHASE-BOUNDARIES.md decision order (`/smartzone`) |
-| Memory | `.pi/MEMORY.md` discipline kept strictly apart from `CONTEXT.md` (domain) and the tracker (work units) — see `PLAN.md` §3 |
+| Compaction continuity | Auto-resume after compaction (recall → memory_search → reconcile → continue); APPEND_SYSTEM phase-boundary rules mirror `PHASE-BOUNDARIES.md` |
+| Smart-zone meter | Measures context against ~150k after every turn; the reading sits in the footer past 60% and the PHASE-BOUNDARIES.md decision order toasts once at 85%/100% (`/smartzone`) |
+| Memory | The `memory` skill and `/remember` drive `pi-memory-md` records (`state` facts, `event` findings), kept strictly apart from `CONTEXT.md` (domain) and the tracker (work units) — see `PLAN.md` §3 and ADR 0002 |
+| Project provisioning | `/setup-pi-myself` copies what pi only loads from a repo's own `.pi/`: task roles, `APPEND_SYSTEM.md`, `enableSkillCommands` |
 
 ## The process core
 
@@ -78,7 +80,7 @@ This repository declares no root `lint` script. Do not report lint as passing un
 
 - Add a skill at `.pi/skills/<name>/SKILL.md`; the hygiene tests govern it.
 - Add a task role at `.pi/agents/<name>.md` (fields supported by the installed task package).
-- Add a prompt at `.pi/prompts/<name>.md` (a typed slash command like `/verify`; skills need no wrapper — pi exposes them natively as `/skill:<name>`).
+- Add a prompt at `.pi/prompts/<name>.md` (a typed slash command like `/verify`; skills need no wrapper — pi exposes them natively as `/skill:<name>`). A prompt earns its place only when it does something no skill does (recording evidence in the tracker, provisioning); one that re-narrates a skill's steps is a second process and gets dropped.
 - Add a top-level extension file or one-level extension directory with `index.ts`.
 - Process changes belong upstream in mattpocock/skills.
 
