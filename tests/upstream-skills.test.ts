@@ -4,9 +4,15 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { test } from "node:test";
 
+// Parity gates for the vendored tree. Two registered buckets: "promoted"
+// (the plugin manifest) and "beta" (every skill under skills/in-progress/,
+// which upstream keeps out of the plugin on purpose). Both are registered
+// with pi, hashed into the lock, and held to pi's frontmatter rules.
+
 const ROOT = resolve(import.meta.dirname, "..");
 const VENDOR = join(ROOT, "vendor", "mattpocock-skills");
 const MANIFEST = join(VENDOR, ".claude-plugin", "plugin.json");
+const BETA_DIR = join(VENDOR, "skills", "in-progress");
 const LOCK = join(ROOT, "skills-lock.json");
 
 function repoRel(path: string): string {
@@ -37,25 +43,48 @@ function readSkill(path: string): { name: string; description: string; userInvok
 const promotedDirs: string[] = (JSON.parse(readFileSync(MANIFEST, "utf8")) as { skills: string[] }).skills.map((entry) =>
 	entry.replace(/^\.\//, ""),
 );
+const betaDirs: string[] = readdirSync(BETA_DIR)
+	.filter((name) => existsSync(join(BETA_DIR, name, "SKILL.md")))
+	.sort()
+	.map((name) => `skills/in-progress/${name}`);
+const registered: Array<{ dir: string; bucket: "promoted" | "beta" }> = [
+	...promotedDirs.map((dir) => ({ dir, bucket: "promoted" as const })),
+	...betaDirs.map((dir) => ({ dir, bucket: "beta" as const })),
+];
 
-test("the promoted manifest matches the vendored tree with valid pi frontmatter", () => {
+test("promoted manifest and in-progress tree are both registered with valid pi frontmatter", () => {
 	assert.ok(promotedDirs.length >= 20, `promoted manifest looks truncated: ${promotedDirs.length}`);
+	assert.ok(betaDirs.length >= 1, "no beta skills discovered under in-progress/");
 	const seen = new Set<string>();
-	for (const dir of promotedDirs) {
+	for (const { dir } of registered) {
 		const skillMd = join(VENDOR, dir, "SKILL.md");
-		assert.equal(existsSync(skillMd), true, `promoted skill missing SKILL.md: ${dir}`);
+		assert.equal(existsSync(skillMd), true, `registered skill missing SKILL.md: ${dir}`);
 		const skill = readSkill(skillMd);
 		assert.equal(skill.name, basename(dir), `frontmatter name must equal the directory name: ${dir}`);
 		assert.match(skill.name, /^[a-z0-9][a-z0-9-]*$/, `name violates pi's skill-name rules: ${skill.name}`);
 		assert.ok(skill.description.length > 0);
 		assert.ok(skill.description.length <= 1024, `description exceeds pi's 1024-char limit: ${skill.name}`);
-		if (seen.has(skill.name)) assert.fail(`duplicate promoted name: ${skill.name}`);
+		if (seen.has(skill.name)) assert.fail(`duplicate registered name: ${skill.name}`);
 		seen.add(skill.name);
 	}
 });
 
+test("package.json, .pi/settings.json, and the skill tool register the same vendored buckets", () => {
+	const pkg = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")) as { pi: { skills: string[] } };
+	const settings = JSON.parse(readFileSync(join(ROOT, ".pi", "settings.json"), "utf8")) as { skills: string[] };
+	const skillTool = readFileSync(join(ROOT, ".pi", "extensions", "skill-tool", "index.ts"), "utf8");
+	for (const bucket of ["engineering", "productivity", "in-progress"]) {
+		assert.ok(pkg.pi.skills.includes(`vendor/mattpocock-skills/skills/${bucket}`), `package.json pi.skills lacks ${bucket}`);
+		assert.ok(settings.skills.includes(`../vendor/mattpocock-skills/skills/${bucket}`), `.pi/settings.json lacks ${bucket}`);
+		assert.match(skillTool, new RegExp(`"${bucket}"`), `skill-tool VENDORED_BUCKETS lacks ${bucket}`);
+	}
+	for (const unregistered of ["misc", "deprecated"]) {
+		assert.ok(!pkg.pi.skills.some((p) => p.endsWith(`/${unregistered}`)), `${unregistered} must stay unregistered`);
+	}
+});
+
 test("user-invoked skills all declare disable-model-invocation: true", () => {
-	for (const dir of promotedDirs) {
+	for (const { dir } of registered) {
 		const skill = readSkill(join(VENDOR, dir, "SKILL.md"));
 		if (skill.userInvoked) {
 			assert.match(skill.raw, /disable-model-invocation:\s*true/, `${skill.name} classified user-invoked without the flag`);
@@ -64,16 +93,16 @@ test("user-invoked skills all declare disable-model-invocation: true", () => {
 });
 
 test("cross-skill 'Call the Skill tool' targets exist and are model-invoked", () => {
-	const skills = promotedDirs.map((dir) => readSkill(join(VENDOR, dir, "SKILL.md")));
+	const skills = registered.map(({ dir }) => readSkill(join(VENDOR, dir, "SKILL.md")));
 	const byName = new Map(skills.map((s) => [s.name, s]));
 	const userNames = new Set(skills.filter((s) => s.userInvoked).map((s) => s.name));
 	const calls = new Set<string>();
 
-	for (const dir of promotedDirs) {
+	for (const { dir } of registered) {
 		for (const file of markdownUnder(join(VENDOR, dir))) {
 			for (const line of file.split("\n")) {
 				if (!line.includes("Call the Skill tool")) continue;
-				for (const m of line.matchAll(/"([a-z0-9-]+)"/g)) calls.add(m[1]);
+				for (const m of line.matchAll(/[`"]([a-z0-9-]+)[`"]/g)) calls.add(m[1]);
 			}
 		}
 	}
@@ -85,21 +114,46 @@ test("cross-skill 'Call the Skill tool' targets exist and are model-invoked", ()
 	}
 });
 
-test("skills-lock.json records the promoted set with fresh hashes", () => {
+test("skills-lock.json records both buckets with fresh hashes", () => {
 	const lock = JSON.parse(readFileSync(LOCK, "utf8")) as {
-		skills: Record<string, { skillFile: string; computedHash: string; modelInvoked: boolean }>;
+		version: number;
+		skillCount: number;
+		skills: Record<string, { skillFile: string; computedHash: string; modelInvoked: boolean; bucket: string }>;
 	};
-	assert.equal(Object.keys(lock.skills).length, promotedDirs.length, "lock/manifest count mismatch");
-	for (const dir of promotedDirs) {
+	assert.equal(lock.version, 2, "lock version 2 carries the bucket field");
+	assert.equal(Object.keys(lock.skills).length, registered.length, "lock/registered count mismatch");
+	assert.equal(lock.skillCount, registered.length);
+	for (const { dir, bucket } of registered) {
 		const skillMd = join(VENDOR, dir, "SKILL.md");
 		const skill = readSkill(skillMd);
 		const locked = lock.skills[skill.name];
-		assert.ok(locked, `lock missing promoted skill: ${skill.name}`);
+		assert.ok(locked, `lock missing registered skill: ${skill.name}`);
 		const hash = createHash("sha256").update(readFileSync(skillMd, "utf8")).digest("hex");
 		assert.equal(locked.computedHash, hash, `stale hash for ${skill.name} — run npm run sync:skills`);
 		assert.equal(locked.skillFile, repoRel(skillMd), `lock path drift for ${skill.name}`);
 		assert.equal(locked.modelInvoked, !skill.userInvoked, `lock invocation class drift for ${skill.name}`);
+		assert.equal(locked.bucket, bucket, `lock bucket drift for ${skill.name}`);
 	}
+});
+
+test("assets referenced by registered skills resolve inside the skill directory", () => {
+	const offenders: string[] = [];
+	for (const { dir } of registered) {
+		const skillDir = join(VENDOR, dir);
+		const raw = readFileSync(join(skillDir, "SKILL.md"), "utf8");
+		for (const m of raw.matchAll(/\]\(([^)\s]+)\)/g)) {
+			const target = m[1];
+			if (/^(https?:|#|mailto:)/.test(target)) continue;
+			// Assets ship beside SKILL.md as single-segment paths (`PHASE-BOUNDARIES.md`,
+			// `./dependency-cruiser.config.cjs`). Prose placeholders (`[title](link)`) and
+			// paths into the *target* repo (`./src/packages/README.md`) are not assets.
+			const bare = target.split("#")[0].replace(/^\.\//, "");
+			if (!/\./.test(bare) || bare.includes("/")) continue;
+			const resolved = resolve(skillDir, bare);
+			if (!existsSync(resolved)) offenders.push(`${dir}/SKILL.md → ${target}`);
+		}
+	}
+	assert.deepEqual(offenders, []);
 });
 
 function markdownUnder(root: string): string[] {

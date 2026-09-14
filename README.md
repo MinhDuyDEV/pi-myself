@@ -2,7 +2,7 @@
 
 A pi coding-agent harness built around [mattpocock/skills](https://github.com/mattpocock/skills) as the process core: runtime extensions, task-agent roles, slash-command adapters, and hygiene tests — assembled from [pikit](https://github.com/heyhuynhgiabuu/pikit) and rebuilt where Matt's skills need pi-specific support.
 
-The philosophy: **one process, one vocabulary**. Matt's 25 promoted skills are vendored verbatim and are the only process narrative; this package contributes the runtime that makes them first-class in pi — a real `skill` tool, deterministic prompts, delegation roles, and session recall.
+The philosophy: **one process, one vocabulary**. Matt's 25 promoted skills plus the 8 beta skills from `skills/in-progress/` are vendored verbatim and are the only process narrative; this package contributes the runtime that makes them first-class in pi — a real `skill` tool, deterministic prompts, delegation roles (including the `implementer`/`merger` pair `implement-spec` needs), and session recall.
 
 ## Install
 
@@ -34,7 +34,7 @@ pi loads task roles, `APPEND_SYSTEM.md`, and project settings only from a reposi
 | `skill` tool | Extension registering a real skill-invocation tool whose enum is exactly the model-invoked skill set — `Call the Skill tool with "grilling"` works verbatim, and user-invoked skills stay human-only by construction |
 | `tracker` tool | Deterministic ops for everything `to-spec`/`to-tickets`/`triage`/`wayfinder` do to the tracker — local markdown (`.scratch/`) **and** GitHub Issues via `gh-*` ops on the `gh` CLI: spec + ticket + map creation in the skills' templates, native sub-issue and dependency edges (mirrored by `Part of` / `Blocked by` lines), frontier, claim, resolve with the gist indexed into the map, out-of-scope, triage attention queue, role-family-safe label swaps mapped through `triage-labels.md` |
 | Skill invocation | Model-invoked skills run through the `skill` tool; user-invoked ones run through pi's native `/skill:<name>` slash commands (`enableSkillCommands`) — no generated wrapper layer |
-| Task roles | `explore` / `scout` / `general` / `reviewer` overrides for `pi-task` plus harness-authored `designer` (design-it-twice parallel candidates), `researcher` (writes the cited research artifact), and `ultra-scout` / `ultra-verifier` (the `/skill:ultra-review` bug-hunt pipeline) — delegation contracts and a 1-writer + 1-reviewer WIP cap |
+| Task roles | `explore` / `scout` / `general` / `reviewer` overrides for `pi-task` plus harness-authored `designer` (design-it-twice parallel candidates), `researcher` (writes the cited research artifact), `implementer` / `merger` (`/skill:implement-spec`'s worktree-per-ticket workers and landing step), and `ultra-scout` / `ultra-verifier` (the `/skill:ultra-review` bug-hunt pipeline) — delegation contracts and a 1-writer + 1-reviewer WIP cap |
 | Session recall | `recall` searches persisted session JSONL (including compaction summaries) before agents guess about lost context |
 | Compaction continuity | Auto-resume after compaction (recall → memory_search → reconcile → continue); APPEND_SYSTEM phase-boundary rules mirror `PHASE-BOUNDARIES.md` |
 | Smart-zone meter | Measures context against ~150k after every turn; the reading sits in the footer past 60% and the PHASE-BOUNDARIES.md decision order toasts once at 85%/100% (`/smartzone`) |
@@ -52,7 +52,7 @@ skill:triage ← incoming issues   skill:implement drives  skill:triage for raw 
                                  skill:code-review       for upkeep)
 ```
 
-Run them as `/skill:<name>` (or ask in conversation); `/skill:ask-matt` routes when the fit is unclear — the map above is its summary.
+Run them as `/skill:<name>` (or ask in conversation); `/skill:ask-matt` routes when the fit is unclear — the map above is its summary. The beta bucket (`implement-spec`, `loop-me`, `retro`, `claude-handoff`, `setup-ts-deep-modules`, `writing-beats`/`-fragments`/`-shape`) is registered the same way; APPEND_SYSTEM maps the host mechanisms they name (subagents, session logs, `claude --bg`) onto pi's task roles, `recall`, and background tasks.
 
 ## Upgrading the vendored core
 

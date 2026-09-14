@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { test } from "node:test";
@@ -94,14 +94,20 @@ test("vendored registry: full promoted set plus local skills", () => {
 	const registry = buildRegistry([
 		join(repoRoot, "vendor", "mattpocock-skills", "skills", "engineering"),
 		join(repoRoot, "vendor", "mattpocock-skills", "skills", "productivity"),
+		join(repoRoot, "vendor", "mattpocock-skills", "skills", "in-progress"),
 		join(repoRoot, ".pi", "skills"),
 	]);
 
 	const names = new Set(registry.skills.map((s) => s.name));
 	const localCount = readdirSync(join(repoRoot, ".pi", "skills")).filter((d) => existsSync(join(repoRoot, ".pi", "skills", d, "SKILL.md"))).length;
-	assert.equal(registry.skills.length, 25 + localCount, `expected ${25 + localCount} skills (25 vendored + ${localCount} local), got ${registry.skills.length}`);
+	const lock = JSON.parse(readFileSync(join(repoRoot, "skills-lock.json"), "utf8")) as { skillCount: number };
+	assert.equal(registry.skills.length, lock.skillCount + localCount, `expected ${lock.skillCount + localCount} skills (${lock.skillCount} vendored + ${localCount} local), got ${registry.skills.length}`);
 	for (const promoted of ["wayfinder", "grilling", "tdd", "implement", "code-review", "setup-matt-pocock-skills", "handoff"]) {
 		assert.ok(names.has(promoted), `missing promoted skill ${promoted}`);
+	}
+	for (const beta of ["implement-spec", "loop-me", "retro", "claude-handoff"]) {
+		assert.ok(names.has(beta), `missing beta skill ${beta}`);
+		assert.ok(registry.userInvoked.some((s) => s.name === beta), `beta skill ${beta} must be user-invoked (refused by the tool, reachable as /skill:${beta})`);
 	}
 	for (const local of ["memory", "verification-before-completion", "source-driven-development"]) {
 		assert.ok(names.has(local), `missing local skill ${local}`);

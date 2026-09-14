@@ -5,8 +5,9 @@
  * Sync mode (default):
  *   1. Shallow-clone the upstream default branch into a temp dir.
  *   2. Replace the vendored tree (`vendor/mattpocock-skills/`) with it, minus .git.
- *   3. Hash every promoted SKILL.md (list sourced from .claude-plugin/plugin.json)
- *      into skills-lock.json.
+ *   3. Hash every registered SKILL.md into skills-lock.json: the promoted set
+ *      (listed in .claude-plugin/plugin.json) plus the beta set (every skill
+ *      under skills/in-progress/).
  *
  * Check mode (--check):
  *   Recompute everything without writing (no network); exit 1 with a drift
@@ -24,7 +25,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -68,46 +69,60 @@ function rel(from, to) {
 	return relative(from, to).split("\\").join("/");
 }
 
-// ── promoted set (source of truth: .claude-plugin/plugin.json) ──────────────
+// ── registered set ───────────────────────────────────────────────────────────
+// Two buckets: "promoted" (source of truth: .claude-plugin/plugin.json — the
+// engineering + productivity trees) and "beta" (every SKILL.md under
+// skills/in-progress/, which upstream keeps out of the plugin on purpose).
+// misc/ and deprecated/ stay unregistered.
 
-function readPromoted() {
+const BETA_DIR = join(CLONE, "skills", "in-progress");
+
+function readRegistered() {
 	if (!existsSync(MANIFEST)) die(`vendored clone missing ${rel(ROOT, MANIFEST)} — is skills/ a mattpocock/skills checkout?`);
 	const manifest = JSON.parse(readFileSync(MANIFEST, "utf8"));
 	if (!Array.isArray(manifest.skills) || manifest.skills.length === 0) {
 		die(`${rel(ROOT, MANIFEST)} declares no skills`);
 	}
-	const promoted = [];
+	const registered = [];
 	const seen = new Set();
-	for (const entry of manifest.skills) {
+	const add = (entry, bucket) => {
 		const skillMd = resolve(join(CLONE, entry.replace(/^\.\//, "")), "SKILL.md");
-		if (!existsSync(skillMd)) die(`promoted skill missing SKILL.md: ${entry}`);
+		if (!existsSync(skillMd)) die(`${bucket} skill missing SKILL.md: ${entry}`);
 		const skill = readSkill(skillMd);
-		if (!skill.name) die(`promoted skill has no name in frontmatter: ${entry}`);
-		if (!skill.description) die(`promoted skill has no description: ${entry}`);
-		if (seen.has(skill.name)) die(`duplicate promoted skill name: ${skill.name}`);
+		if (!skill.name) die(`${bucket} skill has no name in frontmatter: ${entry}`);
+		if (!skill.description) die(`${bucket} skill has no description: ${entry}`);
+		if (seen.has(skill.name)) die(`duplicate skill name across buckets: ${skill.name}`);
 		seen.add(skill.name);
-		promoted.push({ entry, skillMd, skill });
+		registered.push({ entry, skillMd, skill, bucket });
+	};
+	for (const entry of manifest.skills) add(entry, "promoted");
+	if (existsSync(BETA_DIR)) {
+		for (const name of readdirSync(BETA_DIR).sort()) {
+			if (existsSync(join(BETA_DIR, name, "SKILL.md"))) add(`./skills/in-progress/${name}`, "beta");
+		}
 	}
-	return promoted;
+	return registered;
 }
 
 // ── lock building ────────────────────────────────────────────────────────────
 
 function buildLock(head) {
-	const promoted = readPromoted();
+	const registered = readRegistered();
 	const skills = {};
-	for (const { skillMd, skill } of promoted) {
+	for (const { skillMd, skill, bucket } of registered) {
 		skills[skill.name] = {
 			skillFile: rel(ROOT, skillMd),
 			computedHash: createHash("sha256").update(readFileSync(skillMd, "utf8")).digest("hex"),
 			modelInvoked: !skill.userInvoked,
+			bucket,
 		};
 	}
 	return {
-		version: 1,
+		version: 2,
 		upstream: { repo: UPSTREAM_REPO, ref: UPSTREAM_REF, head },
 		promotedManifest: rel(ROOT, MANIFEST),
-		skillCount: promoted.length,
+		betaDir: rel(ROOT, BETA_DIR),
+		skillCount: registered.length,
 		skills,
 	};
 }
@@ -154,17 +169,19 @@ if (CHECK) {
 	const computed = buildLock(lock.upstream?.head ?? "unknown");
 	for (const [name, meta] of Object.entries(lock.skills)) {
 		const computedMeta = computed.skills[name];
-		if (!computedMeta) drift.push(`${name}: in lock but not in the promoted manifest`);
+		if (!computedMeta) drift.push(`${name}: in lock but neither promoted in the manifest nor present under in-progress/`);
 		else if (computedMeta.computedHash !== meta.computedHash)
 			drift.push(`${name}: SKILL.md hash drifted (locked ${meta.computedHash.slice(0, 12)}, tree ${computedMeta.computedHash.slice(0, 12)})`);
+		else if (computedMeta.bucket !== meta.bucket) drift.push(`${name}: bucket moved (${meta.bucket} → ${computedMeta.bucket})`);
 	}
 	for (const name of Object.keys(computed.skills).filter((s) => !lock.skills[s])) {
-		drift.push(`${name}: promoted in the vendored manifest but missing from the lock`);
+		drift.push(`${name}: ${computed.skills[name].bucket} in the vendored tree but missing from the lock`);
 	}
 	if (lock.skillCount !== Object.keys(lock.skills).length) drift.push("skillCount field inconsistent with the skills map");
 
 	if (drift.length === 0) {
-		console.log(`sync-skills: clean. ${lock.skillCount} promoted skills @ ${lock.upstream.head.slice(0, 12)}.`);
+		const beta = Object.values(lock.skills).filter((s) => s.bucket === "beta").length;
+		console.log(`sync-skills: clean. ${lock.skillCount} registered skills (${lock.skillCount - beta} promoted + ${beta} beta) @ ${lock.upstream.head.slice(0, 12)}.`);
 	} else {
 		for (const line of drift) console.error(`  ${line}`);
 		console.error(`\nsync-skills: ${drift.length} drift item(s). Run \`npm run sync:skills\` to reconcile.`);
@@ -176,5 +193,5 @@ if (CHECK) {
 	const lockValue = buildLock(head);
 	writeFileSync(LOCK, `${JSON.stringify(lockValue, null, "\t")}\n`);
 
-	console.log(`sync-skills: vendored ${lockValue.skillCount} promoted skills @ ${head.slice(0, 12)}.`);
+	console.log(`sync-skills: vendored ${lockValue.skillCount} registered skills @ ${head.slice(0, 12)}.`);
 }

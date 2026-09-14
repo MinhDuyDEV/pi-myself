@@ -37,6 +37,12 @@ interface SkillDetails {
 	loaded: boolean;
 }
 
+/** Vendored buckets the harness registers: the promoted set (engineering +
+ * productivity, listed in plugin.json) plus in-progress (beta, user-invoked).
+ * `misc/` and `deprecated/` stay unregistered. Keep in step with package.json
+ * `pi.skills`, `.pi/settings.json`, and scripts/sync-skills.mjs. */
+export const VENDORED_BUCKETS = ["engineering", "productivity", "in-progress"] as const;
+
 function isVendorRoot(dir: string): boolean {
 	return existsSync(join(dir, "vendor", "mattpocock-skills", ".claude-plugin", "plugin.json"));
 }
@@ -73,8 +79,7 @@ export function defaultSkillRoots(cwd: string, home: string = homedir()): string
 	if (pkgRoot) {
 		candidates.push(
 			join(pkgRoot, ".pi", "skills"),
-			join(pkgRoot, "vendor", "mattpocock-skills", "skills", "engineering"),
-			join(pkgRoot, "vendor", "mattpocock-skills", "skills", "productivity"),
+			...VENDORED_BUCKETS.map((bucket) => join(pkgRoot, "vendor", "mattpocock-skills", "skills", bucket)),
 		);
 	}
 	const seen = new Set<string>();

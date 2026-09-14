@@ -9,7 +9,14 @@ A pi coding-agent harness built around Matt Pocock's skills as the process core.
 _Avoid_: "skills/" alone (ambiguous with `.pi/skills/`), "fork" (we never fork the text)
 
 **Promoted skill**:
-One of the 25 skills listed in the vendored `.claude-plugin/plugin.json` — the set pi-myself registers with pi (its `skills/engineering` + `skills/productivity` trees). `misc/`, `in-progress/`, `deprecated` buckets exist upstream and are deliberately unregistered.
+One of the 25 skills listed in the vendored `.claude-plugin/plugin.json` (the `skills/engineering` + `skills/productivity` trees).
+
+**Beta skill**:
+A skill under the vendored `skills/in-progress/` tree. Upstream keeps them out of the plugin and they may change or vanish without warning; pi-myself registers them anyway (all user-invoked, `/skill:<name>`), locks them under `bucket: beta`, and supplies the roles and tools they name. `misc/` and `deprecated/` stay unregistered.
+_Avoid_: "experimental skill", "unstable"
+
+**Registered set**:
+Promoted + beta: what `package.json`, `.pi/settings.json`, the `skill` tool, and `skills-lock.json` all agree on.
 
 **Harness layer**:
 Everything pi-myself adds around the vendored tree: `.pi/` (extensions, skills, agents, prompts, settings, APPEND_SYSTEM.md) plus `scripts/` and `tests/`. The harness adapts pi to Matt's skills; it never introduces a second process.
@@ -28,7 +35,7 @@ One identity-addressed Markdown file the `pi-memory-md` extension keeps under `~
 _Avoid_: "MEMORY.md" (retired, ADR 0002), "note"
 
 **Lock**:
-`skills-lock.json` — the vendored tree's provenance record: upstream head + sha256 per promoted SKILL.md. Drift between the lock and the tree fails `npm run sync:check`.
+`skills-lock.json` — the vendored tree's provenance record: upstream head + sha256 and bucket per registered SKILL.md. Drift between the lock and the tree fails `npm run sync:check`.
 
 **Issue**:
 A single tracked unit of work in the **issue tracker** (GitHub Issues here): a bug, task, spec, or slice produced by `to-tickets`.

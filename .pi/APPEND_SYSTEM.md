@@ -11,6 +11,7 @@ Runtime playbook: which process owns the work, when to delegate, how to complete
 
 - Model-invoked skills are invoked through the `skill` tool (its enum lists exactly the model-invoked set).
 - User-invoked skills (frontmatter `disable-model-invocation: true`) are reachable **only by the human** via their slash command, pi's native `/skill:<name>`. Never invoke one, never re-implement its steps; when a flow requires one, tell the human to run it (for example `/skill:setup-matt-pocock-skills`).
+- The vendored `in-progress` bucket (beta, all user-invoked) is registered too. Three of them name host mechanisms that pi maps as follows: `implement-spec`'s implementer / exploration / merger subagents are the `implementer` / `explore` / `merger` task roles, its frontier is `tracker gh-frontier` with `parent` = the spec issue (or `frontier` locally), and its worktree-per-implementer is the WIP cap's isolated-checkout exception; `retro`'s "session logs on this machine" are the `recall` tool (`scope:'project'`, then `'all'`); `claude-handoff`'s `claude --bg` has no pi equivalent — run the same handoff summary as a background `general` task instead and tell the user its task id.
 - Per-repo skill configuration lives in `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and (when `triage` matters) `docs/agents/triage-labels.md`. If a skill needs them and they are missing, direct the user to `/skill:setup-matt-pocock-skills` instead of guessing.
 - Never edit anything under `vendor/mattpocock-skills/`; it is a vendored upstream tree. Improvements belong upstream or in the harness layer.
 
@@ -24,7 +25,7 @@ Direct tools for questions, lookups, one-file tasks, and 2-3 file local fixes. `
 
 ## Task roles
 
-With `pi-task` installed, the `task` tool runs the four roles defined in `.pi/agents/`:
+With `pi-task` installed, the `task` tool runs the roles defined in `.pi/agents/`:
 
 | Agent | Use for |
 | --- | --- |
@@ -34,10 +35,12 @@ With `pi-task` installed, the `task` tool runs the four roles defined in `.pi/ag
 | `reviewer` | Independent read-only correctness review; required before any merge-ready claim |
 | `designer` | One independent interface/architecture design candidate under a stated constraint; several in parallel is the design-it-twice pattern (codebase-design) |
 | `researcher` | Background agent that resolves a `research`/wayfinder research ticket and writes the cited report file the parent commits |
+| `implementer` | One ticket of a spec in its own worktree + branch, committed and handed back (`implement-spec`'s task-graph worker; several run in parallel on the frontier) |
+| `merger` | Lands one implementer branch onto the PR branch: merge, conflicts via `resolving-merge-conflicts`, gates rerun (`implement-spec`) |
 | `ultra-scout` | Max-recall static bug hunt: one of 10 identically-prompted read-only scouts of `/skill:ultra-review` |
 | `ultra-verifier` | Post-review diligence: one disposition per finding, owner-clean fixes only, targeted validation |
 
-WIP cap: max 1 mutating task per checkout + 1 read-only reviewer; the fully-independent exception applies only to read-only tasks or separate isolated checkouts (one carve-out: parallel `researcher` tasks, each owning a single distinct report path, per wayfinder's parallel research tickets). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. The parent alone calls `memory_write`; task agents return proposed records. Task workspaces are not Git worktree isolation; do not edit files owned by a running background task.
+WIP cap: max 1 mutating task per checkout + 1 read-only reviewer; the fully-independent exception applies only to read-only tasks or separate isolated checkouts — `implementer` tasks qualify because each creates its own git worktree (one carve-out on shared checkouts: parallel `researcher` tasks, each owning a single distinct report path, per wayfinder's parallel research tickets). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. The parent alone calls `memory_write`; task agents return proposed records. Task workspaces are not Git worktree isolation; do not edit files owned by a running background task.
 
 Controlled loops: run one cycle at a time (measure → select → change → verify → record) and never start the next unit while the current one fails, is unverified, or awaits review. Report only verified completion as `success`, else `no-op`/`blocked`/`stalled`/`exhausted`; in task envelopes map to the parser's four statuses (`no-op` → `success` with a no-change summary; `stalled`/`exhausted` → `blocked`/`partial` with the remaining gap). Pass each cycle's unit and gate explicitly.
 
