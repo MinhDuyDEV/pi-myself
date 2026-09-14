@@ -1,78 +1,43 @@
 # Agent roster
 
-Specialist agents for the `task` tool. Each file is the agent's **role prompt**, appended to the child's normal system prompt via `--append-system-prompt`. Task children still load the `AGENTS.md` context chain and `APPEND_SYSTEM.md` for their cwd like any pi session, so do not re-paste repo rules in the task `prompt`; pass only task-specific rules and scope.
+Seven task roles for the `task` tool. Each file is the role's **prompt** — pi-task appends its body to the child's system prompt, so a body says only what the child needs (purpose, input, rules, output). Routing lives in the `description` field (the parent's catalog) and in `APPEND_SYSTEM.md`; the shared rules every child follows (scope, evidence, `blocked`, memory, final message) live in APPEND_SYSTEM's **Task child contract**, which every child loads with the rest of the project context.
 
-The **session agent** is always the parent. Task agents match **OpenCode-style** builtins where applicable — `explore`, `scout`, `general`, `reviewer` (these also exist as pi-task's package defaults when this package is not installed) — plus harness-authored specialists: `designer`, `researcher`, the `implement-spec` pair `implementer` / `merger`, and the ultra-review pipeline pair `ultra-scout` / `ultra-verifier` (serving the local `/skill:ultra-review` + `/skill:ultra-review-receive` skills).
+## Roster and tiers
 
-The parent routes from `APPEND_SYSTEM.md`; task agents inherit the `AGENTS.md` context files for their cwd, so the task prompt should add assignment-specific rules (scope, authority, verification) rather than repeat repo rules.
+Two model tiers, so picking a model is mechanical: **read** roles map or search and never change code; **reason** roles change, judge, or design. Change a tier's model by editing the `model:` line of the roles in that tier — pi-task has no shared default.
 
-## Agent file template
+| Role | Tier | Writes? | Serves (Matt's skills) |
+| --- | --- | --- | --- |
+| `explore` | read (`thinking: low`) | no | grilling's fact-finding, to-spec exploration, `/init` discovery |
+| `scout` | read (`thinking: high`) | one report file when the prompt names a path | `research` skill, wayfinder `research` tickets, any docs/web question |
+| `general` | reason | yes | `implement` step execution; `implement-spec`'s implementer (cwd = a worktree the parent made), merger (land a branch), and notes-only exploration |
+| `reviewer` | reason | no | the independent review APPEND_SYSTEM requires before merge-ready; either axis of `code-review` when it delegates |
+| `designer` | reason | no | `codebase-design`'s DESIGN-IT-TWICE (several in parallel, one candidate each) |
+| `ultra-scout` | reason | no | `/skill:ultra-review` (10 identical scouts) — `proactive: false`, launched only by that skill |
+| `ultra-verifier` | reason | yes | `/skill:ultra-review-receive` — `proactive: false`, launched only by that skill |
 
-```yaml
----
-description: Use when the parent needs this role; not for a cheaper direct tool.
-# proactive: true
-# hidden: true
-# readonly: true
-tools: read, grep, find, bash
-disallowed_tools: edit, write, apply_patch
----
-```
-
-pi-task parses frontmatter line-by-line rather than as full YAML. Keep descriptions on one line and tool lists comma-separated; folded blocks and YAML mappings are not supported.
-
-### What pi-task implements
-
-| Field | Enforced? |
-| ----- | --------- |
-| `description` | Yes — task tool catalog |
-| `tools` / `disallowed_tools` | Yes |
-| `hidden` / `proactive` / `readonly` | Yes |
-| `model`, `thinking` | Yes — passed to child `pi` |
-| `skills` | Yes — resolved against Pi's skill registry; an unknown name fails the task |
-| `fast` | Yes — Fast Mode default for the child |
-
-## Task agents (`task` tool)
-
-| Agent | Use for | Do not use when |
-|-------|---------|-----------------|
-| `scout` | External research, web/docs, citations | In-repo mapping (`explore`) |
-| `explore` | Read-only code exploration, path:line | Single known file (`read`) |
-| `general` | Multi-step tasks, implementation, parallel tracks | Trivial 1–2 file parent work |
-| `reviewer` | Post-change audit, path:line evidence | Before code exists |
-| `designer` | One design candidate under a stated constraint (design-it-twice parallel pattern) | Implementation or audit |
-| `researcher` | Resolve a research assignment and write one cited report file | Answer-only questions (`scout`) |
-| `implementer` | One spec ticket in its own worktree + branch (`/skill:implement-spec` worker) | Edits in the parent's checkout; merging |
-| `merger` | Land one implementer branch onto the PR branch, resolve conflicts, rerun gates | Implementing or reviewing |
-| `ultra-scout` | Max-recall static bug-hunt candidate (one of 10, identically prompted) | Anything mutating; consolidation |
-| `ultra-verifier` | Disposition + owner-clean fix pass over an ultra-review report | Launching scout batches |
+Read-tier roles are `readonly: true` except `scout`, whose only write is the one report path a prompt authorises.
 
 ## Pick by task
 
-| Task shape | Agent |
-|------------|-------|
+| Task shape | Role |
+| --- | --- |
 | How does X work in this repo? | `explore` |
-| Best practice / docs for Y? | `scout` |
-| Implement or multi-step delegated work | `general` |
-| Review diff / changes | `reviewer` |
-| Design candidate for an interface (several in parallel) | `designer` |
-| Research ticket that must land as a cited file | `researcher` |
-| One ticket of a spec, in parallel with others (implement-spec) | `implementer` |
-| Land a finished implementer branch (implement-spec) | `merger` |
-| One bug-hunt scout in a /skill:ultra-review round | `ultra-scout` |
-| Verify + remediate an ultra-review report | `ultra-verifier` |
-| Product from short prompt | Workflow-style orchestration with `task` |
+| Docs, API behaviour, external facts; a research ticket that must land as a file | `scout` |
+| Implement, fix, or research that needs edits; one spec ticket in a worktree; land a branch | `general` |
+| Review a diff or check it against a spec | `reviewer` |
+| One interface/architecture candidate (run several) | `designer` |
+
+## Frontmatter
+
+pi-task parses frontmatter line by line: one-line `description`, comma-separated `tools` / `skills`. Honoured fields: `description`, `model`, `thinking`, `readonly`, `proactive`, `hidden`, `tools`, `disallowed_tools`, `skills`, `fast`. `skills:` names resolve against pi's registry and an unknown name fails the launch. `readonly: true` denies write/edit/apply_patch but not `bash`. Recursive `task` delegation is always blocked in children.
+
+## Worktrees
+
+pi-task never creates, merges, or removes worktrees. For parallel mutating work the **parent** runs `git worktree add`, passes the worktree as `cwd`, and later merges (a `general` "land a branch" task) and removes it. Task workspaces are not filesystem isolation by themselves.
 
 ## Prompt template (parent → `task`)
 
-Include: goal, non-goals, write/read policy, expected output, stop condition, verification recipe.
+Goal, non-goals, write/read policy (and the `cwd` when it is a worktree), pointers to the ticket/spec/notes instead of pasted prose, expected output, stop condition, verification recipe. Read the child's artifacts yourself before trusting its summary.
 
-**Resume:** `task_id` / `conversation_id` from a prior run.
-
-## Proactive delegation
-
-**All ten roles** use `proactive: true`. Parent rules: `APPEND_SYSTEM.md`.
-
-## Final message XML
-
-Task agents end with `<result>`. Parent must verify artifacts — never ship on subagent summary alone.
+`tests/agents.test.ts` gates the roster: tier models, `proactive: false` on the pipeline roles, no routing sections or result-envelope boilerplate in bodies.

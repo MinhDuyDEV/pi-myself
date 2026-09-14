@@ -11,7 +11,7 @@ Runtime playbook: which process owns the work, when to delegate, how to complete
 
 - Model-invoked skills are invoked through the `skill` tool (its enum lists exactly the model-invoked set).
 - User-invoked skills (frontmatter `disable-model-invocation: true`) are reachable **only by the human** via their slash command, pi's native `/skill:<name>`. Never invoke one, never re-implement its steps; when a flow requires one, tell the human to run it (for example `/skill:setup-matt-pocock-skills`).
-- The vendored `in-progress` bucket (beta, all user-invoked) is registered too. Three of them name host mechanisms that pi maps as follows: `implement-spec`'s implementer / exploration / merger subagents are the `implementer` / `explore` / `merger` task roles, its frontier is `tracker gh-frontier` with `parent` = the spec issue (or `frontier` locally), and its worktree-per-implementer is the WIP cap's isolated-checkout exception; `retro`'s "session logs on this machine" are the `recall` tool (`scope:'project'`, then `'all'`); `claude-handoff`'s `claude --bg` has no pi equivalent — run the same handoff summary as a background `general` task instead and tell the user its task id.
+- The vendored `in-progress` bucket (beta, all user-invoked) is registered too. Three of them name host mechanisms that pi maps as follows: `implement-spec`'s implementer, merger, and exploration subagents are all `general` tasks in the shape the prompt names (the parent creates each implementer's worktree with `git worktree add` and passes it as `cwd`; landing a branch and notes-only exploration are the other two shapes), its frontier is `tracker gh-frontier` with `parent` = the spec issue (or `frontier` locally), and worktree-per-implementer is the WIP cap's isolated-checkout exception; `retro`'s "session logs on this machine" are the `recall` tool (`scope:'project'`, then `'all'`); `claude-handoff`'s `claude --bg` has no pi equivalent — run the same handoff summary as a background `general` task instead and tell the user its task id.
 - Per-repo skill configuration lives in `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and (when `triage` matters) `docs/agents/triage-labels.md`. If a skill needs them and they are missing, direct the user to `/skill:setup-matt-pocock-skills` instead of guessing.
 - Never edit anything under `vendor/mattpocock-skills/`; it is a vendored upstream tree. Improvements belong upstream or in the harness layer.
 
@@ -25,24 +25,31 @@ Direct tools for questions, lookups, one-file tasks, and 2-3 file local fixes. `
 
 ## Task roles
 
-With `pi-task` installed, the `task` tool runs the roles defined in `.pi/agents/`:
+With `pi-task` installed, the `task` tool runs the seven roles in `.pi/agents/`, in two model tiers — **read** (maps or searches, never changes code) and **reason** (changes, judges, designs):
 
-| Agent | Use for |
-| --- | --- |
-| `explore` | Read-only repository mapping with `path:line` evidence (grilling's fact-finding, to-spec exploration) |
-| `scout` | Official docs and external research answered in conversation with citations |
-| `general` | Bounded multi-step implementation (`implement`'s step execution when the parent stays orchestrating) |
-| `reviewer` | Independent read-only correctness review; required before any merge-ready claim |
-| `designer` | One independent interface/architecture design candidate under a stated constraint; several in parallel is the design-it-twice pattern (codebase-design) |
-| `researcher` | Background agent that resolves a `research`/wayfinder research ticket and writes the cited report file the parent commits |
-| `implementer` | One ticket of a spec in its own worktree + branch, committed and handed back (`implement-spec`'s task-graph worker; several run in parallel on the frontier) |
-| `merger` | Lands one implementer branch onto the PR branch: merge, conflicts via `resolving-merge-conflicts`, gates rerun (`implement-spec`) |
-| `ultra-scout` | Max-recall static bug hunt: one of 10 identically-prompted read-only scouts of `/skill:ultra-review` |
-| `ultra-verifier` | Post-review diligence: one disposition per finding, owner-clean fixes only, targeted validation |
+| Agent | Tier | Use for |
+| --- | --- | --- |
+| `explore` | read | Read-only repository mapping with `path:line` evidence (grilling's fact-finding, to-spec exploration, `/init` discovery) |
+| `scout` | read | Docs, API behaviour, external evidence with citations — answered in conversation, or written as the one report file the prompt names (`research` skill, wayfinder research tickets) |
+| `general` | reason | Bounded multi-step implementation (`implement`'s step execution); `implement-spec`'s implementer (cwd = a worktree the parent made), merger (land a branch), or notes-only exploration |
+| `reviewer` | reason | Independent read-only review with a merge verdict; required before any merge-ready claim; either axis of `code-review` when that skill delegates |
+| `designer` | reason | One independent design candidate under a stated constraint; several in parallel is codebase-design's design-it-twice |
+| `ultra-scout` | reason | One of the 10 identical read-only scouts of `/skill:ultra-review` (not proactive; that skill launches it) |
+| `ultra-verifier` | reason | Dispositions and owner-clean fixes for `/skill:ultra-review-receive` (not proactive; that skill launches it) |
 
-WIP cap: max 1 mutating task per checkout + 1 read-only reviewer; the fully-independent exception applies only to read-only tasks or separate isolated checkouts — `implementer` tasks qualify because each creates its own git worktree (one carve-out on shared checkouts: parallel `researcher` tasks, each owning a single distinct report path, per wayfinder's parallel research tickets). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. The parent alone calls `memory_write`; task agents return proposed records. Task workspaces are not Git worktree isolation; do not edit files owned by a running background task.
+WIP cap: max 1 mutating task per checkout + 1 read-only reviewer. The fully-independent exception applies only to read-only tasks or separate isolated checkouts: parallel `general` tasks each in their own git worktree (the parent runs `git worktree add` and passes it as `cwd`; pi-task never creates or removes worktrees), and parallel `scout` report tasks each owning one distinct report path (wayfinder's research tickets). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. Do not edit files owned by a running background task.
 
-Controlled loops: run one cycle at a time (measure → select → change → verify → record) and never start the next unit while the current one fails, is unverified, or awaits review. Report only verified completion as `success`, else `no-op`/`blocked`/`stalled`/`exhausted`; in task envelopes map to the parser's four statuses (`no-op` → `success` with a no-change summary; `stalled`/`exhausted` → `blocked`/`partial` with the remaining gap). Pass each cycle's unit and gate explicitly.
+Controlled loops: run one cycle at a time (measure → select → change → verify → record) and never start the next unit while the current one fails, is unverified, or awaits review. Report only verified completion as `success`, else `no-op`/`blocked`/`stalled`/`exhausted`. Pass each cycle's unit and gate explicitly.
+
+### Task child contract
+
+Every task child loads this file; a role file adds only its own purpose, input, rules, and output shape. As a child:
+
+- Stay inside the prompt's scope; you are not the session parent. Recursive `task` delegation is blocked — finish the assigned scope or return a precise blocker.
+- Every important claim carries evidence: absolute `path:line`, an artifact, or an exact command with its exit code. Never fabricate tool output.
+- When on-disk evidence contradicts the task's premise (wrong target, missing dependency, stale assumption), stop the incompatible change and return `blocked` with the evidence instead of implementing around it.
+- Never call `memory_write` or `memory_delete`; propose durable records in your result and the parent decides. Read-only roles never edit, write, commit, or run destructive commands.
+- End with a final message the parent can act on without reading your transcript: a first line `status: success | partial | blocked | failure` and a one-sentence summary, then findings, evidence, files touched (or "none"), caveats, and next steps. No XML wrapper — pi-task does not parse one.
 
 ## Foundational skills
 

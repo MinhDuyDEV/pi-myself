@@ -33,14 +33,14 @@ test("setup-project provisions exactly the packaged agent files plus APPEND_SYST
 
 	const provisioned = readdirSync(join(target, ".pi", "agents"));
 	assert.deepEqual(provisioned.sort(), packagedAgentFiles().sort(), "provisioned set must equal the packaged set");
-	for (const name of ["designer.md", "researcher.md", "ultra-scout.md", "ultra-verifier.md"]) {
+	for (const name of ["designer.md", "ultra-scout.md", "ultra-verifier.md"]) {
 		assert.ok(provisioned.includes(name), `missing harness role ${name}`);
 	}
 	for (const name of provisioned) {
 		const source = readFileSync(join(ROOT, ".pi", "agents", name), "utf8");
 		const copy = readFileSync(join(target, ".pi", "agents", name), "utf8");
 		assert.equal(copy, source, `${name} drifted from the package during provisioning`);
-		assert.match(copy, /^description: PROACTIVE/m, `${name} must keep a catalog-visible description`);
+		assert.match(copy, /^description: \S.+/m, `${name} must keep a catalog-visible description`);
 	}
 
 	assert.equal(

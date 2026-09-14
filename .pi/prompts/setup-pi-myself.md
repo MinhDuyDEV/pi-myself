@@ -5,7 +5,7 @@ argument-hint: (no arguments)
 
 # Setup pi-myself in this repository
 
-Goal: make the three things pi loads only from a project's own `.pi/` available in THIS repository: the harness task roles (`designer`, `researcher`, `ultra-scout`, `ultra-verifier`, plus the refined `explore`/`scout`/`general`/`reviewer`), the workflow rules in `APPEND_SYSTEM.md`, and `enableSkillCommands: true` in `.pi/settings.json`. An installed package contributes none of them automatically. Skills, prompts, and extensions need no provisioning: the package manifest already reaches the session and task children.
+Goal: make the three things pi loads only from a project's own `.pi/` available in THIS repository: the seven harness task roles (`explore`, `scout`, `general`, `reviewer`, `designer`, `ultra-scout`, `ultra-verifier`), the workflow rules in `APPEND_SYSTEM.md`, and `enableSkillCommands: true` in `.pi/settings.json`. An installed package contributes none of them automatically. Skills, prompts, and extensions need no provisioning: the package manifest already reaches the session and task children.
 
 ## Steps
 
