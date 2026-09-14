@@ -20,17 +20,13 @@
 - `scripts/sync-skills.mjs` — vendored sync + lock integrity (`--check`).
 - `scripts/setup-project.mjs` — provisions a consuming repo: task roles, `APPEND_SYSTEM.md`, `enableSkillCommands` (idempotent; `/setup-pi-myself`).
 - `package.json` — npm scripts and pi package registration.
-- `tsconfig.json` — root/test TypeScript; excludes `.pi/`, `vendor/`, and `pikit-template/`.
+- `tsconfig.json` — root/test TypeScript; excludes `.pi/` and `vendor/`.
 - `.pi/extensions/tsconfig.json` — runtime extension TypeScript.
 - `.pi/agents/*.md` — pi-task role overrides (not registered through the `pi` field; task tooling discovers them).
 
 ## Generated and Runtime State
 
 Not source of truth, do not edit: `node_modules/`, `.pi/node_modules/`, `.pi/npm/`, `.pi/git/`, `.pi/sessions/`, `.pi/task-exits/`, `.pi/artifacts/`, `.pi/task-session-history.json`, `.pi/sandbox/`. `.scratch/` holds the local-markdown issue tracker — disposable work units, gitignored by default. Memory records live outside the repo under `~/.pi/memory-md/projects/<slug>/` (pi-memory-md).
-
-## Reference Material
-
-`pikit-template/` is the upstream pikit checkout used as source material for the harness. It is reference-only and gitignored; grep it for provenance, never import from it.
 
 ## Sensitive Areas
 

@@ -12,5 +12,5 @@
 		"allowImportingTsExtensions": true
 	},
 	"include": ["**/*.ts"],
-	"exclude": ["node_modules", "dist", "build", ".pi", "vendor", "pikit-template"]
+	"exclude": ["node_modules", "dist", "build", ".pi", "vendor"]
 }

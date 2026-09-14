@@ -83,6 +83,9 @@ test("local skill descriptions are routing-shaped and impersonal", () => {
 			offenders.push(`.pi/skills/${skill.dir}: description must start with a routing prefix (Use when… / ALWAYS…)`);
 		if (/\b(I|we|I'|I'll|we're|we've|we'll)\b/i.test(description))
 			offenders.push(`.pi/skills/${skill.dir}: description uses first person`);
+		// A description routes; it does not summarise the procedure as "step, step, step" after a colon.
+		if (/:\s*[^.;—]*,[^.;—]*,[^.;—]*,/.test(description))
+			offenders.push(`.pi/skills/${skill.dir}: description summarises a multi-step process as a colon-list`);
 	}
 	assert.deepEqual(offenders, []);
 });
