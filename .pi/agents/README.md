@@ -4,19 +4,19 @@ Seven task roles for the `task` tool. Each file is the role's **prompt** — pi-
 
 ## Roster and tiers
 
-Two model tiers, so picking a model is mechanical: **read** roles map or search and never change code; **reason** roles change, judge, or design. Change a tier's model by editing the `model:` line of the roles in that tier — pi-task has no shared default.
+Three model tiers, so picking a model is mechanical: **read** roles map or search and never change code; **reason** roles change or design; **review** roles judge what the reason tier wrote. Change a tier's model by editing the `model:` line of the roles in that tier — pi-task has no shared default. One rule binds the choice: the review tier runs a **different model family** from the reason tier (and ideally from the model you drive the main session with), because a reviewer on the author's model shares the author's blind spots — `tests/agents.test.ts` fails when the families match.
 
 | Role | Tier | Writes? | Serves (Matt's skills) |
 | --- | --- | --- | --- |
 | `explore` | read (`thinking: low`) | no | grilling's fact-finding, to-spec exploration, `/init` discovery |
 | `scout` | read (`thinking: high`) | one report file when the prompt names a path | `research` skill, wayfinder `research` tickets, any docs/web question |
 | `general` | reason | yes | `implement` step execution; `implement-spec`'s implementer (cwd = a worktree the parent made), merger (land a branch), and notes-only exploration |
-| `reviewer` | reason | no | the independent review APPEND_SYSTEM requires before merge-ready; either axis of `code-review` when it delegates |
 | `designer` | reason | no | `codebase-design`'s DESIGN-IT-TWICE (several in parallel, one candidate each) |
-| `ultra-scout` | reason | no | `/skill:ultra-review` (10 identical scouts) — `proactive: false`, launched only by that skill |
 | `ultra-verifier` | reason | yes | `/skill:ultra-review-receive` — `proactive: false`, launched only by that skill |
+| `reviewer` | review | no | the independent review APPEND_SYSTEM requires before merge-ready; either axis of `code-review` when it delegates |
+| `ultra-scout` | review | no | `/skill:ultra-review` (10 identical scouts) — `proactive: false`, launched only by that skill |
 
-Read-tier roles are `readonly: true` except `scout`, whose only write is the one report path a prompt authorises.
+Read-tier roles are `readonly: true` except `scout`, whose only write is the one report path a prompt authorises. Review-tier roles are always `readonly: true`.
 
 ## Pick by task
 
@@ -40,4 +40,4 @@ pi-task never creates, merges, or removes worktrees. For parallel mutating work 
 
 Goal, non-goals, write/read policy (and the `cwd` when it is a worktree), pointers to the ticket/spec/notes instead of pasted prose, expected output, stop condition, verification recipe. Read the child's artifacts yourself before trusting its summary.
 
-`tests/agents.test.ts` gates the roster: tier models, `proactive: false` on the pipeline roles, no routing sections or result-envelope boilerplate in bodies.
+`tests/agents.test.ts` gates the roster: tier models, review family ≠ reason family, `proactive: false` on the pipeline roles, no routing sections or result-envelope boilerplate in bodies.

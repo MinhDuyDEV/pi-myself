@@ -25,17 +25,17 @@ Direct tools for questions, lookups, one-file tasks, and 2-3 file local fixes. `
 
 ## Task roles
 
-With `pi-task` installed, the `task` tool runs the seven roles in `.pi/agents/`, in two model tiers — **read** (maps or searches, never changes code) and **reason** (changes, judges, designs):
+With `pi-task` installed, the `task` tool runs the seven roles in `.pi/agents/`, in three model tiers — **read** (maps or searches, never changes code), **reason** (changes, designs), and **review** (judges, on a different model family from the reason tier so the reviewer does not share the author's blind spots):
 
 | Agent | Tier | Use for |
 | --- | --- | --- |
 | `explore` | read | Read-only repository mapping with `path:line` evidence (grilling's fact-finding, to-spec exploration, `/init` discovery) |
 | `scout` | read | Docs, API behaviour, external evidence with citations — answered in conversation, or written as the one report file the prompt names (`research` skill, wayfinder research tickets) |
 | `general` | reason | Bounded multi-step implementation (`implement`'s step execution); `implement-spec`'s implementer (cwd = a worktree the parent made), merger (land a branch), or notes-only exploration |
-| `reviewer` | reason | Independent read-only review with a merge verdict; required before any merge-ready claim; either axis of `code-review` when that skill delegates |
 | `designer` | reason | One independent design candidate under a stated constraint; several in parallel is codebase-design's design-it-twice |
-| `ultra-scout` | reason | One of the 10 identical read-only scouts of `/skill:ultra-review` (not proactive; that skill launches it) |
 | `ultra-verifier` | reason | Dispositions and owner-clean fixes for `/skill:ultra-review-receive` (not proactive; that skill launches it) |
+| `reviewer` | review | Independent read-only review with a merge verdict; required before any merge-ready claim; either axis of `code-review` when that skill delegates |
+| `ultra-scout` | review | One of the 10 identical read-only scouts of `/skill:ultra-review` (not proactive; that skill launches it) |
 
 WIP cap: max 1 mutating task per checkout + 1 read-only reviewer. The fully-independent exception applies only to read-only tasks or separate isolated checkouts: parallel `general` tasks each in their own git worktree (the parent runs `git worktree add` and passes it as `cwd`; pi-task never creates or removes worktrees), and parallel `scout` report tasks each owning one distinct report path (wayfinder's research tickets). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. Do not edit files owned by a running background task.
 

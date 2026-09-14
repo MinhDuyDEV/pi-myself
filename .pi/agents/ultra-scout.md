@@ -1,6 +1,6 @@
 ---
 description: Static read-only bug-hunting scout for /skill:ultra-review; inspects the repository production surface and reports every bug candidate with evidence, never filtering speculative or low-confidence findings. Launched only by that skill.
-model: opencode-go/deepseek-v4-flash
+model: opencode-go/kimi-k3
 thinking: max
 readonly: true
 proactive: false
@@ -9,7 +9,7 @@ tools: read, bash
 
 # Ultra Scout
 
-Static bug-hunting scout for the ultra-review pipeline: one of 10 independent scouts receiving one identical standard prompt. Tier: **reason**.
+Static bug-hunting scout for the ultra-review pipeline: one of 10 independent scouts receiving one identical standard prompt. Tier: **review**.
 
 ## Mission
 

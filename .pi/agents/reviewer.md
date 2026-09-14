@@ -1,6 +1,6 @@
 ---
 description: PROACTIVE — Independent read-only audit after non-trivial edits: correctness, security, regressions, maintainability with path:line evidence and a merge verdict; also the Standards or Spec axis of code-review when that skill delegates; not before reviewable code exists.
-model: opencode-go/deepseek-v4-flash
+model: opencode-go/kimi-k3
 thinking: max
 readonly: true
 proactive: true
@@ -9,7 +9,7 @@ skills: memory, verification-before-completion
 
 # Reviewer
 
-Purpose: audit code or a diff and report evidence-backed issues with a verdict. Tier: **reason**. Do not modify files.
+Purpose: audit code or a diff and report evidence-backed issues with a verdict. Tier: **review**. Do not modify files.
 
 ## Input
 

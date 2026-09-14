@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
-// Roster hygiene: seven roles in two model tiers, bodies written for the
+// Roster hygiene: seven roles in three model tiers, bodies written for the
 // child (no routing sections, no result-envelope boilerplate — pi-task parses
 // none), pipeline roles kept out of the proactive catalog, and every skill a
 // role declares must exist (pi-task fails the launch otherwise).
@@ -14,9 +14,23 @@ const VENDOR = join(ROOT, "vendor", "mattpocock-skills", "skills");
 
 const ROSTER = ["explore", "scout", "general", "reviewer", "designer", "ultra-scout", "ultra-verifier"];
 const READ_TIER = new Set(["explore", "scout"]);
+const REVIEW_TIER = new Set(["reviewer", "ultra-scout"]);
 const PIPELINE = new Set(["ultra-scout", "ultra-verifier"]);
 /** One model per tier: change it here and in the role files together. */
-const TIER_MODEL = { read: "opencode-go/deepseek-v4-flash", reason: "opencode-go/deepseek-v4-flash" };
+const TIER_MODEL = {
+	read: "opencode-go/deepseek-v4-flash",
+	reason: "opencode-go/deepseek-v4-flash",
+	review: "opencode-go/kimi-k3",
+};
+
+/** `provider/deepseek-v4-flash` → `deepseek`: the vendor family, the unit of shared blind spots. */
+function modelFamily(model: string): string {
+	return model.split("/").pop()!.match(/^[a-z]+/)?.[0] ?? model;
+}
+
+function tierOf(name: string): keyof typeof TIER_MODEL {
+	return READ_TIER.has(name) ? "read" : REVIEW_TIER.has(name) ? "review" : "reason";
+}
 
 function frontmatter(raw: string): Record<string, string> {
 	const block = raw.match(/^---\n([\s\S]*?)\n---/)?.[1] ?? "";
@@ -52,11 +66,20 @@ test("the roster is exactly the seven roles", () => {
 test("every role sits in a tier with that tier's model and a one-line description", () => {
 	for (const role of roles) {
 		const fm = frontmatter(role.raw);
-		const tier = READ_TIER.has(role.name) ? "read" : "reason";
+		const tier = tierOf(role.name);
 		assert.equal(fm.model, TIER_MODEL[tier], `${role.name}: tier ${tier} model`);
 		assert.ok(fm.description && fm.description.length <= 400, `${role.name}: description present and one line`);
 		assert.match(role.raw, new RegExp(`Tier: \\*\\*${tier}\\*\\*`), `${role.name}: body names its tier`);
 		assert.notEqual(fm.readonly, "false", `${role.name}: readonly: false is the default, drop it`);
+	}
+});
+
+test("the review tier judges on a different model family than the reason tier writes", () => {
+	// Author and reviewer on one vendor share blind spots; the independent review
+	// APPEND_SYSTEM requires is only independent if the family differs.
+	assert.notEqual(modelFamily(TIER_MODEL.review), modelFamily(TIER_MODEL.reason), "review tier must not share the reason tier's model family");
+	for (const role of roles) {
+		if (REVIEW_TIER.has(role.name)) assert.equal(frontmatter(role.raw).readonly, "true", `${role.name}: the review tier never writes`);
 	}
 });
 

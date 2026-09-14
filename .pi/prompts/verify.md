@@ -31,7 +31,7 @@ For each acceptance criterion cite code, artifact, or command output:
 
 ## 4. Independent review
 
-`READY TO SHIP` requires a clean review that is not the author's: launch one read-only `reviewer` task with the diff scope, the spec, and the acceptance criteria. Any unresolved Blocker or Major finding keeps the result `NEEDS WORK`. (For a change that maps to a spec, `code-review`'s two-axis report may replace this task, not supplement it.)
+`READY TO SHIP` requires a clean review that is not the author's: launch one read-only `reviewer` task with the diff scope, the spec, and the acceptance criteria. Any unresolved Blocker or Major finding keeps the result `NEEDS WORK`. `code-review`'s two-axis report (standards, spec) complements this task and never replaces it: its axes are scoped to conformance, this task owns correctness, security, and regressions. Cite an existing `code-review` report instead of re-running those axes.
 
 ## 5. Record
 
