@@ -22,7 +22,7 @@
  * argument or the current working directory.
  */
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(fileURLToPath(new URL("./", import.meta.url)), "..");
@@ -96,3 +96,28 @@ if (missing.length > 0) {
 }
 
 console.log(`setup-project: ${counts.created} created, ${counts.updated} updated, ${counts.unchanged} unchanged in ${targetPi}`);
+
+// 4. memory slug check (pi-memory-md keys memory by the git root's folder name,
+//    so two repos with the same folder name silently share one memory)
+const memory = memorySlugStatus(targetRoot);
+console.log(`memory: pi-memory-md slug "${memory.slug}" → ${memory.dir}${memory.exists ? " (ALREADY EXISTS)" : " (created on the first memory_write)"}`);
+if (memory.exists) {
+	console.log(
+		"warning: a memory directory for this slug already exists before this repository had any session — another checkout with the same folder name may be sharing it; rename the folder if that is not intended.",
+	);
+}
+
+/** Mirror of pi-memory-md's getProjectSlug / getMemoryDir: folder-name slug under localPath/projects. */
+export function memorySlugStatus(root, home = process.env.HOME ?? "") {
+	const slug = basename(root).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
+	let localPath = join(home, ".pi", "memory-md");
+	try {
+		const settings = JSON.parse(readFileSync(join(home, ".pi", "agent", "settings.json"), "utf8"));
+		const configured = settings?.["pi-memory-md"]?.localPath;
+		if (typeof configured === "string" && configured.trim()) localPath = configured.replace(/^~(?=$|\/)/, home);
+	} catch {
+		/* no user settings: defaults */
+	}
+	const dir = join(localPath, "projects", slug);
+	return { slug, dir, exists: existsSync(join(dir, "records")) };
+}

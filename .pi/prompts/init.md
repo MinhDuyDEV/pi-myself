@@ -49,12 +49,22 @@ Gates are the commands the repo declares in `AGENTS.md`, its manifest, build con
 
 `PROJECT.md` (`--map`): the repository map a new session reads first — shipped surface, development support, generated and runtime state (not source of truth), reference material, sensitive areas, and the verification commands. One line per item, path first, no prose tours. Refresh an existing file in place; drop entries whose paths no longer exist.
 
-## 5. Report
+## 5. Seed memory (once per project)
+
+Only when the memory tools exist and `memory_search` (no query) shows either no records or the placeholder text "Customize this fact":
+
+1. Ask the user once, in one message: who they are for this project (role, what they own), the language they want replies in, and how they want decisions and reports handled.
+2. Write exactly two records with `memory_write`, overwriting the placeholders: `@state.identity` and `@state.preferences`, structured (`summary`, `facts`), nothing sensitive.
+3. Run `/memory-refresh` so this session sees them.
+
+Repository facts stay in `AGENTS.md` and `PROJECT.md`; memory holds only what is not in a tracked file. Host or environment facts discovered during the pass are proposed in the report, not written.
+
+## 6. Report
 
 1. Files changed with `path:line` evidence.
 2. Each repository claim and its source file.
 3. Each validation command, exit code, result; `NOT DECLARED` and `UNVERIFIED` categories.
-4. Proposed memory records (host or environment facts), for the user to accept.
+4. Memory: the two seeded records, or "already seeded", or "memory tools absent"; plus proposed host/environment records for the user to accept.
 5. Remaining uncertainty.
 
 Do not claim initialization succeeded unless the written guidance matches current repository files and every validation result is fresh.

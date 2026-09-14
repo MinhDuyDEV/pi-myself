@@ -32,6 +32,10 @@ END:   memory_write({ path: "records/<kind>.<slug>.md", kind, description, summa
 - Read the `knowledge` view first; it carries summary, concepts, claims, facts, relations without the prose.
 - Write structured fields (`summary`, `claims`, `facts`, `concepts`), not a prose dump. One record per learning.
 
+## First write in a project
+
+The first `memory_write` in a project also creates two placeholder records, `@state.identity` (`user.identity = "Customize this fact"`) and `@state.preferences` (`communication.style = "concise"`). They are `state` records, so they take two of the five injected state slots in every later session until replaced. Right after that first write, or whenever `memory_search` shows the placeholder text: overwrite both with real facts (who the user is for this project, language, how they like decisions and reports handled — ask once if unknown) via `memory_write` on the same ids, or `memory_delete` them. Never leave "Customize this fact" in place. Records written mid-session reach the context only on the next session; run `/memory-refresh` when the current session needs them.
+
 ## Record kinds
 
 | Kind | Use for | ID rule |

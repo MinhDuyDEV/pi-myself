@@ -15,8 +15,8 @@ import { test } from "node:test";
 const ROOT = resolve(import.meta.dirname, "..");
 const SCRIPT = join(ROOT, "scripts", "setup-project.mjs");
 
-function runScript(target: string): string {
-	return execFileSync(process.execPath, [SCRIPT, target], { encoding: "utf8" });
+function runScript(target: string, home?: string): string {
+	return execFileSync(process.execPath, [SCRIPT, target], { encoding: "utf8", env: { ...process.env, ...(home ? { HOME: home } : {}) } });
 }
 
 function packagedAgentFiles(): string[] {
@@ -63,6 +63,25 @@ test("setup-project adds enableSkillCommands without touching keys the project a
 	runScript(fresh);
 	const created = JSON.parse(readFileSync(join(fresh, ".pi", "settings.json"), "utf8"));
 	assert.equal(created.enableSkillCommands, true, "a fresh project gets /skill: commands enabled");
+});
+
+test("setup-project reports the pi-memory-md slug and warns when that slug already has records", () => {
+	const home = mkdtempSync(join(tmpdir(), "pi-myself-home-"));
+	const target = join(mkdtempSync(join(tmpdir(), "pi-myself-project-")), "My App");
+	mkdirSync(target, { recursive: true });
+	const fresh = runScript(target, home);
+	assert.match(fresh, /memory: pi-memory-md slug "my-app" → .*\/\.pi\/memory-md\/projects\/my-app \(created on the first memory_write\)/);
+	assert.doesNotMatch(fresh, /warning: a memory directory/);
+
+	mkdirSync(join(home, ".pi", "memory-md", "projects", "my-app", "records"), { recursive: true });
+	const shared = runScript(target, home);
+	assert.match(shared, /"my-app" → .* \(ALREADY EXISTS\)/);
+	assert.match(shared, /warning: a memory directory for this slug already exists/);
+
+	// a configured localPath is honoured
+	mkdirSync(join(home, ".pi", "agent"), { recursive: true });
+	writeFileSync(join(home, ".pi", "agent", "settings.json"), JSON.stringify({ "pi-memory-md": { localPath: "~/custom-memory" } }));
+	assert.match(runScript(target, home), /\/custom-memory\/projects\/my-app \(created on the first memory_write\)/);
 });
 
 test("setup-project is idempotent and refreshes file drift", () => {
