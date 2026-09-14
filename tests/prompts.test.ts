@@ -47,6 +47,22 @@ test("hand-written prompts keep the evidence contract and stay off the dropped p
 	}
 });
 
+test("/verify drives the tracker tool instead of hand-editing tickets or shelling out to gh", () => {
+	const content = readFileSync(join(PROMPTS, "verify.md"), "utf8");
+	for (const op of ["show", "tick", "comment", "status"]) {
+		assert.match(content, new RegExp(`tracker ${op}\\b|gh-${op}\\b`), `verify.md must record through the tracker op '${op}'`);
+	}
+	assert.doesNotMatch(content, /gh issue (view|comment|edit)/, "verify.md must not bypass the tracker tool with raw gh commands");
+	assert.doesNotMatch(content, /--test\b|--review\b/, "verify.md must not re-narrate tdd / code-review behind flags");
+});
+
+test("/init writes both durable context files and protects the setup skill's block", () => {
+	const content = readFileSync(join(PROMPTS, "init.md"), "utf8");
+	assert.match(content, /PROJECT\.md/, "init.md must know the repository map file");
+	assert.match(content, /## Agent skills/, "init.md must preserve the block setup-matt-pocock-skills writes");
+	assert.match(content, /`explore` task/, "init.md delegates discovery to the explore role");
+});
+
 test("no generated wrappers remain: user-invoked skills run via pi's native /skill: commands", () => {
 	const offenders = readdirSync(PROMPTS).filter((file) =>
 		readFileSync(join(PROMPTS, file), "utf8").includes("AUTO-GENERATED"),
