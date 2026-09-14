@@ -5,10 +5,12 @@ export const TRACKER_OPS = [
 	"list",
 	"frontier",
 	"show",
+	"create-spec",
 	"create-ticket",
 	"create-map",
 	"claim",
 	"resolve",
+	"out-of-scope",
 	"tick",
 	"status",
 	"block",
@@ -16,11 +18,14 @@ export const TRACKER_OPS = [
 	// GitHub Issues backend (gh CLI)
 	"gh-list",
 	"gh-frontier",
+	"gh-triage",
 	"gh-show",
+	"gh-create-spec",
 	"gh-create-ticket",
 	"gh-create-map",
 	"gh-claim",
 	"gh-resolve",
+	"gh-out-of-scope",
 	"gh-comment",
 	"gh-status",
 	"gh-block",
@@ -40,33 +45,55 @@ export interface TrackerParams {
 	blockedBy?: string[];
 	parent?: string;
 	status?: string;
+	type?: string;
+	criteria?: string[];
 	index?: number;
 	destination?: string;
 	notes?: string;
 }
+
+/** Wayfinder ticket types (issue-tracker-local.md / -github.md: `Type:` line or `wayfinder:<type>` label). */
+export const WAYFINDER_TYPES = ["research", "prototype", "grilling", "task"] as const;
 
 export const trackerSchema = Type.Object({
 	op: Type.Union(
 		TRACKER_OPS.map((op) => Type.Literal(op)),
 		{ description: "Tracker operation." },
 	),
-	feature: Optional(Type.String({ description: "Feature/effort slug under .scratch/." })),
-	ticket: Optional(Type.String({ description: "Ticket id (1 or 01), file slug, or exact title." })),
-	title: Optional(Type.String({ description: "New ticket title (create-ticket)." })),
+	feature: Optional(Type.String({ description: "Feature/effort slug under .scratch/ (local ops)." })),
+	ticket: Optional(Type.String({ description: "Ticket id (1 or 01), file slug, or exact title; GitHub: the issue number." })),
+	title: Optional(Type.String({ description: "Title (create-spec, create-ticket, create-map)." })),
 	what: Optional(
-		Type.String({ description: "What-to-build body (create-ticket), map notes (create-map), or comment body (comment)." }),
+		Type.String({
+			description:
+				"Body text: spec body (create-spec), what-to-build or the wayfinder question (create-ticket), map Notes (create-map), comment body (comment).",
+		}),
 	),
-	answer: Optional(Type.String({ description: "Resolution answer written under ## Answer (resolve)." })),
+	answer: Optional(Type.String({ description: "Resolution answer (resolve) or the reason (out-of-scope)." })),
 	gist: Optional(
-		Type.String({ description: "One-line gist appended to the map's Decisions-so-far on resolve." }),
+		Type.String({ description: "One-line gist appended to the map's Decisions-so-far (resolve) or Out-of-scope (out-of-scope)." }),
 	),
-	blockedBy: Optional(Type.Array(Type.String(), { description: "Blocker ids or titles (create-ticket, block)." })),
+	blockedBy: Optional(Type.Array(Type.String(), { description: "Blocker ids or titles (create-ticket, block); GitHub: issue numbers." })),
 	parent: Optional(
-		Type.String({ description: "Parent issue number/URL when a feature has a tracked parent (gh-create-ticket, wayfinder children → the map issue)." }),
+		Type.String({
+			description:
+				"GitHub parent issue number: the spec issue for to-tickets, the map issue for wayfinder children (gh-create-ticket → sub-issue + Part of line; gh-frontier → scope to that parent's children).",
+		}),
 	),
+	criteria: Optional(Type.Array(Type.String(), { description: "Acceptance criteria, one per entry (create-ticket → `- [ ]` list)." })),
 	status: Optional(
-		Type.String({ description: "Status value: triage role (needs-triage…wontfix) or wayfinder's claimed/resolved." }),
+		Type.String({
+			description:
+				"Status value: triage role (needs-triage…wontfix) or wayfinder's claimed/resolved. On list/gh-list: filter by this status/label.",
+		}),
+	),
+	type: Optional(
+		Type.Union(
+			WAYFINDER_TYPES.map((t) => Type.Literal(t)),
+			{ description: "Wayfinder ticket type (create-ticket): local `Type:` line / GitHub `wayfinder:<type>` label." },
+		),
 	),
 	index: Optional(Type.Number({ description: "1-based acceptance-criterion index (tick)." })),
 	destination: Optional(Type.String({ description: "Map destination (create-map)." })),
+	notes: Optional(Type.String({ description: "Map 'Not yet specified' fog at charting time (create-map)." })),
 });

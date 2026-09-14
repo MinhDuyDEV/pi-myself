@@ -20,8 +20,54 @@ import { basename, join } from "node:path";
  * module only reads and edits those files.
  */
 
-export const CLOSED_STATUSES = new Set(["resolved", "done", "wontfix"]);
+export const CLOSED_STATUSES = new Set(["resolved", "done", "wontfix", "out-of-scope"]);
 export const TRIAGE_ROLES = ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"] as const;
+/** triage's category roles: exactly one per triaged item, beside exactly one state role. */
+export const CATEGORY_ROLES = ["bug", "enhancement"] as const;
+
+/** Canonical triage role → this repo's label string, from the table in
+ * docs/agents/triage-labels.md (setup-matt-pocock-skills writes it; the
+ * right-hand column is the repo's vocabulary). Identity when the file or a
+ * row is missing. */
+export function loadTriageLabelMap(repoRoot: string): Map<string, string> {
+	const map = new Map<string, string>(TRIAGE_ROLES.map((role) => [role, role]));
+	let text = "";
+	try {
+		text = readFileSync(join(repoRoot, "docs", "agents", "triage-labels.md"), "utf8");
+	} catch {
+		return map;
+	}
+	for (const line of text.split("\n")) {
+		const cells = line.split("|").map((cell) => cell.trim().replace(/^`|`$/g, ""));
+		if (cells.length < 3) continue;
+		const canonical = cells[1];
+		const local = cells[2];
+		if (map.has(canonical) && local && !/^-+$/.test(local)) map.set(canonical, local);
+	}
+	return map;
+}
+
+/** Text of a `## Heading` section (up to the next `## `), or "" when absent. */
+export function sectionText(text: string, heading: string): string {
+	const re = new RegExp(`^##\\s+${heading}\\s*$`, "im");
+	const match = re.exec(text);
+	if (!match) return "";
+	const start = match.index + match[0].length;
+	const next = text.slice(start).search(/^##\s/m);
+	return (next === -1 ? text.slice(start) : text.slice(start, start + next)).trim();
+}
+
+/** Insert a bullet at the end of a `## Heading` section (created at the end when absent). */
+export function appendUnderHeading(text: string, heading: string, line: string): string {
+	const re = new RegExp(`^##\\s+${heading}\\s*$`, "im");
+	const match = re.exec(text);
+	if (!match) return `${text.trimEnd()}\n\n## ${heading}\n\n- ${line.trim()}\n`;
+	const afterHead = match.index + match[0].length;
+	const next = text.slice(afterHead).search(/^##\s/m);
+	const insertAt = next === -1 ? text.length : afterHead + next;
+	const rest = text.slice(insertAt).replace(/^\n+/, "");
+	return `${text.slice(0, insertAt).trimEnd()}\n\n- ${line.trim()}\n${rest ? `\n${rest}` : ""}`;
+}
 
 const NUM_FILE_RE = /^(\d+)-(.+)\.md$/;
 
@@ -223,6 +269,19 @@ export function createFeature(repoRoot: string, feature: string, spec?: string):
 	return featureDir(repoRoot, feature);
 }
 
+/** to-spec's "publish to the issue tracker": `.scratch/<feature>/spec.md`
+ * (the feature directory is created when new; an existing spec is not
+ * overwritten). */
+export function createSpec(repoRoot: string, feature: string, title: string, body: string): string {
+	assertFeature(repoRoot, feature);
+	mkdirSync(issuesDir(repoRoot, feature), { recursive: true });
+	const file = join(featureDir(repoRoot, feature), "spec.md");
+	if (existsSync(file)) throw new TrackerError(`spec already exists: ${file}`);
+	const text = /^#\s/.test(body.trim()) ? body.trim() : `# ${title}\n\n${body.trim()}`;
+	writeFileSync(file, `${text}\n`);
+	return file;
+}
+
 function nextTicketNumber(repoRoot: string, feature: string): number {
 	const dir = issuesDir(repoRoot, feature);
 	let max = 0;
@@ -235,7 +294,9 @@ function nextTicketNumber(repoRoot: string, feature: string): number {
 	return max + 1;
 }
 
-/** Create a ticket file per the to-tickets local template. */
+/** Create a ticket file per the to-tickets local template (or, with a
+ * wayfinder `ticketType`, the wayfinder child shape: a `Type:` line and the
+ * question as the body). */
 export function createTicket(
 	repoRoot: string,
 	feature: string,
@@ -244,6 +305,7 @@ export function createTicket(
 	blockedBy: string[],
 	status: string,
 	ticketType?: string,
+	criteria: string[] = [],
 ): Ticket {
 	assertFeature(repoRoot, feature);
 	const dir = issuesDir(repoRoot, feature);
@@ -251,19 +313,35 @@ export function createTicket(
 	const number = nextTicketNumber(repoRoot, feature);
 	const file = join(dir, `${String(number).padStart(2, "0")}-${slugify(title)}.md`);
 	if (existsSync(file)) throw new TrackerError(`ticket file already exists: ${file}`);
-	const body = [
-		`# ${number}: ${title}`,
-		"",
-		`**What to build:** ${what || "(fill from the ticket's source: spec, wayfinder question, or triage note)"}`,
-		"",
-		`**Blocked by:** ${blockedBy.length ? blockedBy.join(", ") : "None (can start immediately)"}`,
-		"",
-		`**Status:** ${status}`,
-		...(ticketType ? ["", `Type: ${ticketType}`, ""] : [""]),
-		"- [ ] (acceptance criteria — replace from the spec)",
-		"",
-	].join("\n");
-	writeFileSync(file, body);
+	const blocked = `**Blocked by:** ${blockedBy.length ? blockedBy.join(", ") : "None (can start immediately)"}`;
+	const body = ticketType
+		? [
+				`# ${number}: ${title}`,
+				"",
+				`**Type:** ${ticketType}`,
+				"",
+				blocked,
+				"",
+				`**Status:** ${status}`,
+				"",
+				"## Question",
+				"",
+				what || "(the question this ticket resolves)",
+				"",
+			]
+		: [
+				`# ${number}: ${title}`,
+				"",
+				`**What to build:** ${what || "(fill from the ticket's source: spec, wayfinder question, or triage note)"}`,
+				"",
+				blocked,
+				"",
+				`**Status:** ${status}`,
+				"",
+				...(criteria.length ? criteria.map((c) => `- [ ] ${c.trim()}`) : ["- [ ] (acceptance criteria — replace from the spec)"]),
+				"",
+			];
+	writeFileSync(file, body.join("\n"));
 	return parseTicket(file);
 }
 
@@ -382,16 +460,27 @@ export function appendTicketSection(
 	return saveTicket(ticket, text);
 }
 
-/** Append a decision-context pointer to the map's Decisions-so-far list. */
-export function appendMapDecision(repoRoot: string, feature: string, line: string): void {
+/** Append a bullet to a section of the map (`Decisions so far`, `Out of scope`). */
+export function appendMapLine(repoRoot: string, feature: string, heading: string, line: string): void {
 	const file = join(featureDir(repoRoot, feature), "map.md");
 	if (!existsSync(file)) throw new TrackerError(`map file missing: ${file}`);
-	const text = readFileSync(file, "utf8");
-	const heading = "## Decisions so far";
-	const start = text.indexOf(heading);
-	if (start === -1) throw new TrackerError(`map file has no ${heading} section: ${file}`);
-	const afterHead = start + heading.length;
-	const nextHeading = text.indexOf("\n## ", afterHead);
-	const insertAt = nextHeading === -1 ? text.length : nextHeading;
-	writeFileSync(file, `${text.slice(0, insertAt).trimEnd()}\n\n- ${line.trim()}\n${text.slice(insertAt).replace(/^\n+/, "\n")}`);
+	writeFileSync(file, appendUnderHeading(readFileSync(file, "utf8"), heading, line));
+}
+
+/** Append a decision-context pointer to the map's Decisions-so-far list. */
+export function appendMapDecision(repoRoot: string, feature: string, line: string): void {
+	appendMapLine(repoRoot, feature, "Decisions so far", line);
+}
+
+/** wayfinder: rule a ticket out of scope — close it (`Status: out-of-scope`,
+ * the reason under `## Out of scope`) and gist it into the map's Out-of-scope
+ * section, never into Decisions-so-far. */
+export function outOfScopeTicket(repoRoot: string, feature: string, token: string, reason: string, gist?: string): Ticket {
+	const ticket = findTicket(repoRoot, feature, token);
+	const text = `${ticket.raw.trimEnd()}\n\n## Out of scope\n\n${reason.trim()}\n`;
+	saveTicket(ticket, upsertFieldLine(text, "Status", "out-of-scope"));
+	if (existsSync(join(featureDir(repoRoot, feature), "map.md"))) {
+		appendMapLine(repoRoot, feature, "Out of scope", `[${ticket.title}](issues/${basename(ticket.file)}): ${(gist ?? reason).trim()}`);
+	}
+	return parseTicket(ticket.file);
 }

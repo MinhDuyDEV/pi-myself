@@ -14,11 +14,14 @@
  *   invocation.md invariant ("nothing but the human can fire it") enforced in
  *   the harness rather than in prose.
  *
- * Project-local `.pi/skills` come first in root order and shadow vendored
- * skills by name.
+ * Root order is the shadowing order: the consuming project's `.pi/skills`,
+ * the user's `~/.pi/agent/skills`, then the package's own skills and the
+ * vendored trees — so the tool sees the same skills pi itself lists, and a
+ * project can override a harness or vendored skill by name.
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionCommandContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
@@ -58,24 +61,34 @@ function packageRoot(): string | undefined {
 	return undefined;
 }
 
-/** The user's project-local skills, when the checkout provides them. */
-function localSkillsRoot(cwd: string): string {
-	return join(cwd, ".pi", "skills");
-}
-
-function defaultSkillRoots(cwd: string): string[] {
-	const roots: string[] = [];
-	const repoRoot = findRepoRoot(cwd) ?? packageRoot();
-	if (repoRoot) {
-		roots.push(
-			join(repoRoot, "vendor", "mattpocock-skills", "skills", "engineering"),
-			join(repoRoot, "vendor", "mattpocock-skills", "skills", "productivity"),
-			join(repoRoot, ".pi", "skills"),
+/** Skill roots in shadowing order: the consuming project's own skills, the
+ * user's global skills, then the package's (harness `.pi/skills` and the
+ * vendored trees). First occurrence of a name wins, so a project can override
+ * a harness or vendored skill by name. Roots are deduped by real path: in the
+ * checkout layout the project root IS the package root. */
+export function defaultSkillRoots(cwd: string, home: string = homedir()): string[] {
+	const repoRoot = findRepoRoot(cwd);
+	const pkgRoot = repoRoot ?? packageRoot();
+	const candidates = [join(cwd, ".pi", "skills"), join(home, ".pi", "agent", "skills")];
+	if (pkgRoot) {
+		candidates.push(
+			join(pkgRoot, ".pi", "skills"),
+			join(pkgRoot, "vendor", "mattpocock-skills", "skills", "engineering"),
+			join(pkgRoot, "vendor", "mattpocock-skills", "skills", "productivity"),
 		);
-	} else {
-		// neither layout detected: still scan the local skills dir so the tool
-		// works for plain project-local skill sets
-		roots.push(localSkillsRoot(cwd));
+	}
+	const seen = new Set<string>();
+	const roots: string[] = [];
+	for (const candidate of candidates) {
+		let key = candidate;
+		try {
+			key = realpathSync(candidate);
+		} catch {
+			continue; // absent roots are skipped, not scanned
+		}
+		if (seen.has(key)) continue;
+		seen.add(key);
+		roots.push(candidate);
 	}
 	return roots;
 }

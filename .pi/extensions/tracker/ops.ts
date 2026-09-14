@@ -1,12 +1,15 @@
 import { relative } from "node:path";
 import {
+	CATEGORY_ROLES,
 	TrackerError,
 	appendTicketSection,
 	createMap,
+	createSpec,
 	createTicket,
 	findTicket,
 	listFeatures,
 	listTickets,
+	outOfScopeTicket,
 	resolveTicket,
 	setTicketField,
 	tickCriterion,
@@ -16,15 +19,18 @@ import {
 	ghClaimOp,
 	ghCommentOp,
 	ghCreateMapOp,
+	ghCreateSpecOp,
 	ghCreateTicketOp,
 	ghFrontierOp,
 	ghListOp,
+	ghOutOfScopeOp,
 	ghResolveOp,
 	ghShowOp,
 	ghStatusOp,
 	ghTickOp,
+	ghTriageOp,
 } from "./github.js";
-import { renderFeatures, renderFrontier, renderTicket } from "./render.js";
+import { renderFeatures, renderFrontier, renderTicket, renderTicketList } from "./render.js";
 import type { TrackerParams } from "./params.js";
 
 const UNBLOCKED = "None (can start immediately)";
@@ -60,14 +66,24 @@ function withId(ticket: { id: string; file: string }, root: string): string {
 /** Dispatch one `tracker` tool call; returns markdown for the model. */
 export function runOp(root: string, params: TrackerParams): string {
 	switch (params.op) {
-		case "list":
-			return renderFeatures(listFeatures(root));
+		case "list": {
+			// no feature: the feature table; with one: every ticket of it (closed included), optionally filtered by status
+			if (!params.feature?.trim()) return renderFeatures(listFeatures(root));
+			const feature = reqFeature(params);
+			const tickets = listTickets(root, feature).filter((t) => !params.status || t.status === params.status.trim().toLowerCase());
+			return renderTicketList(feature, tickets);
+		}
 
 		case "frontier":
 			return renderFrontier(listTickets(root, reqFeature(params)));
 
 		case "show":
 			return renderTicket(ticket(params, root));
+
+		case "create-spec": {
+			const file = createSpec(root, reqFeature(params), req(params, "title"), req(params, "what"));
+			return `Spec published: ${rel(root, file)} — tickets go beside it under issues/.`;
+		}
 
 		case "create-ticket": {
 			const ticket = createTicket(
@@ -77,13 +93,20 @@ export function runOp(root: string, params: TrackerParams): string {
 				params.what ?? "",
 				params.blockedBy ?? [],
 				params.status ?? "ready-for-agent",
+				params.type,
+				params.criteria ?? [],
 			);
 			return `Created ${rel(root, ticket.file)}\n\n${renderTicket(ticket)}`;
 		}
 
 		case "create-map": {
-			const file = createMap(root, reqFeature(params), params.destination ?? "", params.what ?? "", "", "");
+			const file = createMap(root, reqFeature(params), params.destination ?? "", params.what ?? "", params.notes ?? "", "");
 			return `Map written: ${rel(root, file)}`;
+		}
+
+		case "out-of-scope": {
+			const updated = outOfScopeTicket(root, reqFeature(params), req(params, "ticket"), req(params, "answer"), params.gist);
+			return `Ruled out of scope ${rel(root, updated.file)} (map Out-of-scope updated when a map exists):\n\n${renderTicket(updated)}`;
 		}
 
 		case "claim": {
@@ -112,7 +135,10 @@ export function runOp(root: string, params: TrackerParams): string {
 		}
 
 		case "status": {
-			const updated = setTicketField(root, reqFeature(params), req(params, "ticket"), "Status", req(params, "status"));
+			// triage's category roles live on their own line so a state change never clobbers them
+			const value = req(params, "status");
+			const label = (CATEGORY_ROLES as readonly string[]).includes(value.toLowerCase()) ? "Category" : "Status";
+			const updated = setTicketField(root, reqFeature(params), req(params, "ticket"), label, value);
 			return `Updated ${rel(root, updated.file)}:\n\n${renderTicket(updated)}`;
 		}
 
@@ -147,8 +173,14 @@ export function runOp(root: string, params: TrackerParams): string {
 		case "gh-frontier":
 			return ghFrontierOp(root, params);
 
+		case "gh-triage":
+			return ghTriageOp(root, params);
+
 		case "gh-show":
 			return ghShowOp(root, params);
+
+		case "gh-create-spec":
+			return ghCreateSpecOp(root, params);
 
 		case "gh-create-ticket":
 			return ghCreateTicketOp(root, params);
@@ -161,6 +193,9 @@ export function runOp(root: string, params: TrackerParams): string {
 
 		case "gh-resolve":
 			return ghResolveOp(root, params);
+
+		case "gh-out-of-scope":
+			return ghOutOfScopeOp(root, params);
 
 		case "gh-comment":
 			return ghCommentOp(root, params);

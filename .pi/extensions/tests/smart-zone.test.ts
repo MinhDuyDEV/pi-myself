@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SmartZoneReading, lastTurnTokens, smartZone, smartZoneLimit, SMART_ZONE_LIMIT } from "../smart-zone.js";
+import { SmartZoneReading, lastTurnTokens, smartZone, smartZoneLimit, zoneTransition, SMART_ZONE_LIMIT } from "../smart-zone.js";
 
 const LIMIT = SMART_ZONE_LIMIT; // 150k
 
@@ -47,6 +47,21 @@ test("PI_SMART_ZONE_LIMIT: honoured at >=1000, falls back otherwise", () => {
 	assert.equal(smartZoneLimit(), SMART_ZONE_LIMIT);
 	delete process.env.PI_SMART_ZONE_LIMIT;
 	assert.equal(smartZoneLimit(), SMART_ZONE_LIMIT);
+});
+
+test("zoneTransition: footer status past ok, toast once per crossing into boundary/over", () => {
+	const ok = smartZone(1000);
+	const watch = smartZone(Math.floor(LIMIT * 0.7));
+	const boundary = smartZone(Math.floor(LIMIT * 0.9));
+	const over = smartZone(LIMIT + 1);
+	assert.deepEqual(zoneTransition(undefined, ok), { status: undefined, toast: false });
+	assert.equal(zoneTransition(ok, watch).toast, false, "watch is footer-only");
+	assert.match(zoneTransition(ok, watch).status ?? "", /smart-zone 70% \(watch\)/);
+	assert.equal(zoneTransition(watch, boundary).toast, true, "crossing into boundary toasts");
+	assert.equal(zoneTransition(boundary, boundary).toast, false, "staying in boundary is silent");
+	assert.equal(zoneTransition(boundary, over).toast, true, "crossing into over toasts again");
+	assert.equal(zoneTransition(over, over).toast, false);
+	assert.equal(zoneTransition(over, ok).status, undefined, "dropping back to ok clears the footer");
 });
 
 test("notes carry the phase-boundary decision order when it matters", () => {

@@ -13,6 +13,16 @@ export function renderTicket(t: Ticket): string {
 	return [`**${t.id}** — ${t.title}`, meta, "", t.raw.trim()].join("\n");
 }
 
+/** Every ticket of a feature, closed ones included — the read behind "what happened to X?". */
+export function renderTicketList(feature: string, tickets: Ticket[]): string {
+	if (tickets.length === 0) return `No tickets in .scratch/${feature}/issues/.`;
+	const lines = [`## .scratch/${feature} — ${tickets.length} tickets`, "", "id | title | status | type | blocked by | criteria", "--- | --- | --- | --- | --- | ---"];
+	for (const t of tickets) {
+		lines.push(`${t.id} | ${t.title} | ${t.status || "-"} | ${t.ticketType || "-"} | ${t.blockedBy.join(", ") || "-"} | ${t.doneChecklist}/${t.totalChecklist}`);
+	}
+	return lines.join("\n");
+}
+
 export function renderFeatures(summaries: FeatureSummary[]): string {
 	if (summaries.length === 0) return "No features tracked (.scratch/ is empty or missing).";
 	const lines = ["## Features", "", "feature | tickets (open) | spec | map", "--- | --- | --- | ---"];

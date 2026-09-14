@@ -47,22 +47,40 @@ test("searches Pi native compaction summaries in the active session", () => {
   );
 });
 
-test("normalizes legacy tool-name typos in recalled text to the current name", () => {
-  withSession(
-    [
-      {
-        type: "message",
-        message: { role: "user", content: "Try dep_recall and dop_recall with scope all" },
-        timestamp: "2024-12-03T14:10:00.000Z",
-      },
-    ],
-    (sessionFile) => {
-      const result = searchDcpRecall({ sessionFile, query: "scope" });
-      expect(result.rendered).not.toContain("dep_recall");
-      expect(result.rendered).not.toContain("dop_recall");
-      expect(result.rendered).toContain("recall");
-    },
-  );
+test("scope:'project' searches this repository's earlier sessions, scope:'all' every project's", () => {
+  const root = mkdtempSync(join(tmpdir(), "dcp-scope-"));
+  const sessions = join(root, "sessions");
+  const thisProject = join(sessions, "--repo-a--");
+  const otherProject = join(sessions, "--repo-b--");
+  try {
+    mkdirSync(thisProject, { recursive: true });
+    mkdirSync(otherProject, { recursive: true });
+    const line = (text: string) => `${JSON.stringify({ type: "message", message: { role: "user", content: text } })}\n`;
+    writeFileSync(join(thisProject, "old.jsonl"), line("earlier session needle in repo a"));
+    writeFileSync(join(thisProject, "live.jsonl"), line("live session needle in repo a"));
+    writeFileSync(join(otherProject, "far.jsonl"), line("needle from repo b"));
+
+    const active = searchDcpRecall({ sessionFile: join(thisProject, "live.jsonl"), query: "needle", scope: "active" });
+    expect(active.total).toBe(1);
+    expect(active.rendered).toContain("live session needle");
+
+    const project = searchDcpRecall({
+      sessionFile: join(thisProject, "live.jsonl"),
+      projectSessionDir: thisProject,
+      rawSessionDir: sessions,
+      query: "needle",
+      scope: "project",
+    });
+    expect(project.total).toBe(2);
+    expect(project.rendered).toContain("earlier session needle");
+    expect(project.rendered).not.toContain("repo b");
+
+    const all = searchDcpRecall({ projectSessionDir: thisProject, rawSessionDir: sessions, query: "needle", scope: "all" });
+    expect(all.total).toBe(3);
+    expect(all.rendered).toContain("repo b");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("activeLineageIds walks the leaf-parent chain and ignores dead branches", () => {

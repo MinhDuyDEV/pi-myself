@@ -71,6 +71,21 @@ export function lastTurnTokens(messages: readonly unknown[]): number | undefined
 
 const METER = "smart-zone";
 
+/** What the UI should do after a turn: the footer text (undefined clears it)
+ * and whether the phase-boundary advice toasts. The reading itself lives in
+ * the footer (persistent, quiet); the toast fires only when the level crosses
+ * into boundary/over, so the advice interrupts once per crossing instead of
+ * after every turn. */
+export function zoneTransition(
+	previous: SmartZoneReading | undefined,
+	next: SmartZoneReading,
+): { status: string | undefined; toast: boolean } {
+	const status = next.level === "ok" ? undefined : `${METER} ${next.pct}% (${next.level})`;
+	const crossed = previous?.level !== next.level;
+	const toast = crossed && (next.level === "boundary" || next.level === "over");
+	return { status, toast };
+}
+
 export default function smartZoneExtension(pi: ExtensionAPI): void {
 	let reading: SmartZoneReading | undefined;
 
@@ -78,15 +93,11 @@ export default function smartZoneExtension(pi: ExtensionAPI): void {
 		const used = lastTurnTokens(event.messages);
 		if (used === undefined) return;
 		const next = smartZone(used, smartZoneLimit());
-		const previous = reading;
+		const { status, toast } = zoneTransition(reading, next);
 		reading = next;
 		if (!ctx.hasUI) return;
-		// The reading itself lives in the footer (persistent, quiet); a toast
-		// fires only when the level crosses into boundary/over, so the advice
-		// interrupts once per crossing instead of after every turn.
-		ctx.ui.setStatus(METER, next.level === "ok" ? undefined : `${METER} ${next.pct}% (${next.level})`);
-		const crossed = previous?.level !== next.level;
-		if (crossed && (next.level === "boundary" || next.level === "over")) {
+		ctx.ui.setStatus(METER, status);
+		if (toast) {
 			ctx.ui.notify(`${METER} ${next.pct}% (~${k(next.used)}/${k(smartZoneLimit())}) — ${next.note}`, next.level === "over" ? "warning" : "info");
 		}
 	});

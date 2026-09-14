@@ -15,8 +15,7 @@ export function renderSearch(
     return lines.join("\n");
   }
   for (const entry of entries) {
-    const displayText = normalizeRecallDisplayText(entry.text);
-    const snippet = oneLine(displayText, normalizedQuery ? 300 : 180);
+    const snippet = oneLine(entry.text, normalizedQuery ? 300 : 180);
     if (normalizedQuery) {
       lines.push("", `#${entry.index} ${entry.title}`, snippet);
     } else {
@@ -30,26 +29,8 @@ export function renderSearch(
 export function renderExpanded(entries: RecallEntry[]): string {
   if (entries.length === 0) return "No matching recall indices.";
   return entries
-    .map((entry) =>
-      [
-        `#${entry.index} ${entry.title}`,
-        normalizeRecallDisplayText(entry.text),
-      ].join("\n"),
-    )
+    .map((entry) => [`#${entry.index} ${entry.title}`, entry.text].join("\n"))
     .join("\n\n---\n\n");
-}
-
-function normalizeRecallDisplayText(text: string): string {
-  return text
-    .replace(/\b(?:dcp|de[pp]|dop)_recall\b/gi, "recall")
-    .replace(/\bde[pp]-recall\b/gi, "dcp-recall")
-    .replace(/\bdop-recall\b/gi, "dcp-recall")
-    .replace(/\/de[pp]-recall\b/gi, "/dcp-recall")
-    .replace(/\/dop-recall\b/gi, "/dcp-recall")
-    .replace(/\bde[pp]\/(index\.ts|[\w.-]+\.ts)\b/gi, "dcp/$1")
-    .replace(/\bdop\/(index\.ts|[\w.-]+\.ts)\b/gi, "dcp/$1")
-    .replace(/\bde[pp]\/([\w./-]*dcp[\w./-]*)/gi, "dcp/$1")
-    .replace(/\bdop\/([\w./-]*dcp[\w./-]*)/gi, "dcp/$1");
 }
 
 export function shouldIncludeJsonlEntry(value: unknown): boolean {

@@ -57,38 +57,15 @@ function recallEchoPenalty(text: string): number {
   return isRecallEcho(text) ? 55 : 0;
 }
 
+/** Recall's own rendered output, echoed back into a session as a tool result
+ * or quoted by the assistant, is not history worth recalling. The markers are
+ * the shapes renderSearch / renderExpanded emit. */
 export function isBrowseDiagnostic(text: string): boolean {
-  return isRecallEcho(text) || isBenchmarkDiagnostic(text);
+  return isRecallEcho(text);
 }
 
 function isRecallEcho(text: string): boolean {
-  const markers = [
-    /DCP recall (?:for|browse):/i,
-    /\/d[ceo]p-recall/i,
-    /output\s+["']?\/d[ceo]p-recall/i,
-    /new output .*\/d[ceo]p-recall/i,
-    /#\d+\s+\[jsonl:/i,
-    /Expand with \/d[ceo]p-recall/i,
-    /expand with recall\b/i,
-    /Brutal review:.*(?:recall|browse-mode|query mode)/is,
-    /This is \*\*clean\*\*.*too sparse/is,
-    /Browse mode no longer shows:/i,
-    /Browse mode .*?(?:tool spam|raw JSON|recall-debug loop|low-signal|too sparse)/is,
-  ];
-  return markers.some((marker) => marker.test(text));
-}
-
-function isBenchmarkDiagnostic(text: string): boolean {
-  const markers = [
-    /DCP deterministic compaction benchmark:/i,
-    /DCP compaction diagnostic benchmark:/i,
-    /\/dcp-ben(?:ch)?mark/i,
-    /Use this output beside pi-vcc metrics/i,
-    /Diagnostic only\. Normal workflow: \/compact and \/dcp-recall/i,
-    /benchmark formatting is fixed/i,
-    /That benchmark is .*?(?:excellent|very good)/is,
-    /Before:\s*[\d,]+.*After:\s*[\d,]+.*Reduction:/is,
-  ];
+  const markers = [/DCP recall (?:for|browse):/i, /#\d+\s+\[jsonl:/i, /Expand with recall using expand:/i];
   return markers.some((marker) => marker.test(text));
 }
 

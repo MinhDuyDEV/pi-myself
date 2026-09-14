@@ -37,9 +37,13 @@ interface RecallOptions {
   query?: string;
   expand?: number[];
   page?: number;
-  scope?: "active" | "all";
+  scope?: RecallScope;
   limit?: number;
+  /** Every project's sessions (scope:"all"); defaults to pi's session root. */
   rawSessionDir?: string;
+  /** This project's sessions (scope:"project"); defaults to the active
+   * session file's directory, which pi keys by cwd. */
+  projectSessionDir?: string;
   taskHistoryFile?: string;
   /** Active-lineage entry ids from the session manager; entries outside
    * the set are excluded when provided (dead branches stay searchable
@@ -53,22 +57,28 @@ export interface RecallResult {
   total: number;
 }
 
+export type RecallScope = "active" | "project" | "all";
+
 const PAGE_SIZE = 5;
 const RAW_SESSION_DIR = join(homedir(), ".pi", "agent", "sessions");
+/** Newest-first file caps per scope: this repo's history is small and
+ * relevant; the whole session root (every project, hundreds of MB) is a last
+ * resort. */
+const FILE_CAP: Record<RecallScope, number> = { active: 1, project: 60, all: 200 };
 
 export function registerRecallTool(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "recall",
     label: "Recall",
         description:
-          "Search persisted Pi session JSONL history and current-project pi-task provenance metadata, including native compaction summaries. Supports regex queries, pagination, expand, and scope:'all'.",
+          "Search persisted Pi session JSONL history (including native compaction summaries) and this project's pi-task provenance. Regex queries, pagination, expand. scope: 'active' (this session's live lineage, default), 'project' (every session of this repository), 'all' (every project on this machine).",
         promptSnippet:
           "Search exact Pi session history when compacted context may have omitted details.",
 
     promptGuidelines: [
       "Use recall before guessing about old compacted context.",
       "Search first, then call expand with result indices when you need exact full content.",
-      "Use scope:'all' only when current-lineage results are insufficient.",
+      "Widen scope in order: 'active' → 'project' (earlier sessions of this repo) → 'all' (other projects); each step is slower and noisier.",
     ],
     parameters: Type.Object({
       query: Optional(
@@ -86,10 +96,9 @@ export function registerRecallTool(pi: ExtensionAPI): void {
         Type.Number({ description: "1-based page number for search results." }),
       ),
       scope: Optional(
-        Type.Union([Type.Literal("active"), Type.Literal("all")], {
-              description:
-                "active searches the current session's active lineage (superseded branches excluded); all searches all persisted session logs.",
-
+        Type.Union([Type.Literal("active"), Type.Literal("project"), Type.Literal("all")], {
+          description:
+            "active: this session's live lineage (superseded branches excluded). project: every persisted session of this repository, newest first. all: every project's sessions on this machine.",
         }),
       ),
       limit: Optional(
@@ -106,7 +115,7 @@ export function registerRecallTool(pi: ExtensionAPI): void {
         query?: string;
         expand?: number[];
         page?: number;
-        scope?: "active" | "all";
+        scope?: RecallScope;
         limit?: number;
       },
       _signal: AbortSignal | undefined,
@@ -114,12 +123,12 @@ export function registerRecallTool(pi: ExtensionAPI): void {
       ctx: ExtensionContext,
     ) {
           const scope = params.scope ?? "active";
+          const sessionFile = ctx.sessionManager.getSessionFile() ?? undefined;
+          const manager = ctx.sessionManager as unknown as LineageSessionManagerLike;
           const result = searchDcpRecall({
-            sessionFile: ctx.sessionManager.getSessionFile() ?? undefined,
-            lineageEntryIds:
-              scope === "all"
-                ? undefined
-                : activeLineageIds(ctx.sessionManager as unknown as LineageSessionManagerLike),
+            sessionFile,
+            projectSessionDir: manager.getSessionDir?.() ?? (sessionFile ? dirname(sessionFile) : undefined),
+            lineageEntryIds: scope === "active" ? activeLineageIds(manager) : undefined,
             ...params,
           });
 
@@ -134,6 +143,7 @@ export function registerRecallTool(pi: ExtensionAPI): void {
 interface LineageSessionManagerLike {
   getTree?: () => Array<{ id: string; parentId: string | null }>;
   getLeafId?: () => string | undefined;
+  getSessionDir?: () => string;
 }
 
 /** Active-lineage entry ids: walk the leaf-parent chain through the
@@ -165,9 +175,11 @@ export function searchDcpRecall(options: RecallOptions): RecallResult {
     scope,
     options.sessionFile,
     options.rawSessionDir,
+    options.projectSessionDir,
     options.lineageEntryIds,
   );
-  if (scope === "all") {
+  if (scope !== "active") {
+    // pi-task provenance belongs to this project: it joins every scope wider than the live session
     const taskHistoryFile = options.taskHistoryFile ?? findTaskHistoryFile(process.cwd());
     entries.push(...buildTaskHistoryEntries(taskHistoryFile, entries.length + 1));
   }
@@ -210,18 +222,18 @@ export function searchDcpRecall(options: RecallOptions): RecallResult {
 }
 
 function buildRecallEntries(
-  scope: "active" | "all",
+  scope: RecallScope,
   sessionFile?: string,
   rawSessionDir?: string,
+  projectSessionDir?: string,
   lineageEntryIds?: Set<string>,
 ): RecallEntry[] {
   const entries: RecallEntry[] = [];
   let index = 1;
 
-  for (const path of listRawSessionFiles(scope, sessionFile, rawSessionDir)) {
+  for (const path of listRawSessionFiles(scope, sessionFile, rawSessionDir, projectSessionDir)) {
     const stat = safeStat(path);
     const sessionKey = rawSessionKey(path);
-    if (scope === "active" && sessionFile && path !== sessionFile) continue;
     for (const raw of readJsonlLines(path)) {
       if (!shouldIncludeJsonlEntry(raw)) continue;
       const text = jsonlText(raw);
@@ -245,14 +257,14 @@ function buildRecallEntries(
 }
 
 function listRawSessionFiles(
-  scope: "active" | "all",
+  scope: RecallScope,
   sessionFile?: string,
   rawSessionDir = RAW_SESSION_DIR,
+  projectSessionDir?: string,
 ): string[] {
-  if (scope === "active" && sessionFile && existsSync(sessionFile))
-    return [sessionFile];
-  if (scope === "active") return [];
-  if (!existsSync(rawSessionDir)) return [];
+  if (scope === "active") return sessionFile && existsSync(sessionFile) ? [sessionFile] : [];
+  const root = scope === "project" ? projectSessionDir : rawSessionDir;
+  if (!root || !existsSync(root)) return [];
   const files: string[] = [];
   const walk = (dir: string) => {
     for (const name of readdirSync(dir)) {
@@ -263,12 +275,12 @@ function listRawSessionFiles(
       if (stat.isFile() && /\.jsonl?$/.test(name)) files.push(path);
     }
   };
-  walk(rawSessionDir);
+  walk(root);
   files.sort(
     (a, b) =>
       Number(safeStat(b)?.mtimeMs ?? 0) - Number(safeStat(a)?.mtimeMs ?? 0),
   );
-  return scope === "all" ? files.slice(0, 200) : files.slice(0, 20);
+  return files.slice(0, FILE_CAP[scope]);
 }
 
 function findTaskHistoryFile(cwd: string): string | undefined {
@@ -389,7 +401,7 @@ function findTaskTranscript(
 }
 
 // ─── Sig-keyed JSONL line cache ─────────────────────────────────────────────
-// scope:"all" reads up to 200 session files synchronously; expand
+// scope:"project"/"all" read up to 60/200 session files synchronously; expand
 // follow-ups would re-parse everything on every call. Cache parsed lines
 // per file keyed by (mtimeMs, size) — the same signature pattern pi-task
 // uses for transcript re-parsing — with a hard bound on entries and bytes.
