@@ -31,7 +31,7 @@ A hand-written slash command at `.pi/prompts/<name>.md` (`/verify`, `/init`, `/r
 _Avoid_: "wrapper" (the generated wrapper layer was removed 2026-08-30), "alias"
 
 **Memory record**:
-One identity-addressed Markdown file the `pi-memory-md` extension keeps under `~/.pi/memory-md/projects/<slug>/records/` — `state.<id>` for a fact still true, `event.<id>` for a finding tied to a moment. The harness tier of distilled knowledge; outside git, per machine.
+One identity-addressed Markdown file the `pi-workspace-memory` extension keeps under `~/.pi/memory-md/projects/<slug>/records/` — `state.<id>` for a fact still true, `event.<id>` for a finding tied to a moment. The harness tier of distilled knowledge; outside git, per machine.
 _Avoid_: "MEMORY.md" (retired, ADR 0002), "note"
 
 **Lock**:

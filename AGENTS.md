@@ -25,7 +25,7 @@ There is no bundled root `lint` script; do not report lint as passing unless a d
 ## Boundaries and Safety
 
 - `vendor/mattpocock-skills/` is upstream source of truth for process. Proposals to change it go upstream (a PR to mattpocock/skills) or into the harness layer; never a local patch.
-- Durable distilled project knowledge lives in `pi-memory-md` records (the `memory` skill owns its discipline, ADR 0002); domain vocabulary belongs in `CONTEXT.md`, real tradeoffs in `docs/adr/`, work units in the issue tracker.
+- Durable distilled project knowledge lives in `pi-workspace-memory` records (the `memory` skill owns its discipline, ADR 0002); domain vocabulary belongs in `CONTEXT.md`, real tradeoffs in `docs/adr/`, work units in the issue tracker.
 - Do not edit generated or runtime state under `node_modules/`, `.pi/node_modules/`, `.pi/git/`, `.pi/npm/`, `.pi/sessions/`, `.pi/task-exits/`, `.pi/artifacts/`, and `.pi/task-session-history.json`.
 - Inspect `git status --short` before editing. Preserve unrelated user changes.
 - Treat `.pi/extensions/dcp/`, `.pi/extensions/skill-tool/`, `.pi/extensions/tracker/`, `.pi/settings.json`, shell hooks, and package lifecycle scripts as sensitive. Add focused tests before behavior changes.

@@ -5,9 +5,9 @@ description: ALWAYS check durable project memory (memory_search) before non-triv
 
 # Memory
 
-Durable project knowledge lives in the `pi-memory-md` extension: per-project records under `~/.pi/memory-md/projects/<project-slug>/records/`, reached through the `memory_search`, `memory_read`, `memory_write`, and `memory_delete` tools. The extension injects the newest records' metadata into the first turn; everything else is on demand.
+Durable project knowledge lives in the `pi-workspace-memory` extension (formerly `pi-memory-md`): per-project records under `~/.pi/memory-md/projects/<project-slug>/records/`, reached through the `memory_search`, `memory_read`, `memory_write`, and `memory_delete` tools. The extension injects the newest records' metadata into the first turn, and when another session changes the project's records the next turn carries a short `+ ~ −` notice of the changed ids; everything else is on demand.
 
-If the memory tools are absent from the tool list, the host has not installed `pi-memory-md` (`pi install git:github.com/sting8k/pi-memory-md`). Say so once and continue without memory; never fall back to an ad-hoc file.
+If the memory tools are absent from the tool list, the host has not installed `pi-workspace-memory` (`pi install git:github.com/sting8k/pi-workspace-memory`). Say so once and continue without memory; never fall back to an ad-hoc file.
 
 ## When to load
 

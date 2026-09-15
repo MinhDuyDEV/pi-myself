@@ -1,11 +1,11 @@
 ---
-description: Review this session for durable learnings and record them as pi-memory-md records (state for facts still true, event for findings)
+description: Review this session for durable learnings and record them as pi-workspace-memory records (state for facts still true, event for findings)
 argument-hint: "[focus: what to review]"
 ---
 
 # Remember: $ARGUMENTS
 
-Follow the memory skill. If the `memory_write` tool is missing, stop and say the host has no `pi-memory-md` installed.
+Follow the memory skill. If the `memory_write` tool is missing, stop and say the host has no `pi-workspace-memory` installed.
 
 1. Run `memory_search` without a query to see what the project already remembers; then search the topics this session touched.
 2. Review THIS session's work: what did we learn that a future session should not have to rediscover — patterns, gotchas, debugging outcomes, environment facts, decisions with their reasons? A lesson the search in step 1 shows the project already recorded is a failed record: follow the memory skill's promotion rule instead of writing it again.

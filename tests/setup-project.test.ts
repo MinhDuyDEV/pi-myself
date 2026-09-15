@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -15,8 +15,18 @@ import { test } from "node:test";
 const ROOT = resolve(import.meta.dirname, "..");
 const SCRIPT = join(ROOT, "scripts", "setup-project.mjs");
 
-function runScript(target: string, home?: string): string {
-	return execFileSync(process.execPath, [SCRIPT, target], { encoding: "utf8", env: { ...process.env, ...(home ? { HOME: home } : {}) } });
+function runScript(target: string, home?: string, script = SCRIPT): string {
+	return execFileSync(process.execPath, [script, target], { encoding: "utf8", env: { ...process.env, ...(home ? { HOME: home } : {}) } });
+}
+
+/** A copy of the package's provisioned surface that a test can "upgrade"; the script treats its own parent as the package. */
+function fakePackage(): { root: string; script: string } {
+	const root = mkdtempSync(join(tmpdir(), "pi-myself-pkg-"));
+	mkdirSync(join(root, "scripts"));
+	copyFileSync(SCRIPT, join(root, "scripts", "setup-project.mjs"));
+	cpSync(join(ROOT, ".pi", "agents"), join(root, ".pi", "agents"), { recursive: true });
+	copyFileSync(join(ROOT, ".pi", "APPEND_SYSTEM.md"), join(root, ".pi", "APPEND_SYSTEM.md"));
+	return { root, script: join(root, "scripts", "setup-project.mjs") };
 }
 
 function packagedAgentFiles(): string[] {
@@ -65,12 +75,12 @@ test("setup-project adds enableSkillCommands without touching keys the project a
 	assert.equal(created.enableSkillCommands, true, "a fresh project gets /skill: commands enabled");
 });
 
-test("setup-project reports the pi-memory-md slug and warns when that slug already has records", () => {
+test("setup-project reports the pi-workspace-memory slug and warns when that slug already has records", () => {
 	const home = mkdtempSync(join(tmpdir(), "pi-myself-home-"));
 	const target = join(mkdtempSync(join(tmpdir(), "pi-myself-project-")), "My App");
 	mkdirSync(target, { recursive: true });
 	const fresh = runScript(target, home);
-	assert.match(fresh, /memory: pi-memory-md slug "my-app" → .*\/\.pi\/memory-md\/projects\/my-app \(created on the first memory_write\)/);
+	assert.match(fresh, /memory: pi-workspace-memory slug "my-app" → .*\/\.pi\/memory-md\/projects\/my-app \(created on the first memory_write\)/);
 	assert.doesNotMatch(fresh, /warning: a memory directory/);
 
 	mkdirSync(join(home, ".pi", "memory-md", "projects", "my-app", "records"), { recursive: true });
@@ -78,22 +88,68 @@ test("setup-project reports the pi-memory-md slug and warns when that slug alrea
 	assert.match(shared, /"my-app" → .* \(ALREADY EXISTS\)/);
 	assert.match(shared, /warning: a memory directory for this slug already exists/);
 
-	// a configured localPath is honoured
+	// a configured localPath is honoured under the current key, and under the legacy key as a fallback
 	mkdirSync(join(home, ".pi", "agent"), { recursive: true });
-	writeFileSync(join(home, ".pi", "agent", "settings.json"), JSON.stringify({ "pi-memory-md": { localPath: "~/custom-memory" } }));
+	const settingsPath = join(home, ".pi", "agent", "settings.json");
+	writeFileSync(settingsPath, JSON.stringify({ "pi-workspace-memory": { localPath: "~/custom-memory" } }));
 	assert.match(runScript(target, home), /\/custom-memory\/projects\/my-app \(created on the first memory_write\)/);
+	writeFileSync(settingsPath, JSON.stringify({ "pi-memory-md": { localPath: "~/legacy-memory" } }));
+	assert.match(runScript(target, home), /\/legacy-memory\/projects\/my-app \(created on the first memory_write\)/);
+	writeFileSync(settingsPath, JSON.stringify({ "pi-workspace-memory": { localPath: "~/new-memory" }, "pi-memory-md": { localPath: "~/legacy-memory" } }));
+	assert.match(runScript(target, home), /\/new-memory\/projects\/my-app /, "the current key wins over the legacy key");
 });
 
-test("setup-project is idempotent and refreshes file drift", () => {
+test("setup-project is idempotent and never overwrites or restores a copy the project edited or deleted", () => {
 	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
 	runScript(target);
+	const baseline = JSON.parse(readFileSync(join(target, ".pi", "pi-myself-provisioned.json"), "utf8"));
+	assert.deepEqual(Object.keys(baseline.files).sort(), [...packagedAgentFiles().map((name) => `agents/${name}`), "APPEND_SYSTEM.md"].sort());
+	assert.match(runScript(target), /\b0 created, 0 updated, 0 kept\b/, "re-run must be a no-op");
 
-	const again = runScript(target);
-	assert.match(again, /\b0 created, 0 updated\b/, "re-run must be a no-op");
+	const edited = join(target, ".pi", "agents", "reviewer.md");
+	writeFileSync(edited, `${readFileSync(edited, "utf8")}\nproject rule\n`);
+	rmSync(join(target, ".pi", "APPEND_SYSTEM.md"));
+	const rerun = runScript(target);
+	assert.match(rerun, /\b0 created, 0 updated, 2 kept\b/);
+	assert.doesNotMatch(rerun, /^kept/m, "the package did not change those files, so there is nothing to report");
+	assert.ok(readFileSync(edited, "utf8").includes("project rule"), "a project edit survives");
+	assert.ok(!existsSync(join(target, ".pi", "APPEND_SYSTEM.md")), "a project deletion survives");
+});
 
+test("setup-project takes a package update into untouched copies and names the kept ones", () => {
+	const pkg = fakePackage();
+	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	runScript(target, undefined, pkg.script);
+	const agents = join(target, ".pi", "agents");
+	writeFileSync(join(agents, "reviewer.md"), `${readFileSync(join(agents, "reviewer.md"), "utf8")}\nproject rule\n`);
+	rmSync(join(agents, "designer.md"));
+
+	for (const name of ["general.md", "reviewer.md", "designer.md"]) appendFileSync(join(pkg.root, ".pi", "agents", name), "\nupstream change\n");
+	writeFileSync(join(pkg.root, ".pi", "agents", "new-role.md"), "---\ndescription: a role the package added\n---\nbody\n");
+	const upgraded = runScript(target, undefined, pkg.script);
+
+	assert.match(upgraded, /updated\s+agents\/general\.md/);
+	assert.ok(readFileSync(join(agents, "general.md"), "utf8").includes("upstream change"), "an untouched copy takes the update");
+	assert.match(upgraded, /kept\s+agents\/reviewer\.md \(edited in this project and changed in the package/);
+	const reviewer = readFileSync(join(agents, "reviewer.md"), "utf8");
+	assert.ok(reviewer.includes("project rule") && !reviewer.includes("upstream change"), "an edited copy is left as the project wrote it");
+	assert.match(upgraded, /kept\s+agents\/designer\.md \(removed in this project/);
+	assert.ok(!existsSync(join(agents, "designer.md")), "a deleted copy is not brought back");
+	assert.match(upgraded, /created\s+agents\/new-role\.md/);
+
+	const settled = runScript(target, undefined, pkg.script);
+	assert.match(settled, /\b0 created, 0 updated\b/);
+	assert.doesNotMatch(settled, /^kept/m, "a kept copy is reported once per package change, not on every run");
+});
+
+test("setup-project keeps a differing copy that predates the baseline", () => {
+	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	runScript(target);
+	rmSync(join(target, ".pi", "pi-myself-provisioned.json"));
 	const probe = join(target, ".pi", "agents", "reviewer.md");
-	writeFileSync(probe, `${readFileSync(probe, "utf8")}\ndrift: true\n`);
-	const refreshed = runScript(target);
-	assert.match(refreshed, /updated\s+agents\/reviewer\.md/, "a drifted role must be refreshed");
-	assert.ok(!readFileSync(probe, "utf8").includes("drift: true"), "refresh must restore package content");
+	writeFileSync(probe, `${readFileSync(probe, "utf8")}\nproject rule\n`);
+
+	assert.match(runScript(target), /kept\s+agents\/reviewer\.md \(differs from the package and predates the baseline/);
+	assert.ok(readFileSync(probe, "utf8").includes("project rule"));
+	assert.ok(existsSync(join(target, ".pi", "pi-myself-provisioned.json")), "the run records a baseline");
 });

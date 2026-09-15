@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { packageRoot, resolveRepoRoot } from "../lib/repo-root.js";
-import { provisionDrift } from "../provision.js";
+import provisionExtension from "../provision.js";
 
 const PKG = resolve(import.meta.dirname, "..", "..", "..");
 
@@ -32,23 +33,11 @@ test("resolveRepoRoot returns the git top-level from a nested cwd, else the cwd 
 	}
 });
 
-test("provisionDrift: no drift in the checkout, missing/stale in a consumer, current after setup-project", () => {
-	assert.deepEqual(provisionDrift(PKG, PKG), { missing: [], stale: [] }, "checkout layout is never out of date with itself");
-
-	const project = mkdtempSync(join(tmpdir(), "consumer-"));
-	try {
-		const before = provisionDrift(PKG, project);
-		assert.ok(before.missing.includes("APPEND_SYSTEM.md"));
-		assert.ok(before.missing.includes("agents/general.md"));
-		assert.deepEqual(before.stale, []);
-
-		execFileSync(process.execPath, [join(PKG, "scripts", "setup-project.mjs"), project]);
-		assert.deepEqual(provisionDrift(PKG, project), { missing: [], stale: [] }, "setup-project makes it current");
-
-		const probe = join(project, ".pi", "agents", "reviewer.md");
-		writeFileSync(probe, `${readFileSync(probe, "utf8")}\nlocal edit\n`);
-		assert.deepEqual(provisionDrift(PKG, project).stale, ["agents/reviewer.md"]);
-	} finally {
-		rmSync(project, { recursive: true, force: true });
-	}
+test("provision registers /setup-pi-myself and never checks the provisioned copies at session start", () => {
+	const events: string[] = [];
+	const commands: string[] = [];
+	const pi = { on: (event: string) => events.push(event), registerCommand: (name: string) => commands.push(name) };
+	provisionExtension(pi as unknown as ExtensionAPI);
+	assert.deepEqual(commands, ["setup-pi-myself"]);
+	assert.deepEqual(events, [], "agents and APPEND_SYSTEM.md are the project's to edit — no warning hook of any kind");
 });

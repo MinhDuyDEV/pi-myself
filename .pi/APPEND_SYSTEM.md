@@ -69,7 +69,7 @@ At phase boundaries, decide in order: continue (if this phase is a primary sourc
 
 ## Memory & domain docs
 
-Durable project knowledge lives in `pi-memory-md` records (`memory_search` / `memory_read` / `memory_write`; the `memory` skill owns the discipline, ADR 0002). Project vocabulary belongs in `CONTEXT.md`; hard-to-reverse decisions in `docs/adr/`; work units in the issue tracker; research reports in repo files. Never duplicate across the tiers.
+Durable project knowledge lives in `pi-workspace-memory` records (`memory_search` / `memory_read` / `memory_write`; the `memory` skill owns the discipline, ADR 0002). Project vocabulary belongs in `CONTEXT.md`; hard-to-reverse decisions in `docs/adr/`; work units in the issue tracker; research reports in repo files. Never duplicate across the tiers.
 
 **Saving is part of the work, not an afterthought.** When a turn surfaces a durable learning — a pattern, a gotcha, a debugging outcome, an environment fact, a decision with its reason — write one record with `memory_write` before ending the turn (`state` for what stays true, `event` for a finding tied to a moment; structured fields, not a prose dump). If nothing durable surfaced, write nothing. Searching memory at the start of non-trivial work is how you find out the project already knows something you were about to rediscover. `/remember` re-runs the review on demand. If the memory tools are absent, say so once and continue; never create an ad-hoc memory file.
 

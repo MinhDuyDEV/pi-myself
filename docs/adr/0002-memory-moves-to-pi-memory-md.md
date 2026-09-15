@@ -2,6 +2,8 @@
 
 Supersedes ADR 0001 (session-end memory nudge).
 
+**Note (2026-09-15):** the extension was renamed upstream to `pi-workspace-memory` (`git:github.com/sting8k/pi-workspace-memory`). Storage, tools, and this decision are unchanged; the text below keeps the name it was decided under.
+
 ## Context
 
 ADR 0001 built the memory layer on a single hand-edited file, `.pi/MEMORY.md`, with three cooperating mechanisms: an in-turn saving rule in APPEND_SYSTEM, a `memory-nudge` extension that reminded at quit when the file had not changed, and a `/remember` prompt. Two weeks of use produced five bullets, all written on one day; the quit-time nudge was swallowed by the TUI's last frame (recorded in ADR 0001 itself), so the only mechanism that actually fired was the agent's own discipline.

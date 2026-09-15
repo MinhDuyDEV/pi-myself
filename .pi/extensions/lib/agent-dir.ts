@@ -12,8 +12,8 @@ import { join } from "node:path";
  *   default session layout (`--Users-me-repo--`) — mirror of
  *   `getDefaultSessionDirPath` (dist/core/session-manager.js).
  *
- * pi-memory-md is not pi: it hardcodes `~/.pi/agent/settings.json`, so code
- * mirroring pi-memory-md (scripts/setup-project.mjs) must not use this.
+ * pi-workspace-memory is not pi: it hardcodes `~/.pi/agent/settings.json`, so code
+ * mirroring pi-workspace-memory (scripts/setup-project.mjs) must not use this.
  */
 
 export function agentDir(env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string {

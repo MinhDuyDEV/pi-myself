@@ -42,7 +42,7 @@ test("hand-written prompts keep the evidence contract and stay off the dropped p
 		assert.ok(frontmatterField(fm, "argument-hint"), `${file} needs an argument-hint`);
 		assert.match(content, /NOT DECLARED/, `${file} lost the NOT DECLARED ≠ PASS rule`);
 		assert.doesNotMatch(content, /\.pi\/artifacts\//, `${file} references the dropped artifacts system`);
-		assert.doesNotMatch(content, /\.pi\/MEMORY\.md/, `${file} references the retired .pi/MEMORY.md memory file (memory lives in pi-memory-md now)`);
+		assert.doesNotMatch(content, /\.pi\/MEMORY\.md/, `${file} references the retired .pi/MEMORY.md memory file (memory lives in pi-workspace-memory now)`);
 		assert.doesNotMatch(content, DROPPED_PROCESS_RE, `${file} routes to a dropped prompt (/create, /plan, /ship, /fix)`);
 	}
 });

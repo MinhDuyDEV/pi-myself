@@ -16,11 +16,15 @@
  * (pi.skills / pi.prompts / pi.extensions) reaches the session and task
  * children through the PackageManager.
  *
- * Idempotent: files are re-copied only when content differs; settings are
- * merged key by key (existing keys win, missing harness keys are added); no
- * deletion, no other paths. Run from any directory; the target is the
- * argument or the current working directory.
+ * Idempotent, and the copies belong to the project: a copy is refreshed only
+ * while it still matches what the package last shipped (sha256 per file in
+ * `.pi/pi-myself-provisioned.json`); a copy the project edited or deleted is
+ * kept, and reported when the package changed that file. Settings are merged
+ * key by key (existing keys win, missing harness keys are added); no other
+ * paths. Run from any directory; the target is the argument or the current
+ * working directory.
  */
+import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -39,19 +43,6 @@ function isAgentFile(path) {
 	return /^---\n/.test(readFileSync(path, "utf8"));
 }
 
-function syncFile(source, target) {
-	if (!existsSync(target)) {
-		mkdirSync(join(target, ".."), { recursive: true });
-		copyFileSync(source, target);
-		return "created";
-	}
-	if (readFileSync(target, "utf8") !== readFileSync(source, "utf8")) {
-		copyFileSync(source, target);
-		return "updated";
-	}
-	return "unchanged";
-}
-
 const agentsSource = join(packagePi, "agents");
 const appendSystemSource = join(packagePi, "APPEND_SYSTEM.md");
 if (!existsSync(agentsSource) || !existsSync(appendSystemSource)) {
@@ -59,20 +50,62 @@ if (!existsSync(agentsSource) || !existsSync(appendSystemSource)) {
 	process.exit(1);
 }
 
-const counts = { created: 0, updated: 0, unchanged: 0 };
-function record(outcome, label) {
+/** What the package shipped per provisioned file at the last run — how an untouched copy is told apart from a project edit. */
+const BASELINE = join(targetPi, "pi-myself-provisioned.json");
+const sha256 = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+
+function readBaseline() {
+	if (!existsSync(BASELINE)) return {};
+	try {
+		return JSON.parse(readFileSync(BASELINE, "utf8")).files ?? {};
+	} catch {
+		console.log(`warning: ${BASELINE} is not valid JSON — every copy that differs from the package is treated as a project edit`);
+		return {};
+	}
+}
+
+const shippedBefore = readBaseline();
+const shippedNow = {};
+
+/** [outcome, note?] — a kept copy carries a note only when the package changed that file since the last run. */
+function syncFile(source, target, rel) {
+	const shipped = sha256(source);
+	const previous = shippedBefore[rel];
+	shippedNow[rel] = shipped;
+	if (!existsSync(target)) {
+		if (previous !== undefined) {
+			return ["kept", previous === shipped ? undefined : "removed in this project; delete its entry in .pi/pi-myself-provisioned.json to restore it"];
+		}
+		mkdirSync(join(target, ".."), { recursive: true });
+		copyFileSync(source, target);
+		return ["created"];
+	}
+	const current = sha256(target);
+	if (current === shipped) return ["unchanged"];
+	if (current === previous) {
+		copyFileSync(source, target);
+		return ["updated"];
+	}
+	if (previous === undefined) return ["kept", "differs from the package and predates the baseline; delete it and rerun to take the package version"];
+	return ["kept", previous === shipped ? undefined : "edited in this project and changed in the package — merge by hand"];
+}
+
+const counts = { created: 0, updated: 0, kept: 0, unchanged: 0 };
+function record([outcome, note], label) {
 	counts[outcome]++;
-	if (outcome !== "unchanged") console.log(`${outcome.padEnd(8)} ${label}`);
+	if (outcome === "created" || outcome === "updated") console.log(`${outcome.padEnd(8)} ${label}`);
+	else if (note) console.log(`${outcome.padEnd(8)} ${label} (${note})`);
 }
 
 // 1. task roles
 mkdirSync(join(targetPi, "agents"), { recursive: true });
 for (const entry of readdirSync(agentsSource).filter((n) => n.endsWith(".md") && isAgentFile(join(agentsSource, n)))) {
-	record(syncFile(join(agentsSource, entry), join(targetPi, "agents", entry)), `agents/${entry}`);
+	const rel = `agents/${entry}`;
+	record(syncFile(join(agentsSource, entry), join(targetPi, rel), rel), rel);
 }
 
 // 2. workflow rules
-record(syncFile(appendSystemSource, join(targetPi, "APPEND_SYSTEM.md")), "APPEND_SYSTEM.md");
+record(syncFile(appendSystemSource, join(targetPi, "APPEND_SYSTEM.md"), "APPEND_SYSTEM.md"), "APPEND_SYSTEM.md");
 
 // 3. project settings (merge; never overwrite a key the project already sets)
 const settingsPath = join(targetPi, "settings.json");
@@ -90,30 +123,42 @@ const missing = Object.entries(HARNESS_SETTINGS).filter(([key]) => !(key in sett
 if (missing.length > 0) {
 	for (const [key, value] of missing) settings[key] = value;
 	writeFileSync(settingsPath, `${JSON.stringify(settings, null, "\t")}\n`);
-	record(settingsExisted ? "updated" : "created", `settings.json (+${missing.map(([k]) => k).join(", ")})`);
+	record([settingsExisted ? "updated" : "created"], `settings.json (+${missing.map(([k]) => k).join(", ")})`);
 } else {
 	counts.unchanged++;
 }
 
-console.log(`setup-project: ${counts.created} created, ${counts.updated} updated, ${counts.unchanged} unchanged in ${targetPi}`);
+// 4. baseline for the next run (skipped in the checkout: the package is not its own consumer)
+if (targetRoot !== packageRoot) {
+	const files = Object.fromEntries(Object.entries(shippedNow).sort(([a], [b]) => a.localeCompare(b)));
+	const note = "Written by /setup-pi-myself: sha256 of each file as the pi-myself package shipped it at the last run. Commit it; edit the provisioned copies freely.";
+	const body = `${JSON.stringify({ note, files }, null, "\t")}\n`;
+	if (!existsSync(BASELINE) || readFileSync(BASELINE, "utf8") !== body) writeFileSync(BASELINE, body);
+}
 
-// 4. memory slug check (pi-memory-md keys memory by the git root's folder name,
+console.log(`setup-project: ${counts.created} created, ${counts.updated} updated, ${counts.kept} kept, ${counts.unchanged} unchanged in ${targetPi}`);
+
+// 5. memory slug check (pi-workspace-memory keys memory by the git root's folder name,
 //    so two repos with the same folder name silently share one memory)
 const memory = memorySlugStatus(targetRoot);
-console.log(`memory: pi-memory-md slug "${memory.slug}" → ${memory.dir}${memory.exists ? " (ALREADY EXISTS)" : " (created on the first memory_write)"}`);
+console.log(`memory: pi-workspace-memory slug "${memory.slug}" → ${memory.dir}${memory.exists ? " (ALREADY EXISTS)" : " (created on the first memory_write)"}`);
 if (memory.exists) {
 	console.log(
 		"warning: a memory directory for this slug already exists before this repository had any session — another checkout with the same folder name may be sharing it; rename the folder if that is not intended.",
 	);
 }
 
-/** Mirror of pi-memory-md's getProjectSlug / getMemoryDir: folder-name slug under localPath/projects. */
+/**
+ * Mirror of pi-workspace-memory's getProjectSlug / getMemoryDir / loadSettings: folder-name slug
+ * under localPath/projects. The settings block is `pi-workspace-memory`, falling back to the
+ * whole legacy `pi-memory-md` block only when the new key is absent (the package was renamed).
+ */
 export function memorySlugStatus(root, home = process.env.HOME ?? "") {
 	const slug = basename(root).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
 	let localPath = join(home, ".pi", "memory-md");
 	try {
 		const settings = JSON.parse(readFileSync(join(home, ".pi", "agent", "settings.json"), "utf8"));
-		const configured = settings?.["pi-memory-md"]?.localPath;
+		const configured = (settings?.["pi-workspace-memory"] ?? settings?.["pi-memory-md"])?.localPath;
 		if (typeof configured === "string" && configured.trim()) localPath = configured.replace(/^~(?=$|\/)/, home);
 	} catch {
 		/* no user settings: defaults */
