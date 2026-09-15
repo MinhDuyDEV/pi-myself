@@ -3,12 +3,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 /**
  * Best-effort deferral between `session_compact` firing and the follow-up send.
  *
- * `session_compact` is documented as firing *after* context compaction, so in
- * principle the runtime is ready and no deferral is needed. The one-tick delay
- * (0ms) is kept as cheap insurance so a manual `/compact` can finish any
- * post-compaction runtime reconnection before a new prompt begins. It is a
- * best-effort heuristic, not a contract: delivery is additionally race-safe
- * because we pick `deliverAs: "followUp"` whenever the agent is not idle.
+ * `session_compact` fires after compaction has rebuilt the agent state, so the
+ * runtime is ready. The one-tick delay (0ms) is cheap insurance so `/compact`
+ * can finish any post-compaction work before a new prompt begins; delivery is
+ * additionally race-safe because we pick `deliverAs: "followUp"` whenever the
+ * agent is not idle.
  */
 export const CONTINUATION_DELAY_MS = 0;
 
@@ -18,25 +17,43 @@ export interface CompactionSignal {
   willRetry: boolean;
 }
 
+/** How the most recent agent run ended, as far as resuming is concerned. */
+export type RunEnd = "finished" | "interrupted";
+
+/**
+ * Classify a run from its `agent_end` messages. A run is interrupted when its
+ * last assistant message did not complete. `/compact` calls `abort()` before it
+ * compacts, and the abort surfaces as `aborted` or — when it lands while a tool
+ * runs and the provider stream throws — as `error` ("This operation was
+ * aborted", observed with openai-completions on pi 0.85.1). A run that failed
+ * on its own is unfinished too, so `/compact` after it resumes as well.
+ */
+export function classifyRunEnd(messages: ReadonlyArray<unknown>): RunEnd {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const message = messages[i] as { role?: unknown; stopReason?: unknown } | undefined;
+    if (message?.role !== "assistant") continue;
+    return message.stopReason === "aborted" || message.stopReason === "error" ? "interrupted" : "finished";
+  }
+  return "finished";
+}
+
 /**
  * Decide whether this compaction should trigger an automatic continuation.
  *
- * Guards against the two failure modes the naive version had:
+ * Only a manual compaction that cut a run short resumes:
  *
- * 1. Overflow recovery: when `willRetry` is true, Pi itself retries the aborted
- *    turn. Injecting our own continuation would spawn a competing turn, so we
- *    stay out of its way.
- * 2. Runaway loop: automatic (`threshold`) compaction chained off a continuation
- *    we already injected is skipped (`inflight === true`), breaking the
- *    "continuation -> huge output -> threshold compaction -> continuation" cycle.
- *    Manual and non-retried overflow compactions always resume: they are fresh,
- *    deliberate checkpoints where Pi will not continue on its own.
+ * - `threshold` and `overflow`: Pi either compacts inside the run and resumes
+ *   it itself, or compacts after the run finished; a continuation here lands as
+ *   an unsolicited extra turn (observed after a post-run threshold compaction).
+ * - `willRetry`: Pi retries the aborted turn itself.
+ * - `manual` after a finished run: the user compacted between tasks and is
+ *   about to say what comes next.
+ *
+ * Esc followed by `/compact` also counts as interrupted — the run ended aborted
+ * and nothing started since — so it resumes too.
  */
-export function shouldResume(signal: CompactionSignal, inflight: boolean): boolean {
-  if (signal.willRetry) return false;
-  if (signal.reason === "manual") return true;
-  if (signal.reason === "overflow") return true;
-  return !inflight;
+export function shouldResume(signal: CompactionSignal, lastRun: RunEnd | undefined): boolean {
+  return signal.reason === "manual" && !signal.willRetry && lastRun === "interrupted";
 }
 
 export const buildContinuationPrompt = (
@@ -52,7 +69,7 @@ export const buildContinuationPrompt = (
           "Do not launch a nested Pi process or open the session with `pi --session`.",
         ].join(" ");
 
-  return `Compaction has just completed. Resume the existing task rather than waiting for another user prompt.
+  return `A manual compaction interrupted the running task and has just completed. Resume the existing task rather than waiting for another user prompt.
 
 ${sessionSource}
 The new compaction entry ID is ${JSON.stringify(compactionEntryId)}.
@@ -68,28 +85,20 @@ Before continuing:
 };
 
 /**
- * Automatically resumes work after successful Pi compactions.
+ * Resumes a task that a manual `/compact` interrupted.
  *
  * Behaviour:
- * - Never interferes with Pi's own overflow recovery (`willRetry`).
- * - Breaks chained automatic compaction: a `threshold` compaction that follows a
- *   continuation we injected does not start another one.
- * - Coalesces: a newer compaction cancels an older pending continuation so only
- *   one continuation is ever queued at a time.
- * - Never resumes from a failed compaction (`session_compact_failed`): there is
- *   no compaction entry to anchor recovery to, and a persistent failure (e.g.
- *   provider outage) would make failure-triggered resumes an unbounded loop.
- *   Hard automatic-compaction failures (threshold/overflow) are surfaced via a
- *   warning so the silence of the auto-continuation is explained; manual
- *   failures (Pi rethrows /compact errors itself), user-aborted and Pi-retried
- *   failures stay silent.
- * - `inflight` is cleared when the agent fully settles (`agent_settled`), i.e.
- *   after the continuation turn ends with no pending retry, compaction, or
- *   queued continuation.
+ * - `agent_end` records whether the latest run was interrupted; `agent_start`
+ *   clears it, so only the run immediately before the compaction counts.
+ * - A successful manual compaction after an interrupted run queues one
+ *   continuation and consumes the record.
+ * - Automatic compactions and failed compactions never resume: Pi owns both
+ *   (it resumes in-run threshold compaction, retries overflow, and reports
+ *   compaction errors itself).
+ * - Coalesces: a newer compaction cancels an older pending continuation.
  */
 export default function continueAfterCompaction(pi: ExtensionAPI): void {
-  /** True while a continuation we injected is pending or its turn is running. */
-  let inflight = false;
+  let lastRun: RunEnd | undefined;
   let pendingTimer: ReturnType<typeof setTimeout> | undefined;
 
   const cancelPending = () => {
@@ -99,31 +108,30 @@ export default function continueAfterCompaction(pi: ExtensionAPI): void {
     }
   };
 
+  pi.on("agent_start", () => {
+    lastRun = undefined;
+  });
+
+  pi.on("agent_end", (event) => {
+    lastRun = classifyRunEnd(event.messages);
+  });
+
   pi.on("session_compact", (event, ctx) => {
-    const sessionFile = ctx.sessionManager.getSessionFile();
-    const signal: CompactionSignal = {
-      reason: event.reason,
-      willRetry: event.willRetry,
-    };
+    const signal: CompactionSignal = { reason: event.reason, willRetry: event.willRetry };
+    if (!shouldResume(signal, lastRun)) return;
 
-    if (!shouldResume(signal, inflight)) {
-      // Either Pi is already retrying this turn, or we are breaking a chain of
-      // automatic compactions. Leave `inflight` untouched so the chain stays
-      // broken until the agent settles.
-      return;
-    }
-
-    // Coalesce: only one continuation may be queued at a time.
+    lastRun = undefined;
     cancelPending();
 
-    const prompt = buildContinuationPrompt(sessionFile, event.compactionEntry.id);
-    inflight = true;
+    const prompt = buildContinuationPrompt(
+      ctx.sessionManager.getSessionFile(),
+      event.compactionEntry.id,
+    );
 
     pendingTimer = setTimeout(() => {
       pendingTimer = undefined;
-      // Follow Pi's own guidance for sending user messages from extensions:
-      // plain send when idle (always triggers a turn), followUp when streaming
-      // so the continuation waits for the current turn instead of interrupting it.
+      // Plain send when idle (always triggers a turn); followUp otherwise so the
+      // continuation waits for the current turn instead of interrupting it.
       if (ctx.isIdle()) {
         void pi.sendUserMessage(prompt);
       } else {
@@ -132,36 +140,8 @@ export default function continueAfterCompaction(pi: ExtensionAPI): void {
     }, CONTINUATION_DELAY_MS);
   });
 
-  pi.on("session_compact_failed", (event, ctx) => {
-    // Failures never trigger a continuation:
-    // 1. A failed compaction produces no compaction entry, so there is nothing
-    //    to anchor a recovery prompt to.
-    // 2. Resuming only on success keeps every chain bounded by construction;
-    //    failure-triggered resumes could loop forever on persistent errors.
-    //
-    // Pending continuations and `inflight` are deliberately left untouched:
-    // a queued continuation anchors to an earlier successful compaction and
-    // remains valid regardless of this failure.
-    if (!event.aborted && !event.willRetry && event.reason !== "manual") {
-      // User-aborted compactions need no explanation; willRetry means Pi's own
-      // overflow recovery continues without us; manual /compact failures are
-      // already reported to the caller by Pi itself.
-      const detail = event.errorMessage ? `: ${event.errorMessage}` : "";
-      ctx.ui.notify(
-        `Automatic continuation skipped: compaction failed (${event.reason})${detail}`,
-        "warning",
-      );
-    }
-  });
-
-  pi.on("agent_settled", () => {
-    // The agent run has fully settled with no pending retry, compaction, or
-    // queued continuation — a future automatic compaction may resume again.
-    inflight = false;
-  });
-
   pi.on("session_shutdown", () => {
     cancelPending();
-    inflight = false;
+    lastRun = undefined;
   });
 }
