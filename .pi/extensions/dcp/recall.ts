@@ -1,12 +1,13 @@
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
-import { homedir } from "node:os";
+import { closeSync, existsSync, lstatSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, join, relative, resolve } from "node:path";
 import { Type, Optional } from "typebox";
 import type {
   ExtensionAPI,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { agentDir, defaultSessionDirName } from "../lib/agent-dir.js";
+import { gitTopLevel } from "../lib/repo-root.js";
 import { hasSymlinkComponent, isPathWithin } from "./recall-path.js";
 import { isBrowseDiagnostic, isLowSignalAcknowledgement, rankAndFilter } from "./recall-rank.js";
 import {
@@ -39,31 +40,42 @@ interface RecallOptions {
   page?: number;
   scope?: RecallScope;
   limit?: number;
-  /** Every project's sessions (scope:"all"); defaults to pi's session root. */
+  /** Every project's sessions (scope:"all"); defaults to `<agentDir>/sessions`,
+   * where `PI_CODING_AGENT_DIR` moves the agent dir. */
   rawSessionDir?: string;
-  /** This project's sessions (scope:"project"); defaults to the active
-   * session file's directory, which pi keys by cwd. */
+  /** The active session's directory (scope:"project"). pi's default layout
+   * keys it by launch cwd; a custom session dir (--session-dir,
+   * PI_CODING_AGENT_SESSION_DIR, settings sessionDir) is flat and shared. */
   projectSessionDir?: string;
+  /** This repository's root, in every spelling a launch cwd may have used
+   * (symlinked and real). With it, scope:"project" also reads sessions
+   * launched from a subdirectory and keeps only files whose header cwd lies
+   * inside the repository. */
+  projectRoots?: string[];
   taskHistoryFile?: string;
   /** Active-lineage entry ids from the session manager; entries outside
    * the set are excluded when provided (dead branches stay searchable
    * via scope:"all"). */
   lineageEntryIds?: Set<string>;
+  /** Override the newest-first session file cap of the scope. */
+  fileCap?: number;
 }
 
 export interface RecallResult {
   entries: RecallEntry[];
   rendered: string;
   total: number;
+  /** Session files read vs. files in scope: fewer means older sessions were cut by the cap. */
+  scannedFiles: number;
+  totalFiles: number;
 }
 
 export type RecallScope = "active" | "project" | "all";
 
 const PAGE_SIZE = 5;
-const RAW_SESSION_DIR = join(homedir(), ".pi", "agent", "sessions");
 /** Newest-first file caps per scope: this repo's history is small and
  * relevant; the whole session root (every project, hundreds of MB) is a last
- * resort. */
+ * resort. A cut is always reported in the rendered result. */
 const FILE_CAP: Record<RecallScope, number> = { active: 1, project: 60, all: 200 };
 
 export function registerRecallTool(pi: ExtensionAPI): void {
@@ -128,6 +140,7 @@ export function registerRecallTool(pi: ExtensionAPI): void {
           const result = searchDcpRecall({
             sessionFile,
             projectSessionDir: manager.getSessionDir?.() ?? (sessionFile ? dirname(sessionFile) : undefined),
+            projectRoots: scope === "project" ? projectRootSpellings(ctx.cwd) : undefined,
             lineageEntryIds: scope === "active" ? activeLineageIds(manager) : undefined,
             ...params,
           });
@@ -144,6 +157,23 @@ interface LineageSessionManagerLike {
   getTree?: () => Array<{ id: string; parentId: string | null }>;
   getLeafId?: () => string | undefined;
   getSessionDir?: () => string;
+}
+
+/** The repository root as git reports it (real path) and as the launch cwd
+ * spells it (possibly through a symlink such as /tmp → /private/tmp): pi
+ * names session directories after the launch spelling. Empty outside a git
+ * checkout: there is no repository to widen to, and launching from $HOME
+ * would otherwise adopt every project under it as a subdirectory. */
+export function projectRootSpellings(cwd: string): string[] {
+  const root = gitTopLevel(cwd);
+  if (!root) return [];
+  const spellings = new Set([root]);
+  try {
+    spellings.add(resolve(cwd, relative(realpathSync.native(cwd), root)));
+  } catch {
+    /* cwd vanished: the git spelling alone */
+  }
+  return [...spellings];
 }
 
 /** Active-lineage entry ids: walk the leaf-parent chain through the
@@ -171,18 +201,15 @@ export function activeLineageIds(
 
 export function searchDcpRecall(options: RecallOptions): RecallResult {
   const scope = options.scope ?? "active";
-  const entries = buildRecallEntries(
-    scope,
-    options.sessionFile,
-    options.rawSessionDir,
-    options.projectSessionDir,
-    options.lineageEntryIds,
-  );
+  const sessionFiles = listRawSessionFiles(scope, options);
+  const coverage = { scanned: sessionFiles.files.length, total: sessionFiles.total, scope };
+  const entries = buildRecallEntries(sessionFiles.files, options.lineageEntryIds);
   if (scope !== "active") {
     // pi-task provenance belongs to this project: it joins every scope wider than the live session
     const taskHistoryFile = options.taskHistoryFile ?? findTaskHistoryFile(process.cwd());
     entries.push(...buildTaskHistoryEntries(taskHistoryFile, entries.length + 1));
   }
+  const fileCounts = { scannedFiles: coverage.scanned, totalFiles: coverage.total };
 
   const expanded = options.expand?.length
     ? entries.filter((entry) => options.expand?.includes(entry.index))
@@ -195,12 +222,14 @@ export function searchDcpRecall(options: RecallOptions): RecallResult {
         entries: [],
         total: 0,
         rendered: `Cannot expand indices outside the available entries: ${invalid.join(", ")}.`,
+        ...fileCounts,
       };
     }
     return {
       entries: expanded,
       total: expanded.length,
       rendered: renderExpanded(expanded),
+      ...fileCounts,
     };
   }
 
@@ -217,21 +246,23 @@ export function searchDcpRecall(options: RecallOptions): RecallResult {
   return {
     entries: pageEntries,
     total: queried.length,
-    rendered: renderSearch(pageEntries, queried.length, page, options.query),
+    rendered: renderSearch(pageEntries, queried.length, page, options.query, coverage),
+    ...fileCounts,
   };
 }
 
 function buildRecallEntries(
-  scope: RecallScope,
-  sessionFile?: string,
-  rawSessionDir?: string,
-  projectSessionDir?: string,
+  sessionFiles: string[],
   lineageEntryIds?: Set<string>,
 ): RecallEntry[] {
   const entries: RecallEntry[] = [];
+  // pi's fork and branch-to-new-session copy every entry, id and timestamp
+  // included, into the new file: count each entry once across files. Only
+  // entries carrying both an id and a timestamp (as pi's always do) are merged.
+  const seen = new Set<string>();
   let index = 1;
 
-  for (const path of listRawSessionFiles(scope, sessionFile, rawSessionDir, projectSessionDir)) {
+  for (const path of sessionFiles) {
     const stat = safeStat(path);
     const sessionKey = rawSessionKey(path);
     for (const raw of readJsonlLines(path)) {
@@ -240,6 +271,11 @@ function buildRecallEntries(
       if (!text.trim()) continue;
       const entryId = jsonlId(raw);
       if (lineageEntryIds && entryId && !lineageEntryIds.has(entryId)) continue;
+      if (entryId && jsonlTimestamp(raw) !== undefined) {
+        const copyKey = `${entryId}\u0000${jsonlTimestamp(raw) ?? ""}`;
+        if (seen.has(copyKey)) continue;
+        seen.add(copyKey);
+      }
       const role = jsonlRole(raw);
       entries.push({
         index: index++,
@@ -258,16 +294,71 @@ function buildRecallEntries(
 
 function listRawSessionFiles(
   scope: RecallScope,
-  sessionFile?: string,
-  rawSessionDir = RAW_SESSION_DIR,
-  projectSessionDir?: string,
-): string[] {
-  if (scope === "active") return sessionFile && existsSync(sessionFile) ? [sessionFile] : [];
-  const root = scope === "project" ? projectSessionDir : rawSessionDir;
-  if (!root || !existsSync(root)) return [];
+  options: RecallOptions,
+): { files: string[]; total: number } {
+  if (scope === "active") {
+    const files = options.sessionFile && existsSync(options.sessionFile) ? [options.sessionFile] : [];
+    return { files, total: files.length };
+  }
+  const sessionsRoot = options.rawSessionDir ?? join(agentDir(), "sessions");
+  let candidates: string[];
+  if (scope === "all") {
+    const roots = [sessionsRoot];
+    const projectDir = options.projectSessionDir;
+    // a custom session dir lives outside the default root: every scope wider than the project includes it
+    if (projectDir && !isPathWithin(canonicalPath(sessionsRoot), canonicalPath(projectDir))) roots.push(projectDir);
+    candidates = roots.flatMap(walkSessionFiles);
+  } else {
+    candidates = projectSessionFiles(options.projectSessionDir, options.projectRoots);
+  }
+  const files = [...new Set(candidates)].sort(
+    (a, b) =>
+      Number(safeStat(b)?.mtimeMs ?? 0) - Number(safeStat(a)?.mtimeMs ?? 0),
+  );
+  return { files: files.slice(0, options.fileCap ?? FILE_CAP[scope]), total: files.length };
+}
+
+/** This repository's session files. The active session's directory, plus —
+ * in pi's default per-launch-cwd layout — the sibling directories of
+ * launches from inside the repository (`--Users-me-repo-sub--`). The sibling
+ * name prefix also matches `--Users-me-repo-other--`, and a custom session
+ * dir is shared by every project, so with known roots each file must carry a
+ * header cwd inside the repository; a headerless file is trusted only in the
+ * active session's own directory. */
+function projectSessionFiles(base: string | undefined, projectRoots: string[] | undefined): string[] {
+  if (!base) return [];
+  const roots = projectRoots ?? [];
+  const dirs = [base];
+  const parent = dirname(base);
+  if (roots.length > 0 && /^--.*--$/.test(basename(base))) {
+    const names = roots.map((root) => defaultSessionDirName(resolve(root)));
+    const baseKey = canonicalPath(base);
+    for (const name of safeReaddir(parent)) {
+      if (!names.some((own) => name === own || name.startsWith(`${own.slice(0, -2)}-`))) continue;
+      const path = join(parent, name);
+      const stat = safeLstat(path);
+      if (stat?.isDirectory() && !stat.isSymbolicLink() && canonicalPath(path) !== baseKey) dirs.push(path);
+    }
+  }
+  const files = dirs.flatMap(walkSessionFiles);
+  if (roots.length === 0) return files;
+  // Raw and real spellings on both sides: a session cwd that no longer exists
+  // (a deleted subdirectory, a removed worktree) cannot be realpath'd.
+  const rootSpellings = roots.flatMap((root) => [resolve(root), canonicalPath(root)]);
+  const baseKey = canonicalPath(base);
+  return files.filter((file) => {
+    const cwd = sessionHeaderCwd(file);
+    if (cwd === undefined) return canonicalPath(dirname(file)) === baseKey;
+    const cwdSpellings = [resolve(cwd), canonicalPath(cwd)];
+    return rootSpellings.some((root) => cwdSpellings.some((spelling) => isPathWithin(root, spelling)));
+  });
+}
+
+function walkSessionFiles(root: string): string[] {
+  if (!existsSync(root)) return [];
   const files: string[] = [];
   const walk = (dir: string) => {
-    for (const name of readdirSync(dir)) {
+    for (const name of safeReaddir(dir)) {
       const path = join(dir, name);
       const stat = safeLstat(path);
       if (!stat || stat.isSymbolicLink()) continue;
@@ -276,11 +367,41 @@ function listRawSessionFiles(
     }
   };
   walk(root);
-  files.sort(
-    (a, b) =>
-      Number(safeStat(b)?.mtimeMs ?? 0) - Number(safeStat(a)?.mtimeMs ?? 0),
-  );
-  return files.slice(0, FILE_CAP[scope]);
+  return files;
+}
+
+/** The `cwd` of a v3 session header (the file's first line), read without
+ * loading the whole file. */
+function sessionHeaderCwd(path: string): string | undefined {
+  let fd: number | undefined;
+  try {
+    fd = openSync(path, "r");
+    const buffer = Buffer.alloc(16 * 1024);
+    const bytes = readSync(fd, buffer, 0, buffer.length, 0);
+    const firstLine = buffer.toString("utf8", 0, bytes).split("\n", 1)[0];
+    const header = JSON.parse(firstLine) as { type?: unknown; cwd?: unknown };
+    return header.type === "session" && typeof header.cwd === "string" && header.cwd ? header.cwd : undefined;
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+function canonicalPath(path: string): string {
+  try {
+    return realpathSync.native(path);
+  } catch {
+    return resolve(path);
+  }
+}
+
+function safeReaddir(dir: string): string[] {
+  try {
+    return readdirSync(dir);
+  } catch {
+    return [];
+  }
 }
 
 function findTaskHistoryFile(cwd: string): string | undefined {
@@ -457,7 +578,7 @@ function isBrowseEntry(entry: RecallEntry): boolean {
   const role = entry.role?.toLowerCase() ?? "";
   if (role === "user") return true;
   if (role === "assistant") return !/^tool call:/i.test(entry.text.trim());
-  return role === "compaction" || role === "task";
+  return role === "compaction" || role === "branch_summary" || role === "task";
 }
 
 function safeLstat(path: string): ReturnType<typeof lstatSync> | undefined {
@@ -484,4 +605,3 @@ function rawSessionKey(path: string): string {
       ?.replace(/\.jsonl?$/, "") ?? path
   );
 }
-

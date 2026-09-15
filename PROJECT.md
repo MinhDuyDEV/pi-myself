@@ -9,12 +9,12 @@
 - `.pi/settings.json` — dogfood defaults (skill commands, compaction reserves, retry).
 - `.pi/skills/` — our own skills: `memory` (pi-memory-md workflow), `verification-before-completion`, `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, `test-proof-debt-audit`, `ultra-review`, `ultra-review-receive`, `repo-refresh`.
 - `.pi/prompts/` — hand-written slash commands: `/verify`, `/init`, `/remember`.
-- `.pi/extensions/provision.ts` — `/setup-pi-myself` command + session-start drift check for the provisioned copies; `.pi/extensions/lib/` holds shared helpers (repo root, package root) and is deliberately not an extension.
+- `.pi/extensions/provision.ts` — `/setup-pi-myself` command + session-start drift check for the provisioned copies; `.pi/extensions/lib/` holds shared helpers (repo root, package root, pi's agent dir) and is deliberately not an extension.
 - `.pi/APPEND_SYSTEM.md` — the workflow rules; provisioned into consuming repos by `scripts/setup-project.mjs` because pi loads it only from a project's own `.pi/`.
 
 ## Development Support
 
-- `tests/` — catalog, lock, invocation, asset, prompt-contract, and marker tests.
+- `tests/` — catalog, lock, invocation, asset, prompt-contract, marker, and guidance-hygiene (links, duplicates, byte budgets) tests.
 - `.pi/extensions/**/*.test.ts` — extension unit and lifecycle tests, colocated with source.
 - `scripts/run-extension-tests.mjs` — discovers and runs Node extension tests.
 - `scripts/sync-skills.mjs` — vendored sync + lock integrity (`--check`).

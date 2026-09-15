@@ -1,17 +1,40 @@
-import type { RecallEntry } from "./recall.js";
+import type { RecallEntry, RecallScope } from "./recall.js";
+
+/** How much of the session history a search actually read. */
+export interface RecallCoverage {
+  scanned: number;
+  total: number;
+  scope: RecallScope;
+}
+
+const WIDER_SCOPE: Record<RecallScope, string> = {
+  active: " or scope:'project'",
+  project: " or scope:'all'",
+  all: "",
+};
 
 export function renderSearch(
   entries: RecallEntry[],
   total: number,
   page: number,
   query?: string,
+  coverage?: RecallCoverage,
 ): string {
   const normalizedQuery = query?.trim();
   const lines = [
     `DCP recall${normalizedQuery ? ` for "${normalizedQuery}"` : " browse"}: ${total} result${total === 1 ? "" : "s"} (page ${page})`,
   ];
+  if (coverage && coverage.scanned < coverage.total) {
+    lines.push(
+      `Scanned the newest ${coverage.scanned} of ${coverage.total} session files; older sessions were not searched.`,
+    );
+  }
   if (entries.length === 0) {
-    lines.push("No results. Try a broader query or scope:'all'.");
+    lines.push(
+      total > 0
+        ? `No results on page ${page}.`
+        : `No results. A miss is not evidence it never happened: try a broader query${coverage ? WIDER_SCOPE[coverage.scope] : " or a wider scope"}.`,
+    );
     return lines.join("\n");
   }
   for (const entry of entries) {
@@ -40,6 +63,11 @@ export function shouldIncludeJsonlEntry(value: unknown): boolean {
   const customType = typeof obj.customType === "string" ? obj.customType : "";
   if (obj.type === "custom") return false;
   if (customType) return false;
+  // a `!!cmd` run is excluded from the LLM context by the user's choice: recall must not bring it back
+  const message = obj.type === "message" && obj.message && typeof obj.message === "object"
+    ? (obj.message as Record<string, unknown>)
+    : undefined;
+  if (message?.excludeFromContext === true) return false;
   return true;
 }
 
@@ -57,6 +85,7 @@ export function jsonlText(value: unknown): string {
   const payload = jsonlPayload(value);
   if (!payload || typeof payload !== "object") return contentToText(payload);
   const obj = payload as Record<string, unknown>;
+  if (obj.role === "bashExecution") return bashExecutionText(obj);
   return contentToText(
     obj.summary ??
       obj.content ??
@@ -66,6 +95,24 @@ export function jsonlText(value: unknown): string {
       obj.result ??
       payload,
   );
+}
+
+/** A user `!cmd` run: the command and its exit status are what a later
+ * session searches for, not only the output. */
+function bashExecutionText(obj: Record<string, unknown>): string {
+  const status =
+    typeof obj.exitCode === "number"
+      ? `exit code: ${obj.exitCode}`
+      : obj.cancelled === true
+        ? "cancelled"
+        : "";
+  return [
+    typeof obj.command === "string" ? `$ ${obj.command}` : "",
+    contentToText(obj.output),
+    status,
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function jsonlRole(value: unknown): string {
@@ -106,7 +153,7 @@ export function contentToText(content: unknown): string {
     const obj = content as Record<string, unknown>;
     if (obj.type === "thinking" || typeof obj.thinking === "string") return "";
     if (obj.type === "toolCall")
-      return `tool call: ${String(obj.name ?? obj.toolName ?? "unknown")}`;
+      return `tool call: ${String(obj.name ?? obj.toolName ?? "unknown")}${toolArgumentSummary(obj.arguments)}`;
     if (typeof obj.text === "string") return obj.text;
     if (typeof obj.content === "string" || Array.isArray(obj.content))
       return contentToText(obj.content);
@@ -117,6 +164,21 @@ export function contentToText(content: unknown): string {
     return "";
   }
   return String(content);
+}
+
+/** The tool arguments that answer "which file, which command": indexed so a
+ * later session can find them; edit bodies and file contents stay out. */
+const TOOL_ARGUMENT_KEYS = ["path", "file_path", "filePath", "command", "pattern"];
+
+function toolArgumentSummary(args: unknown): string {
+  if (!args || typeof args !== "object") return "";
+  const parts: string[] = [];
+  for (const key of TOOL_ARGUMENT_KEYS) {
+    const value = (args as Record<string, unknown>)[key];
+    if (typeof value === "string" && value.trim())
+      parts.push(`${key}=${JSON.stringify(oneLine(value, 200))}`);
+  }
+  return parts.length > 0 ? ` ${parts.join(" ")}` : "";
 }
 
 function oneLine(text: string, max: number): string {

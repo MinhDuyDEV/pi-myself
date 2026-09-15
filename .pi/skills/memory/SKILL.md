@@ -53,6 +53,8 @@ When unsure, write an `event`. Merge a cluster of related records with `memory_w
 - **Research reports** the `research` skill produces belong in the repo as files; memory may hold a one-line `event` pointing at the path.
 - **Project rules** belong in `AGENTS.md`; session scratch stays in the conversation.
 - Memory holds distilled operational knowledge: patterns, gotchas, environment facts, debugging outcomes. Nothing that already lives in a tracked file, and never secrets, tokens, or credential paths.
+- A rule that **must always hold** belongs in a test or gate: memory and skills are optional retrieval that a session may never load.
+- When a session relearns what an existing record already says, that record failed to prevent the repeat: propose promoting it to `AGENTS.md` or a gate instead of rewriting it.
 
 ## Who writes
 

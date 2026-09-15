@@ -3,8 +3,15 @@ import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { test } from "node:test";
 
+import { defaultSessionDirName } from "../lib/agent-dir.js";
 import { expect } from "../tests/expect.js";
 import { isPathWithin, searchDcpRecall, activeLineageIds } from "./recall.js";
+
+/** A v3 session header, as pi writes the first line of every session file. */
+const sessionHeader = (cwd: string, id: string) =>
+  JSON.stringify({ type: "session", version: 3, id, timestamp: "2026-09-01T00:00:00.000Z", cwd });
+const userLine = (text: string, id?: string, timestamp = "2026-09-01T00:00:01.000Z") =>
+  JSON.stringify({ type: "message", ...(id ? { id } : {}), timestamp, message: { role: "user", content: text } });
 
 function withSession(
   entries: unknown[],
@@ -427,4 +434,184 @@ test("excludes extension state and assistant thinking while retaining visible me
       expect(result.rendered).not.toContain("other-extension-state");
     },
   );
+});
+
+test("scope:'project' reads subdirectory launches and drops a same-prefix sibling repository", () => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-project-dirs-")));
+  const sessions = join(root, "sessions");
+  const repo = join(root, "work", "repo");
+  const dirFor = (cwd: string) => join(sessions, defaultSessionDirName(cwd));
+  try {
+    for (const cwd of [repo, join(repo, "sub"), `${repo}-other`]) mkdirSync(dirFor(cwd), { recursive: true });
+    writeFileSync(join(dirFor(repo), "a.jsonl"), [sessionHeader(repo, "s1"), userLine("root launch needle")].join("\n"));
+    writeFileSync(join(dirFor(join(repo, "sub")), "b.jsonl"), [sessionHeader(join(repo, "sub"), "s2"), userLine("subdirectory launch needle")].join("\n"));
+    writeFileSync(join(dirFor(`${repo}-other`), "c.jsonl"), [sessionHeader(`${repo}-other`, "s3"), userLine("other repository needle")].join("\n"));
+
+    const result = searchDcpRecall({
+      scope: "project",
+      query: "needle",
+      projectSessionDir: dirFor(repo),
+      projectRoots: [repo],
+      rawSessionDir: sessions,
+      taskHistoryFile: join(root, "no-history.json"),
+    });
+    expect(result.total).toBe(2);
+    expect(result.rendered).toContain("root launch needle");
+    expect(result.rendered).toContain("subdirectory launch needle");
+    expect(result.rendered).not.toContain("other repository needle");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a shared custom session dir: project keeps this repository's files, all includes the dir", () => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-custom-dir-")));
+  const flat = join(root, "custom-sessions");
+  const repo = join(root, "work", "repo");
+  const noHistory = join(root, "no-history.json");
+  try {
+    mkdirSync(flat, { recursive: true });
+    writeFileSync(join(flat, "mine.jsonl"), [sessionHeader(join(repo, "packages", "a"), "s1"), userLine("mine needle")].join("\n"));
+    writeFileSync(join(flat, "theirs.jsonl"), [sessionHeader(join(root, "work", "elsewhere"), "s2"), userLine("theirs needle")].join("\n"));
+    writeFileSync(join(flat, "legacy.jsonl"), userLine("headerless legacy needle"));
+
+    const project = searchDcpRecall({ scope: "project", query: "needle", projectSessionDir: flat, projectRoots: [repo], taskHistoryFile: noHistory });
+    expect(project.rendered).toContain("mine needle");
+    expect(project.rendered).toContain("headerless legacy needle");
+    expect(project.rendered).not.toContain("theirs needle");
+
+    const all = searchDcpRecall({ scope: "all", query: "theirs", projectSessionDir: flat, rawSessionDir: join(root, "sessions"), taskHistoryFile: noHistory });
+    expect(all.rendered).toContain("theirs needle");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("entries a fork copied into a new session file count once", () => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-fork-")));
+  const repo = join(root, "repo");
+  const dir = join(root, "sessions", defaultSessionDirName(repo));
+  try {
+    mkdirSync(dir, { recursive: true });
+    const copied = userLine("copied turn needle", "e1");
+    writeFileSync(join(dir, "original.jsonl"), [sessionHeader(repo, "s1"), copied].join("\n"));
+    writeFileSync(join(dir, "fork.jsonl"), [sessionHeader(repo, "s2"), copied, userLine("fork-only needle", "e2", "2026-09-01T00:05:00.000Z")].join("\n"));
+
+    const result = searchDcpRecall({ scope: "project", query: "needle", projectSessionDir: dir, projectRoots: [repo], taskHistoryFile: join(root, "none.json") });
+    expect(result.total).toBe(2);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a file-cap cut is reported, and a miss says it is not evidence", () => {
+  const dir = mkdtempSync(join(tmpdir(), "dcp-cap-"));
+  try {
+    for (const name of ["one", "two", "three"]) writeFileSync(join(dir, `${name}.jsonl`), userLine(`capped ${name} needle`));
+    const capped = searchDcpRecall({ scope: "project", query: "needle", projectSessionDir: dir, fileCap: 2, taskHistoryFile: join(dir, "none.json") });
+    expect(capped.scannedFiles).toBe(2);
+    expect(capped.totalFiles).toBe(3);
+    expect(capped.rendered).toContain("Scanned the newest 2 of 3 session files");
+
+    const miss = searchDcpRecall({ scope: "project", query: "zzz-absent-token", projectSessionDir: dir, taskHistoryFile: join(dir, "none.json") });
+    expect(miss.rendered).toContain("A miss is not evidence it never happened");
+    expect(miss.rendered).toContain("scope:'all'");
+    expect(miss.rendered).not.toContain("Scanned the newest");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("tool-call paths and commands, user shell runs, and branch summaries are searchable", () => {
+  withSession(
+    [
+      {
+        type: "message",
+        id: "t1",
+        timestamp: 1,
+        message: { role: "assistant", content: [{ type: "toolCall", id: "c1", name: "edit", arguments: { path: "src/billing/invoice.ts", oldText: "private edit body" } }] },
+      },
+      {
+        type: "message",
+        id: "t2",
+        timestamp: 2,
+        message: { role: "bashExecution", command: "npm run sync:check", output: "lock drift", exitCode: 1, cancelled: false, truncated: false, timestamp: 2 },
+      },
+      { type: "branch_summary", id: "t3", fromId: "t1", timestamp: 3, summary: "Abandoned branch tried a wrapper layer" },
+    ],
+    (sessionFile) => {
+      const byPath = searchDcpRecall({ sessionFile, query: "invoice" });
+      expect(byPath.rendered).toContain('tool call: edit path="src/billing/invoice.ts"');
+      expect(byPath.rendered).not.toContain("private edit body");
+
+      const shell = searchDcpRecall({ sessionFile, query: "sync" });
+      expect(shell.rendered).toContain("$ npm run sync:check");
+      expect(shell.rendered).toContain("exit code: 1");
+
+      const browse = searchDcpRecall({ sessionFile });
+      expect(browse.rendered).toContain("Abandoned branch tried a wrapper layer");
+    },
+  );
+});
+
+test("projectRootSpellings: empty outside a git checkout, the repository root inside one", async () => {
+  const { projectRootSpellings } = await import("./recall.js");
+  const outside = mkdtempSync(join(tmpdir(), "dcp-no-git-"));
+  try {
+    expect(projectRootSpellings(outside)).toEqual([]);
+  } finally {
+    rmSync(outside, { recursive: true, force: true });
+  }
+  const repoRoot = realpathSync.native(join(import.meta.dirname, "..", "..", ".."));
+  expect(projectRootSpellings(import.meta.dirname)).toContain(repoRoot);
+});
+
+test("a session whose cwd was deleted still matches through the symlinked spelling of the root", () => {
+  const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-link-")));
+  const realRepo = join(root, "real", "repo");
+  const linkRepo = join(root, "link", "repo");
+  try {
+    mkdirSync(realRepo, { recursive: true });
+    symlinkSync(join(root, "real"), join(root, "link"));
+    const active = join(root, "sessions", defaultSessionDirName(linkRepo));
+    const gone = join(root, "sessions", defaultSessionDirName(join(linkRepo, "gone")));
+    mkdirSync(active, { recursive: true });
+    mkdirSync(gone, { recursive: true });
+    writeFileSync(join(gone, "old.jsonl"), [sessionHeader(join(linkRepo, "gone"), "s1"), userLine("deleted subdirectory needle")].join("\n"));
+
+    const result = searchDcpRecall({ scope: "project", query: "needle", projectSessionDir: active, projectRoots: [linkRepo, realRepo], taskHistoryFile: join(root, "none.json") });
+    expect(result.rendered).toContain("deleted subdirectory needle");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("user runs excluded from context (!!cmd) stay out of recall", () => {
+  withSession(
+    [
+      {
+        type: "message",
+        id: "b1",
+        timestamp: 1,
+        message: { role: "bashExecution", command: "cat private-notes.txt", output: "hidden output marker", exitCode: 0, cancelled: false, truncated: false, excludeFromContext: true, timestamp: 1 },
+      },
+    ],
+    (sessionFile) => {
+      expect(searchDcpRecall({ sessionFile, query: "private-notes" }).total).toBe(0);
+      expect(searchDcpRecall({ sessionFile, query: "hidden output marker" }).total).toBe(0);
+    },
+  );
+});
+
+test("entries without a timestamp are never merged by id", () => {
+  const dir = mkdtempSync(join(tmpdir(), "dcp-no-timestamp-"));
+  try {
+    const line = (text: string) => JSON.stringify({ type: "message", id: "same", message: { role: "user", content: text } });
+    writeFileSync(join(dir, "a.jsonl"), line("first foreign needle"));
+    writeFileSync(join(dir, "b.jsonl"), line("second foreign needle"));
+    const result = searchDcpRecall({ scope: "project", query: "needle", projectSessionDir: dir, taskHistoryFile: join(dir, "none.json") });
+    expect(result.total).toBe(2);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

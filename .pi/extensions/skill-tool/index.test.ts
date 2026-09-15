@@ -78,7 +78,7 @@ test("defaultSkillRoots: project and user skills come before the package's, dedu
 	mkdirSync(join(home, ".pi", "agent", "skills"), { recursive: true });
 	try {
 		// checkout layout: cwd is the package root, so its .pi/skills appears once
-		const roots = defaultSkillRoots(repoRoot, home).map((r) => realpathSync(r));
+		const roots = defaultSkillRoots(repoRoot, join(home, ".pi", "agent")).map((r) => realpathSync(r));
 		assert.equal(roots[0], realpathSync(join(repoRoot, ".pi", "skills")));
 		assert.equal(roots[1], realpathSync(join(home, ".pi", "agent", "skills")));
 		assert.equal(new Set(roots).size, roots.length, "no duplicate roots");
@@ -87,7 +87,7 @@ test("defaultSkillRoots: project and user skills come before the package's, dedu
 		// a consuming project elsewhere: its own .pi/skills leads, the package's follows
 		const project = mkdtempSync(join(tmpdir(), "skill-tool-project-"));
 		mkdirSync(join(project, ".pi", "skills"), { recursive: true });
-		const consumer = defaultSkillRoots(project, home).map((r) => realpathSync(r));
+		const consumer = defaultSkillRoots(project, join(home, ".pi", "agent")).map((r) => realpathSync(r));
 		assert.equal(consumer[0], realpathSync(join(project, ".pi", "skills")));
 		assert.ok(consumer.includes(realpathSync(join(repoRoot, ".pi", "skills"))), "package skills still reachable");
 		rmSync(project, { recursive: true, force: true });

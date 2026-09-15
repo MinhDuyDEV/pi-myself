@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -100,18 +101,54 @@ test("the local set stays harness: nothing shadows the vendored process skills",
 	}
 });
 
-test("assets and anchors referenced by local skills resolve", () => {
+/** Files a git install of a local skill ships, relative to the skill dir.
+ * Tracked only (never local scratch or editor state); a tracked file deleted
+ * but not yet `git rm`-ed is gone, not a crash. */
+const TRACKED_SKILL_FILES = execFileSync("git", ["ls-files", "--", ".pi/skills"], { cwd: ROOT, encoding: "utf8" })
+	.split("\n")
+	.filter((file) => file && existsSync(join(ROOT, file)));
+
+function shippedFiles(skillDir: string): string[] {
+	const prefix = `.pi/skills/${skillDir}/`;
+	return TRACKED_SKILL_FILES.filter((file) => file.startsWith(prefix)).map((file) => file.slice(prefix.length));
+}
+
+test("assets and anchors referenced by local skills resolve (SKILL.md and every reference file)", () => {
 	const offenders: string[] = [];
 	for (const skill of skills) {
-		for (const m of skill.raw.matchAll(/\]\(([^)\s]+)\)/g)) {
-			const target = m[1];
-			if (/^(https?:|#|mailto:)/.test(target)) continue;
-			const [pathPart, anchor] = target.split("#");
-			const resolved = resolve(join(SKILLS, skill.dir), pathPart);
-			if (!existsSync(resolved)) offenders.push(`.pi/skills/${skill.dir}/SKILL.md → broken link ${target}`);
-			else if (anchor && !readFileSync(resolved, "utf8").includes(anchor))
-				offenders.push(`.pi/skills/${skill.dir}/SKILL.md → missing anchor ${target}`);
+		for (const rel of shippedFiles(skill.dir).filter((file) => file.endsWith(".md"))) {
+			const doc = join(SKILLS, skill.dir, rel);
+			const label = `.pi/skills/${skill.dir}/${rel}`;
+			for (const m of readFileSync(doc, "utf8").matchAll(/\]\(([^)\s]+)\)/g)) {
+				const target = m[1];
+				if (/^(https?:|#|mailto:)/.test(target)) continue;
+				const [pathPart, anchor] = target.split("#");
+				const resolved = resolve(join(doc, ".."), pathPart);
+				if (!existsSync(resolved)) offenders.push(`${label} → broken link ${target}`);
+				else if (anchor && !readFileSync(resolved, "utf8").includes(anchor)) offenders.push(`${label} → missing anchor ${target}`);
+			}
 		}
+	}
+	assert.deepEqual(offenders, []);
+});
+
+test("every file shipped in a local skill is reachable from its SKILL.md", () => {
+	// A reference nothing routes to is never loaded: dead weight that still ships.
+	const offenders: string[] = [];
+	for (const skill of skills) {
+		const skillDir = join(SKILLS, skill.dir);
+		const assets = shippedFiles(skill.dir).filter((rel) => rel !== "SKILL.md");
+		const reached = new Set<string>(["SKILL.md"]);
+		const queue = ["SKILL.md"];
+		while (queue.length > 0) {
+			const text = readFileSync(join(skillDir, queue.shift() as string), "utf8");
+			for (const asset of assets) {
+				if (reached.has(asset) || !text.includes(asset)) continue;
+				reached.add(asset);
+				if (asset.endsWith(".md")) queue.push(asset);
+			}
+		}
+		for (const asset of assets) if (!reached.has(asset)) offenders.push(`.pi/skills/${skill.dir}/${asset} is not referenced from SKILL.md or a reachable reference`);
 	}
 	assert.deepEqual(offenders, []);
 });

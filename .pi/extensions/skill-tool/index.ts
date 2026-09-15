@@ -15,18 +15,19 @@
  *   the harness rather than in prose.
  *
  * Root order is the shadowing order: the consuming project's `.pi/skills`,
- * the user's `~/.pi/agent/skills`, then the package's own skills and the
+ * the user's `<agentDir>/skills` (`~/.pi/agent/skills` unless
+ * PI_CODING_AGENT_DIR moves it), then the package's own skills and the
  * vendored trees — so the tool sees the same skills pi itself lists, and a
  * project can override a harness or vendored skill by name.
  */
 
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionCommandContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
 import { Text } from "@earendil-works/pi-tui";
 import { fileURLToPath } from "node:url";
+import { agentDir } from "../lib/agent-dir.js";
 import { buildRegistry, type Registry } from "./registry.js";
 export { buildRegistry, parseFrontmatter, type Registry, type SkillEntry } from "./registry.js";
 
@@ -72,10 +73,10 @@ function packageRoot(): string | undefined {
  * vendored trees). First occurrence of a name wins, so a project can override
  * a harness or vendored skill by name. Roots are deduped by real path: in the
  * checkout layout the project root IS the package root. */
-export function defaultSkillRoots(cwd: string, home: string = homedir()): string[] {
+export function defaultSkillRoots(cwd: string, userAgentDir: string = agentDir()): string[] {
 	const repoRoot = findRepoRoot(cwd);
 	const pkgRoot = repoRoot ?? packageRoot();
-	const candidates = [join(cwd, ".pi", "skills"), join(home, ".pi", "agent", "skills")];
+	const candidates = [join(cwd, ".pi", "skills"), join(userAgentDir, "skills")];
 	if (pkgRoot) {
 		candidates.push(
 			join(pkgRoot, ".pi", "skills"),

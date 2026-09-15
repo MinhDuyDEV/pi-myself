@@ -34,8 +34,10 @@ export function rankAndFilter(entries: RecallEntry[], query: string): RecallEntr
 function recallRoleBoost(entry: RecallEntry): number {
   const role = entry.role?.toLowerCase() ?? "";
   if (role === "user") return 45;
+  // A tool call carries its path/command arguments: findable when they match,
+  // ranked below prose that says the same thing.
   if (role === "assistant")
-    return /^tool call:/i.test(entry.text.trim()) ? -30 : 35;
+    return /^tool call:/i.test(entry.text.trim()) ? -10 : 35;
   if (role === "compaction") return 50;
   if (role === "task") return 5;
   if (role === "toolresult" || role === "tool_result" || role === "tool")
