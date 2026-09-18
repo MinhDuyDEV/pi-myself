@@ -5,7 +5,7 @@ Runtime playbook: which process owns the work, when to delegate, how to complete
 ## Layering
 
 - **Process belongs to the vendored skills** (`vendor/mattpocock-skills/`): the idea → ship flow is `grill-with-docs` → (optionally `prototype` + `handoff`) → `to-spec` → `to-tickets` → `implement` (drives `tdd` slice by slice, closes with `code-review`). Efforts too big or too foggy for one session go through `wayfinder`. Raw incoming issues go through `triage`, hard bugs through `diagnosing-bugs`, upkeep through `improve-codebase-architecture`. `ask-matt` is the router when the fit is unclear.
-- **The harness is subordinate**: this file, `.pi/skills/`, and extensions define how the runtime behaves (delegation, memory, recall, completion evidence) — never a competing process. When harness guidance and a skill disagree about process, the skill wins; stop and say so if the conflict is material.
+- **The harness is subordinate**: this file, `.pi/skills/`, and extensions define how the runtime behaves (delegation, memory, recall, completion evidence) — never a competing process. When harness guidance and a skill disagree about process, the skill wins; stop and say so if the conflict is material. A skill's own concurrency demands (code-review's two parallel axes, implement-spec's concurrent implementers) set the task count they need; the harness's steady-state limits bend to them, never the reverse.
 
 ## Skill invocation contract
 
@@ -37,7 +37,7 @@ With `pi-task` installed, the `task` tool runs the seven roles in `.pi/agents/`,
 | `reviewer` | review | Independent read-only review with a merge verdict; required before any merge-ready claim; either axis of `code-review` when that skill delegates |
 | `ultra-scout` | review | One of the 10 identical read-only scouts of `/skill:ultra-review` (not proactive; that skill launches it) |
 
-WIP cap: max 1 mutating task per checkout + 1 read-only reviewer. The fully-independent exception applies only to read-only tasks or separate isolated checkouts: parallel `general` tasks each in their own git worktree (the parent runs `git worktree add` and passes it as `cwd`; pi-task never creates or removes worktrees), and parallel `scout` report tasks each owning one distinct report path (wayfinder's research tickets). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. Do not edit files owned by a running background task.
+WIP cap: max 1 mutating task per checkout; read-only tasks carry no cap — the `+ 1 reviewer` figure is the steady-state cadence, not a slot. Parallel read-only tasks run freely: `code-review`'s two axes as two `reviewer` tasks, several `designer` candidates, `scout` reports each owning one distinct report path (wayfinder's research tickets). Mutating concurrency requires separate isolated checkouts: parallel `general` tasks each in their own git worktree (the parent runs `git worktree add` and passes it as `cwd`; pi-task never creates or removes worktrees). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. Do not edit files owned by a running background task.
 
 Brief a review-tier task with the diff scope, the spec or criteria, and the raw gate output — never your own verdict or your explanation of why the change is correct; a judge that reads the author's conclusion inherits it.
 
