@@ -99,7 +99,7 @@ test("setup-project reports the pi-workspace-memory slug and warns when that slu
 	assert.match(runScript(target, home), /\/new-memory\/projects\/my-app /, "the current key wins over the legacy key");
 });
 
-test("setup-project is idempotent and never overwrites or restores a copy the project edited or deleted", () => {
+test("setup-project is idempotent and never overwrites or restores a task role the project edited or deleted", () => {
 	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
 	runScript(target);
 	const baseline = JSON.parse(readFileSync(join(target, ".pi", "pi-myself-provisioned.json"), "utf8"));
@@ -108,12 +108,37 @@ test("setup-project is idempotent and never overwrites or restores a copy the pr
 
 	const edited = join(target, ".pi", "agents", "reviewer.md");
 	writeFileSync(edited, `${readFileSync(edited, "utf8")}\nproject rule\n`);
-	rmSync(join(target, ".pi", "APPEND_SYSTEM.md"));
 	const rerun = runScript(target);
-	assert.match(rerun, /\b0 created, 0 updated, 2 kept\b/);
-	assert.doesNotMatch(rerun, /^kept/m, "the package did not change those files, so there is nothing to report");
+	assert.match(rerun, /\b0 created, 0 updated, 1 kept\b/);
 	assert.ok(readFileSync(edited, "utf8").includes("project rule"), "a project edit survives");
-	assert.ok(!existsSync(join(target, ".pi", "APPEND_SYSTEM.md")), "a project deletion survives");
+});
+
+test("setup-project always replaces APPEND_SYSTEM.md, backing up a project-edited copy as .local", () => {
+	const pkg = fakePackage();
+	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	runScript(target, undefined, pkg.script);
+	const append = join(target, ".pi", "APPEND_SYSTEM.md");
+
+	// a project edit is not lost: it is backed up beside the replacement
+	writeFileSync(append, `${readFileSync(append, "utf8")}\n# project rule\n`);
+	assert.match(runScript(target, undefined, pkg.script), /updated\s+APPEND_SYSTEM\.md \(project copy saved as APPEND_SYSTEM\.md\.local/);
+	assert.ok(readFileSync(append, "utf8").includes("read-only tasks carry no cap"), "the harness policy copy is replaced with the package's");
+	assert.ok(readFileSync(`${append}.local`, "utf8").includes("# project rule"), "the project edit survives in the .local backup");
+
+	// idempotent while untouched: a matching copy reports unchanged, no backup
+	assert.match(runScript(target, undefined, pkg.script), /\b0 created, 0 updated\b/);
+	assert.ok(!existsSync(`${append}.local`) || readFileSync(`${append}.local`, "utf8").includes("# project rule"), "no fresh backup of an untouched copy");
+
+	// a package upgrade reaches a previously untouched copy without any backup
+	appendFileSync(join(pkg.root, ".pi", "APPEND_SYSTEM.md"), "\n# upstream policy change\n");
+	assert.match(runScript(target, undefined, pkg.script), /updated\s+APPEND_SYSTEM\.md/);
+	assert.ok(readFileSync(append, "utf8").includes("# upstream policy change"), "a policy upgrade replaces an untouched copy");
+	assert.ok(!readFileSync(`${append}.local`, "utf8").includes("# upstream policy change"), "the backup holds the project's own text, not the package's");
+
+	// a second project edit overwrites the previous backup: one .local, the latest project text
+	writeFileSync(append, `${readFileSync(append, "utf8")}\n# newer project rule\n`);
+	runScript(target, undefined, pkg.script);
+	assert.ok(readFileSync(`${append}.local`, "utf8").includes("# newer project rule"), "the backup is the latest project text");
 });
 
 test("setup-project takes a package update into untouched copies and names the kept ones", () => {

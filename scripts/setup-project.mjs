@@ -8,7 +8,12 @@
  *   1. task roles — pi-task scans its bundled defaults, ~/.pi/agent/agents,
  *      and <repo>/.pi/agents only;
  *   2. `.pi/APPEND_SYSTEM.md` — the harness workflow rules (routing, WIP cap,
- *      completion, memory discipline);
+ *      completion, memory discipline); unlike task roles, this one is ALWAYS
+ *      replaced: it is harness policy, not project content. A copy the project
+ *      edited is not lost — it is saved beside it as APPEND_SYSTEM.md.local; a
+ *      project's own rules belong in its AGENTS.md, which pi always loads.
+ *      (Task roles keep the baseline semantics: refreshed only while they
+ *      still match what the package last shipped; an edited role is kept.)
  *   3. project settings — `enableSkillCommands` is what exposes user-invoked
  *      skills as `/skill:<name>`.
  *
@@ -19,10 +24,12 @@
  * Idempotent, and the copies belong to the project: a copy is refreshed only
  * while it still matches what the package last shipped (sha256 per file in
  * `.pi/pi-myself-provisioned.json`); a copy the project edited or deleted is
- * kept, and reported when the package changed that file. Settings are merged
- * key by key (existing keys win, missing harness keys are added); no other
- * paths. Run from any directory; the target is the argument or the current
- * working directory.
+ * kept, and reported when the package changed that file — except
+ * APPEND_SYSTEM.md, which is always replaced (with a .local backup of an
+ * edited copy, overwriting the previous backup). Settings are merged key by
+ * key (existing keys win, missing harness keys are added); no other paths.
+ * Run from any directory; the target is the argument or the current working
+ * directory.
  */
 import { createHash } from "node:crypto";
 import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
@@ -104,8 +111,25 @@ for (const entry of readdirSync(agentsSource).filter((n) => n.endsWith(".md") &&
 	record(syncFile(join(agentsSource, entry), join(targetPi, rel), rel), rel);
 }
 
-// 2. workflow rules
-record(syncFile(appendSystemSource, join(targetPi, "APPEND_SYSTEM.md"), "APPEND_SYSTEM.md"), "APPEND_SYSTEM.md");
+// 2. workflow rules — harness policy, always replaced; an edited project copy is
+// backed up as APPEND_SYSTEM.md.local (the previous backup is replaced)
+{
+	const rel = "APPEND_SYSTEM.md";
+	const target = join(targetPi, rel);
+	shippedNow[rel] = sha256(appendSystemSource);
+	if (!existsSync(target)) {
+		copyFileSync(appendSystemSource, target);
+		counts.created++;
+		console.log(`created  ${rel}`);
+	} else if (sha256(target) === sha256(appendSystemSource)) {
+		counts.unchanged++;
+	} else {
+		copyFileSync(target, `${target}.local`);
+		copyFileSync(appendSystemSource, target);
+		counts.updated++;
+		console.log(`updated  ${rel} (project copy saved as APPEND_SYSTEM.md.local; moved its project rules into AGENTS.md if you still need them)`);
+	}
+}
 
 // 3. project settings (merge; never overwrite a key the project already sets)
 const settingsPath = join(targetPi, "settings.json");

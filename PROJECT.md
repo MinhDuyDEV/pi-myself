@@ -18,7 +18,7 @@
 - `.pi/extensions/**/*.test.ts` — extension unit and lifecycle tests, colocated with source.
 - `scripts/run-extension-tests.mjs` — discovers and runs Node extension tests.
 - `scripts/sync-skills.mjs` — vendored sync + lock integrity (`--check`).
-- `scripts/setup-project.mjs` — provisions a consuming repo: task roles, `APPEND_SYSTEM.md`, `enableSkillCommands` (idempotent; `/setup-pi-myself`). A rerun refreshes only copies still matching what the package last shipped (hash baseline in the project's `.pi/`); edited or deleted copies are kept.
+- `scripts/setup-project.mjs` — provisions a consuming repo: task roles, `APPEND_SYSTEM.md`, `enableSkillCommands` (idempotent; `/setup-pi-myself`). A rerun refreshes task-role copies still matching what the package last shipped (hash baseline in the project's `.pi/`); edited or deleted roles are kept. `APPEND_SYSTEM.md` is harness policy and is always replaced — an edited copy is backed up as `APPEND_SYSTEM.md.local`; project-specific rules belong in the repo's `AGENTS.md`.
 - `package.json` — npm scripts and pi package registration.
 - `tsconfig.json` — root/test TypeScript; excludes `.pi/` and `vendor/`.
 - `.pi/extensions/tsconfig.json` — runtime extension TypeScript.
