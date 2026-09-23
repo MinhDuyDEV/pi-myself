@@ -3,11 +3,11 @@
 	"upstream": {
 		"repo": "mattpocock/skills",
 		"ref": "main",
-		"head": "3cca18b368ae95cdbdebbff572ccafa662551015"
+		"head": "c55ee46073ed923f86ce59a5eb3b6d895095d1b7"
 	},
 	"promotedManifest": "vendor/mattpocock-skills/.claude-plugin/plugin.json",
 	"betaDir": "vendor/mattpocock-skills/skills/in-progress",
-	"skillCount": 33,
+	"skillCount": 34,
 	"skills": {
 		"ask-matt": {
 			"skillFile": "vendor/mattpocock-skills/skills/engineering/ask-matt/SKILL.md",
@@ -177,9 +177,15 @@
 			"modelInvoked": false,
 			"bucket": "beta"
 		},
+		"pr": {
+			"skillFile": "vendor/mattpocock-skills/skills/in-progress/pr/SKILL.md",
+			"computedHash": "e91dc57fa0ee1d8d2fd35562425c943d377f0acdfba6245858a619990fcff0e8",
+			"modelInvoked": true,
+			"bucket": "beta"
+		},
 		"retro": {
 			"skillFile": "vendor/mattpocock-skills/skills/in-progress/retro/SKILL.md",
-			"computedHash": "264f3330f1e2382af89610ed048ba0ed6d08883eb69f596a8f1df3f1e1a4c6a1",
+			"computedHash": "33fbc28568e3146f20fd908b12998bc0ab30aa4f4c87288199a40793efa94696",
 			"modelInvoked": false,
 			"bucket": "beta"
 		},

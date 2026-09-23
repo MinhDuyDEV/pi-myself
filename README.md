@@ -2,7 +2,7 @@
 
 A pi coding-agent harness built around [mattpocock/skills](https://github.com/mattpocock/skills) as the process core: runtime extensions, task-agent roles, slash-command adapters, and hygiene tests — assembled from [pikit](https://github.com/heyhuynhgiabuu/pikit) and rebuilt where Matt's skills need pi-specific support.
 
-The philosophy: **one process, one vocabulary**. Matt's 25 promoted skills plus the 8 beta skills from `skills/in-progress/` are vendored verbatim and are the only process narrative; this package contributes the runtime that makes them first-class in pi — a real `skill` tool, deterministic prompts, seven delegation roles in three model tiers, and session recall.
+The philosophy: **one process, one vocabulary**. Matt's 25 promoted skills plus the 9 beta skills from `skills/in-progress/` are vendored verbatim and are the only process narrative; this package contributes the runtime that makes them first-class in pi — a real `skill` tool, deterministic prompts, seven delegation roles in three model tiers, and session recall.
 
 ## Install
 
