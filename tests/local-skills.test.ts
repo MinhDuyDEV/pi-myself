@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
@@ -38,9 +37,9 @@ const SHADOWED_BY_UPSTREAM = [
 ];
 
 function frontmatterField(frontmatter: string, name: string): string | undefined {
-	const m = frontmatter.match(new RegExp(`^${name}:\\s*(.+)$`, "m"));
-	if (!m) return undefined;
-	let value = m[1].trim();
+	const raw = frontmatter.match(new RegExp(`^${name}:\\s*(.+)$`, "m"))?.[1];
+	if (raw === undefined) return undefined;
+	let value = raw.trim();
 	if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
 		value = value.slice(1, -1).replace(/\\(["'])/g, "$1");
 	}
@@ -82,8 +81,7 @@ test("local skill descriptions are routing-shaped and impersonal", () => {
 		const description = frontmatterField(skill.frontmatter, "description") ?? ""; // empties are reported by the discoverability test
 		if (!ALLOWED_PREFIXES.some((p) => description.startsWith(p)))
 			offenders.push(`.pi/skills/${skill.dir}: description must start with a routing prefix (Use when… / ALWAYS…)`);
-		if (/\b(I|we|I'|I'll|we're|we've|we'll)\b/i.test(description))
-			offenders.push(`.pi/skills/${skill.dir}: description uses first person`);
+		if (/\b(I|we|I'|I'll|we're|we've|we'll)\b/i.test(description)) offenders.push(`.pi/skills/${skill.dir}: description uses first person`);
 		// A description routes; it does not summarise the procedure as "step, step, step" after a colon.
 		if (/:\s*[^.;—]*,[^.;—]*,[^.;—]*,/.test(description))
 			offenders.push(`.pi/skills/${skill.dir}: description summarises a multi-step process as a colon-list`);
@@ -121,8 +119,8 @@ test("assets and anchors referenced by local skills resolve (SKILL.md and every 
 			const label = `.pi/skills/${skill.dir}/${rel}`;
 			for (const m of readFileSync(doc, "utf8").matchAll(/\]\(([^)\s]+)\)/g)) {
 				const target = m[1];
-				if (/^(https?:|#|mailto:)/.test(target)) continue;
-				const [pathPart, anchor] = target.split("#");
+				if (target === undefined || /^(https?:|#|mailto:)/.test(target)) continue;
+				const [pathPart = "", anchor] = target.split("#");
 				const resolved = resolve(join(doc, ".."), pathPart);
 				if (!existsSync(resolved)) offenders.push(`${label} → broken link ${target}`);
 				else if (anchor && !readFileSync(resolved, "utf8").includes(anchor)) offenders.push(`${label} → missing anchor ${target}`);
@@ -148,7 +146,8 @@ test("every file shipped in a local skill is reachable from its SKILL.md", () =>
 				if (asset.endsWith(".md")) queue.push(asset);
 			}
 		}
-		for (const asset of assets) if (!reached.has(asset)) offenders.push(`.pi/skills/${skill.dir}/${asset} is not referenced from SKILL.md or a reachable reference`);
+		for (const asset of assets)
+			if (!reached.has(asset)) offenders.push(`.pi/skills/${skill.dir}/${asset} is not referenced from SKILL.md or a reachable reference`);
 	}
 	assert.deepEqual(offenders, []);
 });

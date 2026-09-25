@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import { test } from "node:test";
 
@@ -20,9 +20,9 @@ function repoRel(path: string): string {
 }
 
 function field(frontmatter: string, name: string): string | undefined {
-	const m = frontmatter.match(new RegExp(`^${name}:\\s*(.+)$`, "m"));
-	if (!m) return undefined;
-	let value = m[1].trim();
+	const raw = frontmatter.match(new RegExp(`^${name}:\\s*(.+)$`, "m"))?.[1];
+	if (raw === undefined) return undefined;
+	let value = raw.trim();
 	if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
 		value = value.slice(1, -1).replace(/\\(["'])/g, "$1");
 	}
@@ -83,13 +83,46 @@ test("package.json, .pi/settings.json, and the skill tool register the same vend
 	}
 });
 
-test("user-invoked skills all declare disable-model-invocation: true", () => {
+test("a skill that sets disable-model-invocation sets it to exactly true", () => {
+	// The old assertion (userInvoked implies the flag) was tautological: this
+	// module derives userInvoked from the flag. What can actually go wrong is a
+	// value the literal `=== "true"` parse reads one way and YAML reads another,
+	// silently moving a skill between the model-invoked and human-only sets.
+	const offenders: string[] = [];
 	for (const { dir } of registered) {
-		const skill = readSkill(join(VENDOR, dir, "SKILL.md"));
-		if (skill.userInvoked) {
-			assert.match(skill.raw, /disable-model-invocation:\s*true/, `${skill.name} classified user-invoked without the flag`);
+		const raw = readFileSync(join(VENDOR, dir, "SKILL.md"), "utf8");
+		const match = raw.match(/^disable-model-invocation:\s*(.+)$/m);
+		const value = match?.[1]?.trim();
+		if (value !== undefined && value !== "true") offenders.push(`${dir}: disable-model-invocation: ${value}`);
+	}
+	assert.deepEqual(offenders, []);
+});
+
+test("current-state prose about the beta bucket's invocation class matches the lock", () => {
+	// This drift shipped once: the sync added the model-invoked beta skill `pr`
+	// while five spots still said the bucket was "all user-invoked".
+	const lock = JSON.parse(readFileSync(LOCK, "utf8")) as { skills: Record<string, { modelInvoked: boolean; bucket: string }> };
+	const modelInvokedBeta = Object.entries(lock.skills)
+		.filter(([, meta]) => meta.bucket === "beta" && meta.modelInvoked)
+		.map(([name]) => name);
+	// PLAN.md is a dated decision record and keeps its historical wording.
+	const docs = [
+		"README.md",
+		"AGENTS.md",
+		"PROJECT.md",
+		"CONTEXT.md",
+		".pi/APPEND_SYSTEM.md",
+		".pi/agents/README.md",
+		"docs/in-progress-skills.md",
+	];
+	const offenders: string[] = [];
+	for (const doc of docs) {
+		const text = readFileSync(join(ROOT, doc), "utf8");
+		if (modelInvokedBeta.length > 0 && /all user-invoked|every .{0,20}is user-invoked/i.test(text)) {
+			offenders.push(`${doc}: claims the beta bucket is entirely user-invoked but ${modelInvokedBeta.join(", ")} is model-invoked`);
 		}
 	}
+	assert.deepEqual(offenders, []);
 });
 
 test("cross-skill 'Call the Skill tool' targets exist and are model-invoked", () => {
@@ -102,7 +135,10 @@ test("cross-skill 'Call the Skill tool' targets exist and are model-invoked", ()
 		for (const file of markdownUnder(join(VENDOR, dir))) {
 			for (const line of file.split("\n")) {
 				if (!line.includes("Call the Skill tool")) continue;
-				for (const m of line.matchAll(/[`"]([a-z0-9-]+)[`"]/g)) calls.add(m[1]);
+				for (const m of line.matchAll(/[`"]([a-z0-9-]+)[`"]/g)) {
+					const call = m[1];
+					if (call !== undefined) calls.add(call);
+				}
 			}
 		}
 	}
@@ -143,11 +179,11 @@ test("assets referenced by registered skills resolve inside the skill directory"
 		const raw = readFileSync(join(skillDir, "SKILL.md"), "utf8");
 		for (const m of raw.matchAll(/\]\(([^)\s]+)\)/g)) {
 			const target = m[1];
-			if (/^(https?:|#|mailto:)/.test(target)) continue;
+			if (target === undefined || /^(https?:|#|mailto:)/.test(target)) continue;
 			// Assets ship beside SKILL.md as single-segment paths (`PHASE-BOUNDARIES.md`,
 			// `./dependency-cruiser.config.cjs`). Prose placeholders (`[title](link)`) and
 			// paths into the *target* repo (`./src/packages/README.md`) are not assets.
-			const bare = target.split("#")[0].replace(/^\.\//, "");
+			const bare = (target.split("#")[0] ?? "").replace(/^\.\//, "");
 			if (!/\./.test(bare) || bare.includes("/")) continue;
 			const resolved = resolve(skillDir, bare);
 			if (!existsSync(resolved)) offenders.push(`${dir}/SKILL.md → ${target}`);

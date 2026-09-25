@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
@@ -17,19 +16,13 @@ function frontmatterOf(content: string, file: string): string {
 }
 
 function frontmatterField(frontmatter: string, name: string): string | undefined {
-	const m = frontmatter.match(new RegExp(`^${name}:\\s*(.+)$`, "m"));
-	if (!m) return undefined;
-	let value = m[1].trim();
+	const raw = frontmatter.match(new RegExp(`^${name}:\\s*(.+)$`, "m"))?.[1];
+	if (raw === undefined) return undefined;
+	let value = raw.trim();
 	if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
 		value = value.slice(1, -1).replace(/\\(["'])/g, "$1");
 	}
 	return value;
-}
-
-function lock(): {
-	skills: Record<string, { skillFile: string; computedHash: string; modelInvoked: boolean }>;
-} {
-	return JSON.parse(readFileSync(join(ROOT, "skills-lock.json"), "utf8"));
 }
 
 test("hand-written prompts keep the evidence contract and stay off the dropped process", () => {
@@ -42,7 +35,11 @@ test("hand-written prompts keep the evidence contract and stay off the dropped p
 		assert.ok(frontmatterField(fm, "argument-hint"), `${file} needs an argument-hint`);
 		assert.match(content, /NOT DECLARED/, `${file} lost the NOT DECLARED ≠ PASS rule`);
 		assert.doesNotMatch(content, /\.pi\/artifacts\//, `${file} references the dropped artifacts system`);
-		assert.doesNotMatch(content, /\.pi\/MEMORY\.md/, `${file} references the retired .pi/MEMORY.md memory file (memory lives in pi-workspace-memory now)`);
+		assert.doesNotMatch(
+			content,
+			/\.pi\/MEMORY\.md/,
+			`${file} references the retired .pi/MEMORY.md memory file (memory lives in pi-workspace-memory now)`,
+		);
 		assert.doesNotMatch(content, DROPPED_PROCESS_RE, `${file} routes to a dropped prompt (/create, /plan, /ship, /fix)`);
 	}
 });
@@ -64,8 +61,6 @@ test("/init writes both durable context files and protects the setup skill's blo
 });
 
 test("no generated wrappers remain: user-invoked skills run via pi's native /skill: commands", () => {
-	const offenders = readdirSync(PROMPTS).filter((file) =>
-		readFileSync(join(PROMPTS, file), "utf8").includes("AUTO-GENERATED"),
-	);
+	const offenders = readdirSync(PROMPTS).filter((file) => readFileSync(join(PROMPTS, file), "utf8").includes("AUTO-GENERATED"));
 	assert.deepEqual(offenders, [], "AUTO-GENERATED prompt wrappers are gone — pi's /skill:<name> is the single invocation surface");
 });

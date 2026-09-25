@@ -37,7 +37,7 @@ const GUIDANCE = TRACKED.filter(
 );
 
 /** `dir/file.ext`-shaped code spans; machine paths (~, /) are host facts, not repo paths. */
-const PATH_TOKEN = /`([A-Za-z0-9_.@-][A-Za-z0-9_.@\/-]*\/[A-Za-z0-9_.@-]+\.(?:md|ts|mjs|json|py|sh))`/g;
+const PATH_TOKEN = /`([A-Za-z0-9_.@-][A-Za-z0-9_.@/-]*\/[A-Za-z0-9_.@-]+\.(?:md|ts|mjs|json|py|sh))`/g;
 
 /** Bytes of always-in-context text; raising a budget is a decision, not a fix. */
 const BYTE_BUDGET: Record<string, number> = { "AGENTS.md": 6_000, ".pi/APPEND_SYSTEM.md": 12_000 };
@@ -46,7 +46,13 @@ const read = (file: string) => readFileSync(join(ROOT, file), "utf8");
 const repoPath = (absolute: string) => relative(ROOT, absolute).split(sep).join("/");
 
 test("the guidance set is what the gates think it is", () => {
-	for (const required of ["AGENTS.md", ".pi/APPEND_SYSTEM.md", ".pi/agents/reviewer.md", ".pi/prompts/verify.md", ".pi/skills/memory/SKILL.md"]) {
+	for (const required of [
+		"AGENTS.md",
+		".pi/APPEND_SYSTEM.md",
+		".pi/agents/reviewer.md",
+		".pi/prompts/verify.md",
+		".pi/skills/memory/SKILL.md",
+	]) {
 		assert.ok(GUIDANCE.includes(required), `${required} is not tracked or no longer matches the guidance filter`);
 	}
 });
@@ -63,12 +69,16 @@ test("links and backticked repo paths in guidance name tracked files or declared
 	for (const file of GUIDANCE) {
 		const text = read(file);
 		for (const m of text.matchAll(/\]\(([^)\s]+)\)/g)) {
-			const target = m[1].split("#")[0];
+			const link = m[1];
+			if (link === undefined) continue;
+			const target = link.split("#")[0] ?? "";
 			if (!target || /^(https?:|mailto:)/.test(target)) continue;
-			consider(`${file}: link ${m[1]}`, [resolve(ROOT, dirname(file), target)]);
+			consider(`${file}: link ${link}`, [resolve(ROOT, dirname(file), target)]);
 		}
 		for (const m of text.matchAll(PATH_TOKEN)) {
-			consider(`${file}: path \`${m[1]}\``, [resolve(ROOT, m[1]), resolve(ROOT, dirname(file), m[1])], m[1]);
+			const token = m[1];
+			if (token === undefined) continue;
+			consider(`${file}: path \`${token}\``, [resolve(ROOT, token), resolve(ROOT, dirname(file), token)], token);
 		}
 	}
 	const ignored = new Set(
@@ -86,11 +96,18 @@ test("links and backticked repo paths in guidance name tracked files or declared
 
 test("no paragraph or bullet is repeated across guidance files", () => {
 	const normalize = (unit: string) =>
-		unit.replace(/^\s*([-*+]|\d+\.)\s+/, "").replace(/[`*_]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+		unit
+			.replace(/^\s*([-*+]|\d+\.)\s+/, "")
+			.replace(/[`*_]/g, "")
+			.replace(/\s+/g, " ")
+			.trim()
+			.toLowerCase();
 	const firstSeen = new Map<string, string>();
 	const offenders: string[] = [];
 	for (const file of GUIDANCE) {
-		const body = read(file).replace(/^---\n[\s\S]*?\n---\n/, "").replace(/```[\s\S]*?```/g, "");
+		const body = read(file)
+			.replace(/^---\n[\s\S]*?\n---\n/, "")
+			.replace(/```[\s\S]*?```/g, "");
 		const units = new Set<string>();
 		for (const block of body.split(/\n\s*\n/)) {
 			const prose = block.split("\n").filter((line) => !/^\s*(\||#)/.test(line));
@@ -110,6 +127,12 @@ test("no paragraph or bullet is repeated across guidance files", () => {
 test("always-in-context files stay inside their byte budget", () => {
 	for (const [file, budget] of Object.entries(BYTE_BUDGET)) {
 		const bytes = statSync(join(ROOT, file)).size;
-		assert.ok(bytes <= budget, `${file} is ${bytes} bytes (budget ${budget}): move detail into a skill or reference, or raise the budget deliberately`);
+		// Name the headroom or the overflow: at these budgets the number is the whole
+		// decision ("43 bytes left" is room for one clause, "2.000 over" is not).
+		const room = bytes <= budget ? `${budget - bytes} left` : `${bytes - budget} over`;
+		assert.ok(
+			bytes <= budget,
+			`${file} is ${bytes} bytes against a budget of ${budget} (${room}): move detail into a skill or reference, or raise the budget deliberately`,
+		);
 	}
 });
