@@ -22,13 +22,15 @@
  */
 
 import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { join, resolve } from "node:path";
-import type { ExtensionCommandContext, ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { Type } from "typebox";
-import { Text } from "@earendil-works/pi-tui";
+import { homedir } from "node:os";
+import { delimiter, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
+import { Type } from "typebox";
 import { agentDir } from "../lib/agent-dir.js";
 import { buildRegistry, type Registry } from "./registry.js";
+
 export { buildRegistry, parseFrontmatter, type Registry, type SkillEntry } from "./registry.js";
 
 /** Shape of the tool's `details` payload across every outcome. */
@@ -39,7 +41,8 @@ interface SkillDetails {
 }
 
 /** Vendored buckets the harness registers: the promoted set (engineering +
- * productivity, listed in plugin.json) plus in-progress (beta, user-invoked).
+ * productivity, listed in plugin.json) plus in-progress (beta; `pr` is
+ * model-invoked there, the rest are user-invoked).
  * `misc/` and `deprecated/` stay unregistered. Keep in step with package.json
  * `pi.skills`, `.pi/settings.json`, and scripts/sync-skills.mjs. */
 export const VENDORED_BUCKETS = ["engineering", "productivity", "in-progress"] as const;
@@ -68,15 +71,37 @@ function packageRoot(): string | undefined {
 	return undefined;
 }
 
-/** Skill roots in shadowing order: the consuming project's own skills, the
- * user's global skills, then the package's (harness `.pi/skills` and the
- * vendored trees). First occurrence of a name wins, so a project can override
- * a harness or vendored skill by name. Roots are deduped by real path: in the
- * checkout layout the project root IS the package root. */
-export function defaultSkillRoots(cwd: string, userAgentDir: string = agentDir()): string[] {
+/** `<ancestor>/.agents/skills` directories from `start` upward — pi collects the
+ * same roots, and a project-local `.agents` skill has to reach this enum too or
+ * the tool would refuse a skill pi itself lists. Nearest ancestor first. */
+function ancestorAgentsSkillDirs(start: string): string[] {
+	const dirs: string[] = [];
+	let current = resolve(start);
+	for (;;) {
+		const candidate = join(current, ".agents", "skills");
+		if (existsSync(candidate)) dirs.push(candidate);
+		const parent = join(current, "..");
+		if (parent === current) return dirs;
+		current = parent;
+	}
+}
+
+/** Skill roots in shadowing order: the consuming project's own skills
+ * (`.pi/skills`, then each ancestor's `.agents/skills`), the user's global
+ * skills (`~/.pi/agent/skills` and `~/.agents/skills`), then the package's
+ * (harness `.pi/skills` and the vendored trees). First occurrence of a name
+ * wins, so a project can override a harness or vendored skill by name. Roots are
+ * deduped by real path: in the checkout layout the project root IS the package
+ * root. */
+export function defaultSkillRoots(cwd: string, userAgentDir: string = agentDir(), home: string = homedir()): string[] {
 	const repoRoot = findRepoRoot(cwd);
 	const pkgRoot = repoRoot ?? packageRoot();
-	const candidates = [join(cwd, ".pi", "skills"), join(userAgentDir, "skills")];
+	const candidates = [
+		join(cwd, ".pi", "skills"),
+		...ancestorAgentsSkillDirs(cwd),
+		join(userAgentDir, "skills"),
+		join(home, ".agents", "skills"),
+	];
 	if (pkgRoot) {
 		candidates.push(
 			join(pkgRoot, ".pi", "skills"),
@@ -100,13 +125,19 @@ export function defaultSkillRoots(cwd: string, userAgentDir: string = agentDir()
 }
 
 export default function skillToolExtension(pi: ExtensionAPI): void {
+	// `:` is the POSIX list separator; Node reports the platform's own on win32.
 	const skillRoots = process.env.PI_SKILL_TOOL_DIRS
-		? process.env.PI_SKILL_TOOL_DIRS.split(":").filter(Boolean)
+		? process.env.PI_SKILL_TOOL_DIRS.split(delimiter).filter(Boolean)
 		: defaultSkillRoots(process.cwd());
 	const registry = buildRegistry(skillRoots);
 
 	if (registry.duplicates.length > 0) {
 		console.error(`[skill-tool] duplicate skill names, first source wins: ${[...new Set(registry.duplicates)].join(", ")}`);
+	}
+	// A malformed skill used to vanish silently, which made a broken frontmatter
+	// look like a missing skill.
+	for (const note of registry.diagnostics.filter((d) => !registry.duplicates.some((name) => d.startsWith(`${name}:`)))) {
+		console.error(`[skill-tool] ${note}`);
 	}
 	if (registry.modelInvoked.length === 0) {
 		console.error("[skill-tool] no model-invoked skills discovered; check the vendored checkout and skill roots.");
@@ -120,7 +151,7 @@ export default function skillToolExtension(pi: ExtensionAPI): void {
 		description: `Load a model-invoked skill's full SKILL.md by name (${loadableNames.length} available). One skill per call: a step that needs two skills is two calls.`,
 		promptSnippet: "Load a named skill's instructions and follow them.",
 		promptGuidelines: [
-			'When a workflow says \'Call the Skill tool with "name"\', call this tool with that name and follow the loaded instructions.',
+			"When a workflow says 'Call the Skill tool with \"name\"', call this tool with that name and follow the loaded instructions.",
 			"User-invoked skills are not available here: direct the human to run the slash command (e.g. /skill:wayfinder) instead of improvising its steps.",
 		],
 		parameters: Type.Object({
@@ -133,18 +164,10 @@ export default function skillToolExtension(pi: ExtensionAPI): void {
 					: Type.String({ description: "Skill name (registry unavailable at startup)." }),
 		}),
 		renderCall: (args, theme) => {
-			const requested =
-				args && typeof args === "object" && "name" in args
-					? String((args as { name: unknown }).name)
-					: "";
+			const requested = args && typeof args === "object" && "name" in args ? String((args as { name: unknown }).name) : "";
 			return new Text(theme.fg("toolTitle", theme.bold(`⚙ skill ${requested}`)), 0, 0);
 		},
-		async execute(
-			_toolCallId: string,
-			params: { name?: string },
-			_signal: AbortSignal | undefined,
-			_onUpdate: unknown,
-		) {
+		async execute(_toolCallId: string, params: { name?: string }, _signal: AbortSignal | undefined, _onUpdate: unknown) {
 			const requested = params.name ?? "";
 			const skill = registry.modelInvoked.find((s) => s.name === requested);
 			const details: SkillDetails = { skill: skill?.name ?? null, loaded: false };

@@ -12,7 +12,12 @@ import skillToolExtension, { defaultSkillRoots } from "./index.js";
 interface RegisteredTool {
 	name: string;
 	parameters?: { properties?: { name?: { anyOf?: Array<{ const?: string }> } } };
-	execute: (id: string, params: { name?: string }, signal: undefined, onUpdate: undefined) => Promise<{ content: Array<{ text: string }>; details: { loaded: boolean; skill: string | null } }>;
+	execute: (
+		id: string,
+		params: { name?: string },
+		signal: undefined,
+		onUpdate: undefined,
+	) => Promise<{ content: Array<{ text: string }>; details: { loaded: boolean; skill: string | null } }>;
 }
 
 function mockPi() {
@@ -78,19 +83,45 @@ test("defaultSkillRoots: project and user skills come before the package's, dedu
 	mkdirSync(join(home, ".pi", "agent", "skills"), { recursive: true });
 	try {
 		// checkout layout: cwd is the package root, so its .pi/skills appears once
-		const roots = defaultSkillRoots(repoRoot, join(home, ".pi", "agent")).map((r) => realpathSync(r));
-		assert.equal(roots[0], realpathSync(join(repoRoot, ".pi", "skills")));
-		assert.equal(roots[1], realpathSync(join(home, ".pi", "agent", "skills")));
+		const roots = defaultSkillRoots(repoRoot, join(home, ".pi", "agent"), home).map((r) => realpathSync(r));
+		const projectSkills = realpathSync(join(repoRoot, ".pi", "skills"));
+		const userSkills = realpathSync(join(home, ".pi", "agent", "skills"));
+		assert.equal(roots[0], projectSkills, "the project's own skills lead");
 		assert.equal(new Set(roots).size, roots.length, "no duplicate roots");
-		assert.ok(roots.some((r) => r.endsWith("/skills/engineering")));
+		assert.ok(roots.includes(userSkills), "the user's skills are a root");
+		assert.ok(
+			roots.some((r) => r.endsWith("/skills/engineering")),
+			"the vendored trees are roots",
+		);
+		// NB: in the checkout layout the project root IS the package root, so its
+		// `.pi/skills` is deduped to one entry — the ordering check belongs to the
+		// consumer case below
 
 		// a consuming project elsewhere: its own .pi/skills leads, the package's follows
 		const project = mkdtempSync(join(tmpdir(), "skill-tool-project-"));
 		mkdirSync(join(project, ".pi", "skills"), { recursive: true });
-		const consumer = defaultSkillRoots(project, join(home, ".pi", "agent")).map((r) => realpathSync(r));
+		const consumer = defaultSkillRoots(project, join(home, ".pi", "agent"), home).map((r) => realpathSync(r));
 		assert.equal(consumer[0], realpathSync(join(project, ".pi", "skills")));
-		assert.ok(consumer.includes(realpathSync(join(repoRoot, ".pi", "skills"))), "package skills still reachable");
+		const packageSkills = realpathSync(join(repoRoot, ".pi", "skills"));
+		assert.ok(consumer.includes(packageSkills), "package skills still reachable");
+		assert.ok(consumer.indexOf(packageSkills) > consumer.indexOf(userSkills), "the project's and user's roots precede the package's");
 		rmSync(project, { recursive: true, force: true });
+	} finally {
+		rmSync(home, { recursive: true, force: true });
+	}
+});
+
+test("defaultSkillRoots includes the .agents/skills roots pi also collects", () => {
+	const home = mkdtempSync(join(tmpdir(), "skill-tool-home-"));
+	const project = join(home, "deep", "nested", "project");
+	try {
+		mkdirSync(join(home, ".agents", "skills"), { recursive: true });
+		mkdirSync(join(home, "deep", ".agents", "skills"), { recursive: true });
+		mkdirSync(join(project, ".pi", "skills"), { recursive: true });
+		const roots = defaultSkillRoots(project, join(home, ".pi", "agent"), home).map((r) => realpathSync(r));
+		assert.ok(roots.includes(realpathSync(join(project, ".pi", "skills"))), "project .pi/skills first");
+		assert.ok(roots.includes(realpathSync(join(home, "deep", ".agents", "skills"))), "ancestor .agents/skills");
+		assert.ok(roots.includes(realpathSync(join(home, ".agents", "skills"))), "user .agents/skills");
 	} finally {
 		rmSync(home, { recursive: true, force: true });
 	}
