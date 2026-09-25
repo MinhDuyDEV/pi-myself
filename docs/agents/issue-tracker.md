@@ -2,6 +2,8 @@
 
 Issues and specs for this repo live as GitHub issues. Use the `gh` CLI for all operations.
 
+> **Harness note (pi-myself, not upstream):** the `tracker` tool's `gh-*` ops already implement the field-level conventions below — issue, spec and map creation in these templates, native sub-issue and dependency edges mirrored by the `Part of` / `Blocked by` lines, frontier, claim, resolve, out-of-scope, the triage attention queue, role-family-safe label swaps mapped through `triage-labels.md`, title/body edits and map-section notes. They also create the labels an op needs when the repo lacks them (`wayfinder:*` is not a GitHub default, so `--label wayfinder:map` fails on a fresh repo), refuse to touch a pull request (issues and PRs share one number space), and treat a `Blocked by:` reference that resolves to nothing as *not gating* while reporting it, rather than leaving the ticket blocked forever. Use those ops instead of the raw `gh` commands for anything they cover, and fall back to `gh` for the rest (the PR surface, `jq`-shaped reads). The raw commands stay documented here because `/skill:setup-matt-pocock-skills` regenerates this file.
+
 ## Conventions
 
 - **Create an issue**: `gh issue create --title "..." --body "..."`. Use a heredoc for multi-line bodies.

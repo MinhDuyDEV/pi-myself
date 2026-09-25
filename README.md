@@ -32,7 +32,7 @@ pi loads task roles, `APPEND_SYSTEM.md`, and project settings only from a reposi
 | Surface | What |
 | --- | --- |
 | `skill` tool | Extension registering a real skill-invocation tool whose enum is exactly the model-invoked skill set — `Call the Skill tool with "grilling"` works verbatim, and user-invoked skills stay human-only by construction |
-| `tracker` tool | Deterministic ops for everything `to-spec`/`to-tickets`/`triage`/`wayfinder` do to the tracker — local markdown (`.scratch/`) **and** GitHub Issues via `gh-*` ops on the `gh` CLI: spec + ticket + map creation in the skills' templates, native sub-issue and dependency edges (mirrored by `Part of` / `Blocked by` lines), frontier, claim, resolve with the gist indexed into the map, out-of-scope, triage attention queue, role-family-safe label swaps mapped through `triage-labels.md` |
+| `tracker` tool | Deterministic ops for everything `to-spec`/`to-tickets`/`triage`/`wayfinder` do to the tracker — local markdown (`.scratch/`) **and** GitHub Issues via `gh-*` ops on the `gh` CLI: spec + ticket + map creation in the skills' templates, native sub-issue and dependency edges (mirrored by `Part of` / `Blocked by` lines), frontier, claim, resolve with the gist indexed into the map, out-of-scope, triage attention queue, role-family-safe label swaps mapped through `triage-labels.md`, title/body edit and map-section notes, and filtering by state role, category role, or wayfinder type. The local backend writes under a lock and allocates ticket numbers with `wx`, so parallel wayfinder sessions cannot clobber one file |
 | Skill invocation | Model-invoked skills run through the `skill` tool; user-invoked ones run through pi's native `/skill:<name>` slash commands (`enableSkillCommands`) — no generated wrapper layer |
 | Task roles | Seven roles in three model tiers (**read**: `explore`, `scout`; **reason**: `general`, `designer`, `ultra-verifier`; **review**: `reviewer`, `ultra-scout`, on a different model family from the reason tier), each mapped to the Matt skill it serves — `scout` writes the `research` report, `general` is `implement-spec`'s implementer/merger in a parent-made worktree, `designer` is design-it-twice, `reviewer` is the merge gate and `code-review`'s axes; the shared child contract lives once in APPEND_SYSTEM |
 | Session recall | `recall` searches persisted session JSONL (including compaction summaries) before agents guess about lost context |
@@ -52,7 +52,7 @@ skill:triage ← incoming issues   skill:implement drives  skill:triage for raw 
                                  skill:code-review       for upkeep)
 ```
 
-Run them as `/skill:<name>` (or ask in conversation); `/skill:ask-matt` routes when the fit is unclear — the map above is its summary. The beta bucket (`implement-spec`, `loop-me`, `retro`, `claude-handoff`, `setup-ts-deep-modules`, `writing-beats`/`-fragments`/`-shape`) is registered the same way; APPEND_SYSTEM maps the host mechanisms they name (subagents, session logs, `claude --bg`) onto pi's task roles, `recall`, and background tasks.
+Run them as `/skill:<name>` (or ask in conversation); `/skill:ask-matt` routes when the fit is unclear — the map above is its summary. The beta bucket (`pr`, `implement-spec`, `loop-me`, `retro`, `claude-handoff`, `setup-ts-deep-modules`, `writing-beats`/`-fragments`/`-shape`) is registered the same way — `pr` is model-invoked like the promoted set, the rest are human-only. APPEND_SYSTEM maps the host mechanisms they name (subagents, session logs, `claude --bg`) onto pi's task roles, `recall`, and background tasks.
 
 ## Upgrading the vendored core
 
@@ -68,13 +68,19 @@ Never edit files under `vendor/mattpocock-skills/`; propose changes upstream ins
 From the repository root:
 
 ```bash
-npm test
-npx tsc -p .pi/extensions/tsconfig.json --noEmit
-npm run typecheck
-npm run sync:check
+npm run check     # lint → both typechecks → tests → vendored-lock check (what CI runs)
 ```
 
-This repository declares no root `lint` script. Do not report lint as passing unless a declared linter command was actually run.
+Individually:
+
+```bash
+npm run lint                     # Biome: format + lint (read-only)
+npm run lint:fix                 # apply safe fixes and formatting
+npm test                         # extension + skill tests
+npm run typecheck                # root + tests
+npm run extensions:typecheck     # runtime extensions
+npm run sync:check               # vendored lock integrity
+```
 
 ## Customizing
 

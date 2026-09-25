@@ -11,7 +11,7 @@ Runtime playbook: which process owns the work, when to delegate, how to complete
 
 - Model-invoked skills are invoked through the `skill` tool (its enum lists exactly the model-invoked set).
 - User-invoked skills (frontmatter `disable-model-invocation: true`) are reachable **only by the human** via their slash command, pi's native `/skill:<name>`. Never invoke one, never re-implement its steps; when a flow requires one, tell the human to run it (for example `/skill:setup-matt-pocock-skills`).
-- The vendored `in-progress` bucket (beta, all user-invoked) is registered too. Three of them name host mechanisms that pi maps as follows: `implement-spec`'s implementer, merger, and exploration subagents are all `general` tasks in the shape the prompt names (the parent creates each implementer's worktree with `git worktree add` and passes it as `cwd`; landing a branch and notes-only exploration are the other two shapes), its frontier is `tracker gh-frontier` with `parent` = the spec issue (or `frontier` locally), and worktree-per-implementer is the WIP cap's isolated-checkout exception; `retro`'s "session logs on this machine" are the `recall` tool (`scope:'project'`, then `'all'`), where a pattern counts as recurring only across two or more distinct sessions (retries, forks, and repeated turns inside one session count once) and an existing skill that was invoked is coverage, not a reason to create another; `claude-handoff`'s `claude --bg` has no pi equivalent — run the same handoff summary as a background `general` task instead and tell the user its task id.
+- The vendored `in-progress` bucket (beta) is registered too — user-invoked except `pr`, which is model-invoked. Three of its skills (`implement-spec`, `retro`, `claude-handoff`) name host mechanisms pi does not have; the mapping is in `docs/in-progress-skills.md` — read it before working one of those three.
 - Per-repo skill configuration lives in `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and (when `triage` matters) `docs/agents/triage-labels.md`. If a skill needs them and they are missing, direct the user to `/skill:setup-matt-pocock-skills` instead of guessing.
 - Never edit anything under `vendor/mattpocock-skills/`; it is a vendored upstream tree. Improvements belong upstream or in the harness layer.
 
@@ -21,7 +21,7 @@ Resolve the repository root (`$ROOT`) once: `ROOT="$(git rev-parse --show-toplev
 
 ## Routing
 
-Direct tools for questions, lookups, one-file tasks, and 2-3 file local fixes. `task` for bounded subtasks; workflow orchestration with `task` for long-running, parallel, adversarial, or unknown-size work. Delegate outcomes and constraints, not solutions. Independent `task` calls go in one message, parallel. For non-trivial work, state goal, non-goals, and touched scope in the tracker or the conversation before the first code write; push back on over-engineering.
+Direct tools for questions, lookups, one-file tasks, and 2-3 file local fixes. `task` for bounded subtasks; workflow orchestration with `task` for long-running, parallel, adversarial, or unknown-size work. Delegate outcomes and constraints, not solutions. Independent `task` calls go in one message, parallel. For non-trivial work, state goal, non-goals, and touched scope in the tracker or the conversation before the first code write; push back on over-engineering. Tracker work goes through the `tracker` tool — it owns the field-level ops in the backend `docs/agents/issue-tracker.md` names, not raw `gh` or hand-edited ticket files.
 
 ## Task roles
 

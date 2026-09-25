@@ -12,7 +12,7 @@ _Avoid_: "skills/" alone (ambiguous with `.pi/skills/`), "fork" (we never fork t
 One of the 25 skills listed in the vendored `.claude-plugin/plugin.json` (the `skills/engineering` + `skills/productivity` trees).
 
 **Beta skill**:
-A skill under the vendored `skills/in-progress/` tree. Upstream keeps them out of the plugin and they may change or vanish without warning; pi-myself registers them anyway (all user-invoked, `/skill:<name>`), locks them under `bucket: beta`, and supplies the roles and tools they name. `misc/` and `deprecated/` stay unregistered.
+A skill under the vendored `skills/in-progress/` tree. Upstream keeps them out of the plugin and they may change or vanish without warning; pi-myself registers them anyway (user-invoked via `/skill:<name>`, except `pr`, which is model-invoked), locks them under `bucket: beta`, and supplies the roles and tools they name. `misc/` and `deprecated/` stay unregistered.
 _Avoid_: "experimental skill", "unstable"
 
 **Registered set**:
@@ -47,6 +47,7 @@ _Avoid_: "decision issue"
 
 **Triage role**:
 A canonical state-machine label applied to an issue during triage (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`), mapped to real label strings via `docs/agents/triage-labels.md`.
+In the local backend a state role lives on the `Status:` line and a category role (`bug`/`enhancement`) on its own `Category:` line, so a state change never clobbers the category; the file keeps the canonical role and the mapped spelling is accepted as input.
 
 **Frontier**:
 The takeable edge of the tracker: issues that are open, unclaimed (no assignee), not a map, and whose every `**Blocked by:**` reference is closed. First by number wins.

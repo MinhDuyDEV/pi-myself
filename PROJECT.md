@@ -5,7 +5,8 @@
 ## Shipped pi Surface
 
 - `vendor/mattpocock-skills/` — vendored upstream mattpocock/skills (process core; read-only; its `skills/engineering` + `skills/productivity` trees are registered with pi).
-- `.pi/extensions/` — runtime extensions: `skill-tool` (the `skill` tool), `tracker` (two backends: `.scratch/` local markdown + GitHub Issues via `gh-*` ops; `/frontier`), `smart-zone` (footer meter + `/smartzone`), `dcp/` (session-history `recall`), `continue-after-compaction`, `provision` (`/setup-pi-myself`).
+- `.pi/extensions/` — runtime extensions: `skill-tool` (the `skill` tool, whose enum mirrors pi's own skill loader), `tracker` (two backends: `.scratch/` local markdown + GitHub Issues via `gh-*` ops; locked, atomically-replaced writes; `/frontier`), `smart-zone` (footer meter + `/smartzone`), `dcp/` (session-history `recall`), `continue-after-compaction`, `provision` (`/setup-pi-myself`).
+- `.pi/extensions/tracker/conventions.test.ts` — the gate tying the tracker's op set to the vendored tracker templates: a documented operation that is neither wired nor recorded fails the suite.
 - `.pi/settings.json` — dogfood defaults (skill commands, compaction reserves, retry).
 - `.pi/skills/` — our own skills: `memory` (pi-workspace-memory workflow), `verification-before-completion`, `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, `test-proof-debt-audit`, `ultra-review`, `ultra-review-receive`, `repo-refresh`.
 - `.pi/prompts/` — hand-written slash commands: `/verify`, `/init`, `/remember`.
@@ -20,8 +21,9 @@
 - `scripts/sync-skills.mjs` — vendored sync + lock integrity (`--check`).
 - `scripts/setup-project.mjs` — provisions a consuming repo: task roles, `APPEND_SYSTEM.md`, `enableSkillCommands` (idempotent; `/setup-pi-myself`). A rerun refreshes task-role copies still matching what the package last shipped (hash baseline in the project's `.pi/`); edited or deleted roles are kept. `APPEND_SYSTEM.md` is harness policy and is always replaced — an edited copy is backed up as `APPEND_SYSTEM.md.local`; project-specific rules belong in the repo's `AGENTS.md`.
 - `package.json` — npm scripts and pi package registration.
-- `tsconfig.json` — root/test TypeScript; excludes `.pi/` and `vendor/`.
-- `.pi/extensions/tsconfig.json` — runtime extension TypeScript.
+- `biome.json` — formatter + linter config (tabs, double quotes, `preset: recommended`); excludes `vendor/` and the generated lock, and relaxes two rules for `*.test.ts` only. Takes no comments: Biome silently drops `files.includes` when one is present.
+- `tsconfig.json` — root/test TypeScript; excludes `.pi/` and `vendor/`. Strict beyond `strict: true`: `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `exactOptionalPropertyTypes`.
+- `.pi/extensions/tsconfig.json` — runtime extension TypeScript (same strict flags).
 - `.pi/agents/*.md` — pi-task role overrides (not registered through the `pi` field; task tooling discovers them).
 
 ## Generated and Runtime State
@@ -39,8 +41,10 @@ Not source of truth, do not edit: `node_modules/`, `.pi/node_modules/`, `.pi/npm
 ## Verification
 
 ```bash
+npm run check                 # lint → both typechecks → tests → sync check (what CI runs)
+npm run lint                  # Biome format + lint (read-only)
 npm test                      # extensions + skill hygiene tests
-npx tsc -p .pi/extensions/tsconfig.json --noEmit
+npm run extensions:typecheck  # runtime extensions
 npm run typecheck             # root + tests
 npm run sync:check            # vendored lock integrity
 ```

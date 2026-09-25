@@ -16,11 +16,13 @@
 - Install: `npm install` (dev types for the extensions live in the root `devDependencies`; a consuming repo's `pi install` pulls none of them).
 - Tests: `npm test` (extensions + skills).
 - Skill/catalog tests: `node --test tests/*.test.ts`.
+- Lint + format: `npm run lint` (Biome, read-only check), `npm run lint:fix` (writes).
 - Root TypeScript: `npm run typecheck`.
-- Extension TypeScript: `npx tsc -p .pi/extensions/tsconfig.json --noEmit`.
+- Extension TypeScript: `npm run extensions:typecheck`.
 - Vendored sync: `npm run sync:skills` (upgrade), `npm run sync:check` (verify).
+- Everything at once: `npm run check` (lint → both typechecks → tests → sync check), which is what CI runs.
 
-There is no bundled root `lint` script; do not report lint as passing unless a declared linter command was actually run.
+`biome.json` excludes `vendor/` (read-only upstream) and `skills-lock.json` (generated), and turns `noNonNullAssertion` and `noExplicitAny` off for `*.test.ts` only, where fixtures and adapter fakes make them the terse, intentional form. Do not extend that override to source files; source keeps both rules on. `biome.json` takes no comments — Biome silently ignores `files.includes` when one is present, which deselects the `vendor/` exclusion.
 
 ## Boundaries and Safety
 
