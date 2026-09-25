@@ -36,14 +36,14 @@ export function smartZone(used: number, limit: number = SMART_ZONE_LIMIT): Smart
 	const pct = Math.round((used / limit) * 1000) / 10;
 	const level: SmartZoneLevel =
 		used >= limit ? "over" : used >= limit * BOUNDARY_RATIO ? "boundary" : used >= limit * WATCH_RATIO ? "watch" : "ok";
-	return { used, pct, level, note: zoneNote(level, used, limit) };
+	return { used, pct, level, note: zoneNote(level) };
 }
 
 function k(tokens: number): string {
 	return `${Math.round(tokens / 1000).toLocaleString("en-US")}k`;
 }
 
-function zoneNote(level: SmartZoneLevel, used: number, limit: number): string {
+function zoneNote(level: SmartZoneLevel): string {
 	switch (level) {
 		case "ok":
 			return "room left; work on, decide at the next phase boundary";
@@ -98,7 +98,10 @@ export default function smartZoneExtension(pi: ExtensionAPI): void {
 		if (!ctx.hasUI) return;
 		ctx.ui.setStatus(METER, status);
 		if (toast) {
-			ctx.ui.notify(`${METER} ${next.pct}% (~${k(next.used)}/${k(smartZoneLimit())}) — ${next.note}`, next.level === "over" ? "warning" : "info");
+			ctx.ui.notify(
+				`${METER} ${next.pct}% (~${k(next.used)}/${k(smartZoneLimit())}) — ${next.note}`,
+				next.level === "over" ? "warning" : "info",
+			);
 		}
 	});
 
@@ -110,11 +113,7 @@ export default function smartZoneExtension(pi: ExtensionAPI): void {
 				return;
 			}
 			ctx.ui?.notify?.(
-				[
-					`${METER}: ${reading.pct}% (~${k(reading.used)}/${k(smartZoneLimit())}) — ${reading.level}`,
-					"",
-					reading.note,
-				].join("\n"),
+				[`${METER}: ${reading.pct}% (~${k(reading.used)}/${k(smartZoneLimit())}) — ${reading.level}`, "", reading.note].join("\n"),
 				reading.level === "over" ? "warning" : "info",
 			);
 		},
