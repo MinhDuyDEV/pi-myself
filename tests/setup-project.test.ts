@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { appendFileSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	copyFileSync,
+	cpSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -80,7 +91,10 @@ test("setup-project reports the pi-workspace-memory slug and warns when that slu
 	const target = join(mkdtempSync(join(tmpdir(), "pi-myself-project-")), "My App");
 	mkdirSync(target, { recursive: true });
 	const fresh = runScript(target, home);
-	assert.match(fresh, /memory: pi-workspace-memory slug "my-app" → .*\/\.pi\/memory-md\/projects\/my-app \(created on the first memory_write\)/);
+	assert.match(
+		fresh,
+		/memory: pi-workspace-memory slug "my-app" → .*\/\.pi\/memory-md\/projects\/my-app \(created on the first memory_write\)/,
+	);
 	assert.doesNotMatch(fresh, /warning: a memory directory/);
 
 	mkdirSync(join(home, ".pi", "memory-md", "projects", "my-app", "records"), { recursive: true });
@@ -95,7 +109,10 @@ test("setup-project reports the pi-workspace-memory slug and warns when that slu
 	assert.match(runScript(target, home), /\/custom-memory\/projects\/my-app \(created on the first memory_write\)/);
 	writeFileSync(settingsPath, JSON.stringify({ "pi-memory-md": { localPath: "~/legacy-memory" } }));
 	assert.match(runScript(target, home), /\/legacy-memory\/projects\/my-app \(created on the first memory_write\)/);
-	writeFileSync(settingsPath, JSON.stringify({ "pi-workspace-memory": { localPath: "~/new-memory" }, "pi-memory-md": { localPath: "~/legacy-memory" } }));
+	writeFileSync(
+		settingsPath,
+		JSON.stringify({ "pi-workspace-memory": { localPath: "~/new-memory" }, "pi-memory-md": { localPath: "~/legacy-memory" } }),
+	);
 	assert.match(runScript(target, home), /\/new-memory\/projects\/my-app /, "the current key wins over the legacy key");
 });
 
@@ -103,7 +120,10 @@ test("setup-project is idempotent and never overwrites or restores a task role t
 	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
 	runScript(target);
 	const baseline = JSON.parse(readFileSync(join(target, ".pi", "pi-myself-provisioned.json"), "utf8"));
-	assert.deepEqual(Object.keys(baseline.files).sort(), [...packagedAgentFiles().map((name) => `agents/${name}`), "APPEND_SYSTEM.md"].sort());
+	assert.deepEqual(
+		Object.keys(baseline.files).sort(),
+		[...packagedAgentFiles().map((name) => `agents/${name}`), "APPEND_SYSTEM.md"].sort(),
+	);
 	assert.match(runScript(target), /\b0 created, 0 updated, 0 kept\b/, "re-run must be a no-op");
 
 	const edited = join(target, ".pi", "agents", "reviewer.md");
@@ -122,18 +142,27 @@ test("setup-project always replaces APPEND_SYSTEM.md, backing up a project-edite
 	// a project edit is not lost: it is backed up beside the replacement
 	writeFileSync(append, `${readFileSync(append, "utf8")}\n# project rule\n`);
 	assert.match(runScript(target, undefined, pkg.script), /updated\s+APPEND_SYSTEM\.md \(project copy saved as APPEND_SYSTEM\.md\.local/);
-	assert.ok(readFileSync(append, "utf8").includes("read-only tasks carry no cap"), "the harness policy copy is replaced with the package's");
+	assert.ok(
+		readFileSync(append, "utf8").includes("read-only tasks carry no cap"),
+		"the harness policy copy is replaced with the package's",
+	);
 	assert.ok(readFileSync(`${append}.local`, "utf8").includes("# project rule"), "the project edit survives in the .local backup");
 
 	// idempotent while untouched: a matching copy reports unchanged, no backup
 	assert.match(runScript(target, undefined, pkg.script), /\b0 created, 0 updated\b/);
-	assert.ok(!existsSync(`${append}.local`) || readFileSync(`${append}.local`, "utf8").includes("# project rule"), "no fresh backup of an untouched copy");
+	assert.ok(
+		!existsSync(`${append}.local`) || readFileSync(`${append}.local`, "utf8").includes("# project rule"),
+		"no fresh backup of an untouched copy",
+	);
 
 	// a package upgrade reaches a previously untouched copy without any backup
 	appendFileSync(join(pkg.root, ".pi", "APPEND_SYSTEM.md"), "\n# upstream policy change\n");
 	assert.match(runScript(target, undefined, pkg.script), /updated\s+APPEND_SYSTEM\.md/);
 	assert.ok(readFileSync(append, "utf8").includes("# upstream policy change"), "a policy upgrade replaces an untouched copy");
-	assert.ok(!readFileSync(`${append}.local`, "utf8").includes("# upstream policy change"), "the backup holds the project's own text, not the package's");
+	assert.ok(
+		!readFileSync(`${append}.local`, "utf8").includes("# upstream policy change"),
+		"the backup holds the project's own text, not the package's",
+	);
 
 	// a second project edit overwrites the previous backup: one .local, the latest project text
 	writeFileSync(append, `${readFileSync(append, "utf8")}\n# newer project rule\n`);
@@ -149,7 +178,8 @@ test("setup-project takes a package update into untouched copies and names the k
 	writeFileSync(join(agents, "reviewer.md"), `${readFileSync(join(agents, "reviewer.md"), "utf8")}\nproject rule\n`);
 	rmSync(join(agents, "designer.md"));
 
-	for (const name of ["general.md", "reviewer.md", "designer.md"]) appendFileSync(join(pkg.root, ".pi", "agents", name), "\nupstream change\n");
+	for (const name of ["general.md", "reviewer.md", "designer.md"])
+		appendFileSync(join(pkg.root, ".pi", "agents", name), "\nupstream change\n");
 	writeFileSync(join(pkg.root, ".pi", "agents", "new-role.md"), "---\ndescription: a role the package added\n---\nbody\n");
 	const upgraded = runScript(target, undefined, pkg.script);
 

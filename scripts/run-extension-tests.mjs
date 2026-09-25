@@ -33,4 +33,3 @@ if (testFiles.length === 0) {
 }
 
 run("npx", ["tsx", "--test", ...testFiles]);
-

@@ -171,7 +171,9 @@ if (CHECK) {
 		const computedMeta = computed.skills[name];
 		if (!computedMeta) drift.push(`${name}: in lock but neither promoted in the manifest nor present under in-progress/`);
 		else if (computedMeta.computedHash !== meta.computedHash)
-			drift.push(`${name}: SKILL.md hash drifted (locked ${meta.computedHash.slice(0, 12)}, tree ${computedMeta.computedHash.slice(0, 12)})`);
+			drift.push(
+				`${name}: SKILL.md hash drifted (locked ${meta.computedHash.slice(0, 12)}, tree ${computedMeta.computedHash.slice(0, 12)})`,
+			);
 		else if (computedMeta.bucket !== meta.bucket) drift.push(`${name}: bucket moved (${meta.bucket} → ${computedMeta.bucket})`);
 	}
 	for (const name of Object.keys(computed.skills).filter((s) => !lock.skills[s])) {
@@ -181,7 +183,9 @@ if (CHECK) {
 
 	if (drift.length === 0) {
 		const beta = Object.values(lock.skills).filter((s) => s.bucket === "beta").length;
-		console.log(`sync-skills: clean. ${lock.skillCount} registered skills (${lock.skillCount - beta} promoted + ${beta} beta) @ ${lock.upstream.head.slice(0, 12)}.`);
+		console.log(
+			`sync-skills: clean. ${lock.skillCount} registered skills (${lock.skillCount - beta} promoted + ${beta} beta) @ ${lock.upstream.head.slice(0, 12)}.`,
+		);
 	} else {
 		for (const line of drift) console.error(`  ${line}`);
 		console.error(`\nsync-skills: ${drift.length} drift item(s). Run \`npm run sync:skills\` to reconcile.`);

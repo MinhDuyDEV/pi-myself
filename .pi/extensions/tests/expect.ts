@@ -33,8 +33,10 @@ function matchers(actual: unknown, negated: boolean): Matchers {
 	return {
 		toBe: (expected) => (negated ? assert.notEqual(actual, expected) : assert.equal(actual, expected)),
 		toEqual: (expected) => (negated ? assert.notDeepEqual(actual, expected) : assert.deepEqual(actual, expected)),
-		toContain: (item) => check(contains(actual, item), `expected ${JSON.stringify(actual)?.slice(0, 200)} to contain ${JSON.stringify(item)}`),
-		toHaveLength: (length) => check((actual as { length: number }).length === length, `expected length ${length}, got ${(actual as { length: number }).length}`),
+		toContain: (item) =>
+			check(contains(actual, item), `expected ${JSON.stringify(actual)?.slice(0, 200)} to contain ${JSON.stringify(item)}`),
+		toHaveLength: (length) =>
+			check((actual as { length: number }).length === length, `expected length ${length}, got ${(actual as { length: number }).length}`),
 		toBeDefined: () => check(actual !== undefined, "expected a defined value"),
 		toBeUndefined: () => check(actual === undefined, `expected undefined, got ${JSON.stringify(actual)}`),
 		toBeTrue: () => check(actual === true, `expected true, got ${JSON.stringify(actual)}`),

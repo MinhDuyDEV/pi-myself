@@ -10,5 +10,5 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registerRecallTool } from "./recall.js";
 
 export default function dcpExtension(pi: ExtensionAPI): void {
-  registerRecallTool(pi);
+	registerRecallTool(pi);
 }

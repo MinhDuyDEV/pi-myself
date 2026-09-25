@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SmartZoneReading, lastTurnTokens, smartZone, smartZoneLimit, zoneTransition, SMART_ZONE_LIMIT } from "../smart-zone.js";
+import { lastTurnTokens, SMART_ZONE_LIMIT, type SmartZoneReading, smartZone, smartZoneLimit, zoneTransition } from "../smart-zone.js";
 
 const LIMIT = SMART_ZONE_LIMIT; // 150k
 

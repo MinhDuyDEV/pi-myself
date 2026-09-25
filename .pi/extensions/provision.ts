@@ -21,7 +21,8 @@ export default function provisionExtension(pi: ExtensionAPI): void {
 	const pkg = packageRoot(import.meta.url);
 
 	pi.registerCommand("setup-pi-myself", {
-		description: "Provision this repository for pi-myself: task roles, APPEND_SYSTEM.md (harness policy — always replaced, an edited copy backed up as .local), enableSkillCommands (idempotent; keeps project edits to task roles)",
+		description:
+			"Provision this repository for pi-myself: task roles, APPEND_SYSTEM.md (harness policy — always replaced, an edited copy backed up as .local), enableSkillCommands (idempotent; keeps project edits to task roles)",
 		async handler(_args, ctx) {
 			const root = resolveRepoRoot(ctx.cwd);
 			const script = join(pkg, "scripts", "setup-project.mjs");

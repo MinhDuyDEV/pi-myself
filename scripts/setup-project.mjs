@@ -32,7 +32,7 @@
  * directory.
  */
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -53,7 +53,9 @@ function isAgentFile(path) {
 const agentsSource = join(packagePi, "agents");
 const appendSystemSource = join(packagePi, "APPEND_SYSTEM.md");
 if (!existsSync(agentsSource) || !existsSync(appendSystemSource)) {
-	console.error(`setup-project: no .pi/agents + .pi/APPEND_SYSTEM.md next to this script (${packagePi}) — run from an unmodified pi-myself package`);
+	console.error(
+		`setup-project: no .pi/agents + .pi/APPEND_SYSTEM.md next to this script (${packagePi}) — run from an unmodified pi-myself package`,
+	);
 	process.exit(1);
 }
 
@@ -81,7 +83,10 @@ function syncFile(source, target, rel) {
 	shippedNow[rel] = shipped;
 	if (!existsSync(target)) {
 		if (previous !== undefined) {
-			return ["kept", previous === shipped ? undefined : "removed in this project; delete its entry in .pi/pi-myself-provisioned.json to restore it"];
+			return [
+				"kept",
+				previous === shipped ? undefined : "removed in this project; delete its entry in .pi/pi-myself-provisioned.json to restore it",
+			];
 		}
 		mkdirSync(join(target, ".."), { recursive: true });
 		copyFileSync(source, target);
@@ -93,7 +98,8 @@ function syncFile(source, target, rel) {
 		copyFileSync(source, target);
 		return ["updated"];
 	}
-	if (previous === undefined) return ["kept", "differs from the package and predates the baseline; delete it and rerun to take the package version"];
+	if (previous === undefined)
+		return ["kept", "differs from the package and predates the baseline; delete it and rerun to take the package version"];
 	return ["kept", previous === shipped ? undefined : "edited in this project and changed in the package — merge by hand"];
 }
 
@@ -127,7 +133,9 @@ for (const entry of readdirSync(agentsSource).filter((n) => n.endsWith(".md") &&
 		copyFileSync(target, `${target}.local`);
 		copyFileSync(appendSystemSource, target);
 		counts.updated++;
-		console.log(`updated  ${rel} (project copy saved as APPEND_SYSTEM.md.local; moved its project rules into AGENTS.md if you still need them)`);
+		console.log(
+			`updated  ${rel} (project copy saved as APPEND_SYSTEM.md.local; moved its project rules into AGENTS.md if you still need them)`,
+		);
 	}
 }
 
@@ -155,17 +163,22 @@ if (missing.length > 0) {
 // 4. baseline for the next run (skipped in the checkout: the package is not its own consumer)
 if (targetRoot !== packageRoot) {
 	const files = Object.fromEntries(Object.entries(shippedNow).sort(([a], [b]) => a.localeCompare(b)));
-	const note = "Written by /setup-pi-myself: sha256 of each file as the pi-myself package shipped it at the last run. Commit it; edit the provisioned copies freely.";
+	const note =
+		"Written by /setup-pi-myself: sha256 of each file as the pi-myself package shipped it at the last run. Commit it; edit the provisioned copies freely.";
 	const body = `${JSON.stringify({ note, files }, null, "\t")}\n`;
 	if (!existsSync(BASELINE) || readFileSync(BASELINE, "utf8") !== body) writeFileSync(BASELINE, body);
 }
 
-console.log(`setup-project: ${counts.created} created, ${counts.updated} updated, ${counts.kept} kept, ${counts.unchanged} unchanged in ${targetPi}`);
+console.log(
+	`setup-project: ${counts.created} created, ${counts.updated} updated, ${counts.kept} kept, ${counts.unchanged} unchanged in ${targetPi}`,
+);
 
 // 5. memory slug check (pi-workspace-memory keys memory by the git root's folder name,
 //    so two repos with the same folder name silently share one memory)
 const memory = memorySlugStatus(targetRoot);
-console.log(`memory: pi-workspace-memory slug "${memory.slug}" → ${memory.dir}${memory.exists ? " (ALREADY EXISTS)" : " (created on the first memory_write)"}`);
+console.log(
+	`memory: pi-workspace-memory slug "${memory.slug}" → ${memory.dir}${memory.exists ? " (ALREADY EXISTS)" : " (created on the first memory_write)"}`,
+);
 if (memory.exists) {
 	console.log(
 		"warning: a memory directory for this slug already exists before this repository had any session — another checkout with the same folder name may be sharing it; rename the folder if that is not intended.",
@@ -178,7 +191,12 @@ if (memory.exists) {
  * whole legacy `pi-memory-md` block only when the new key is absent (the package was renamed).
  */
 export function memorySlugStatus(root, home = process.env.HOME ?? "") {
-	const slug = basename(root).trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "project";
+	const slug =
+		basename(root)
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9]+/g, "-")
+			.replace(/^-+|-+$/g, "") || "project";
 	let localPath = join(home, ".pi", "memory-md");
 	try {
 		const settings = JSON.parse(readFileSync(join(home, ".pi", "agent", "settings.json"), "utf8"));

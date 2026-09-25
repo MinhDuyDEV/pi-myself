@@ -3,11 +3,14 @@
 	"type": "module",
 	"version": "0.1.0",
 	"private": true,
-	"description": "pi coding-agent harness around mattpocock/skills \u2014 extensions, task roles, prompts, and hygiene tests",
+	"description": "pi coding-agent harness around mattpocock/skills — extensions, task roles, prompts, and hygiene tests",
 	"keywords": [
 		"pi-package"
 	],
 	"license": "MIT",
+	"engines": {
+		"node": ">=22.18"
+	},
 	"repository": {
 		"type": "git",
 		"url": "https://github.com/minhduydev/pi-myself"
@@ -17,8 +20,11 @@
 		"test:all": "npm run test:extensions && npm run test:skills",
 		"test:skills": "node --test tests/*.test.ts",
 		"test:extensions": "node scripts/run-extension-tests.mjs",
+		"lint": "biome check .",
+		"lint:fix": "biome check --write .",
 		"typecheck": "tsc --noEmit",
 		"extensions:typecheck": "npx tsc -p .pi/extensions/tsconfig.json --noEmit",
+		"check": "npm run lint && npm run typecheck && npm run extensions:typecheck && npm test && npm run sync:check",
 		"sync:skills": "node scripts/sync-skills.mjs",
 		"sync:check": "node scripts/sync-skills.mjs --check",
 		"setup:project": "node scripts/setup-project.mjs"
@@ -58,9 +64,10 @@
 		}
 	},
 	"devDependencies": {
-		"@earendil-works/pi-ai": "^0.84.3",
-		"@earendil-works/pi-coding-agent": "^0.84.3",
-		"@earendil-works/pi-tui": "^0.84.3",
+		"@biomejs/biome": "^2.5.14",
+		"@earendil-works/pi-ai": "^0.87.1",
+		"@earendil-works/pi-coding-agent": "^0.87.1",
+		"@earendil-works/pi-tui": "^0.87.1",
 		"@types/node": "^22.20.1",
 		"tsx": "^4.19.2",
 		"typebox": "1.3.7",

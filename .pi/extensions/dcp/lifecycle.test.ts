@@ -1,5 +1,5 @@
-import { describe, it } from "node:test";
 import assert from "node:assert";
+import { describe, it } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import dcpExtension from "./index.ts";
 
@@ -23,7 +23,10 @@ describe("DCP recall-only extension", () => {
 
 		dcpExtension(pi);
 
-		assert.deepStrictEqual(tools.map((tool) => tool.name), ["recall"]);
+		assert.deepStrictEqual(
+			tools.map((tool) => tool.name),
+			["recall"],
+		);
 		assert.deepStrictEqual(events, []);
 	});
 });
