@@ -15,6 +15,8 @@ export const TRACKER_OPS = [
 	"status",
 	"block",
 	"comment",
+	"edit",
+	"note",
 	// GitHub Issues backend (gh CLI)
 	"gh-list",
 	"gh-frontier",
@@ -30,6 +32,8 @@ export const TRACKER_OPS = [
 	"gh-status",
 	"gh-block",
 	"gh-tick",
+	"gh-edit",
+	"gh-note",
 ] as const;
 
 export type TrackerOp = (typeof TRACKER_OPS)[number];
@@ -50,6 +54,8 @@ export interface TrackerParams {
 	index?: number;
 	destination?: string;
 	notes?: string;
+	/** Map section a `note` appends to (default `Notes`). */
+	section?: string;
 }
 
 /** Wayfinder ticket types (issue-tracker-local.md / -github.md: `Type:` line or `wayfinder:<type>` label). */
@@ -62,11 +68,11 @@ export const trackerSchema = Type.Object({
 	),
 	feature: Optional(Type.String({ description: "Feature/effort slug under .scratch/ (local ops)." })),
 	ticket: Optional(Type.String({ description: "Ticket id (1 or 01), file slug, or exact title; GitHub: the issue number." })),
-	title: Optional(Type.String({ description: "Title (create-spec, create-ticket, create-map)." })),
+	title: Optional(Type.String({ description: "Title (create-spec, create-ticket, create-map, edit)." })),
 	what: Optional(
 		Type.String({
 			description:
-				"Body text: spec body (create-spec), what-to-build or the wayfinder question (create-ticket), map Notes (create-map), comment body (comment).",
+				"Body text: spec body (create-spec), what-to-build or the wayfinder question (create-ticket), replacement body (edit), map Notes (create-map), comment body (comment), the line to append (note).",
 		}),
 	),
 	answer: Optional(Type.String({ description: "Resolution answer (resolve) or the reason (out-of-scope)." })),
@@ -96,4 +102,7 @@ export const trackerSchema = Type.Object({
 	index: Optional(Type.Number({ description: "1-based acceptance-criterion index (tick)." })),
 	destination: Optional(Type.String({ description: "Map destination (create-map)." })),
 	notes: Optional(Type.String({ description: "Map 'Not yet specified' fog at charting time (create-map)." })),
+	section: Optional(
+		Type.String({ description: "Map section a note appends to (default 'Notes'; e.g. 'Not yet specified', 'Out of scope')." }),
+	),
 });

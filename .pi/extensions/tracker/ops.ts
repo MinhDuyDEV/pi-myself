@@ -1,28 +1,15 @@
 import { relative } from "node:path";
 import {
-	CATEGORY_ROLES,
-	TrackerError,
-	appendTicketSection,
-	createMap,
-	createSpec,
-	createTicket,
-	findTicket,
-	listFeatures,
-	listTickets,
-	outOfScopeTicket,
-	resolveTicket,
-	setTicketField,
-	tickCriterion,
-} from "./tracker.js";
-import {
 	ghBlockOp,
 	ghClaimOp,
 	ghCommentOp,
 	ghCreateMapOp,
 	ghCreateSpecOp,
 	ghCreateTicketOp,
+	ghEditOp,
 	ghFrontierOp,
 	ghListOp,
+	ghMapNoteOp,
 	ghOutOfScopeOp,
 	ghResolveOp,
 	ghShowOp,
@@ -30,8 +17,29 @@ import {
 	ghTickOp,
 	ghTriageOp,
 } from "./github.js";
-import { renderFeatures, renderFrontier, renderTicket, renderTicketList } from "./render.js";
 import type { TrackerParams } from "./params.js";
+import { renderFeatures, renderFrontier, renderTicket, renderTicketList } from "./render.js";
+import {
+	appendMapLine,
+	appendTicketSection,
+	assertSection,
+	CATEGORY_ROLES,
+	canonicalRole,
+	createMap,
+	createSpec,
+	createTicket,
+	findTicket,
+	isClosed,
+	isFeatureSlug,
+	listFeatures,
+	listTickets,
+	outOfScopeTicket,
+	resolveTicket,
+	setTicketField,
+	TrackerError,
+	tickCriterion,
+	updateTicket,
+} from "./tracker.js";
 
 const UNBLOCKED = "None (can start immediately)";
 
@@ -48,6 +56,8 @@ function req(params: TrackerParams, field: TextField): string {
 function reqFeature(params: TrackerParams): string {
 	const feature = params.feature?.trim();
 	if (!feature) throw new TrackerError(`"${params.op}" requires "feature"`);
+	// `list`/`frontier` reach the directory without going through findTicket.
+	if (!isFeatureSlug(feature)) throw new TrackerError(`invalid feature slug: ${feature}`);
 	return feature;
 }
 
@@ -59,18 +69,19 @@ function ticket(params: TrackerParams, root: string) {
 	return findTicket(root, reqFeature(params), req(params, "ticket"));
 }
 
-function withId(ticket: { id: string; file: string }, root: string): string {
-	return `${rel(root, ticket.file)}`;
-}
-
 /** Dispatch one `tracker` tool call; returns markdown for the model. */
 export function runOp(root: string, params: TrackerParams): string {
 	switch (params.op) {
 		case "list": {
-			// no feature: the feature table; with one: every ticket of it (closed included), optionally filtered by status
+			// no feature: the feature table; with one: every ticket of it (closed
+			// included), filtered by any of the triage fields the ticket carries —
+			// state role (status), category role (category), or wayfinder type.
 			if (!params.feature?.trim()) return renderFeatures(listFeatures(root));
 			const feature = reqFeature(params);
-			const tickets = listTickets(root, feature).filter((t) => !params.status || t.status === params.status.trim().toLowerCase());
+			const filter = params.status?.trim() ? canonicalRole(root, params.status) : undefined;
+			const tickets = listTickets(root, feature).filter(
+				(t) => !filter || t.status === filter || t.category === filter || t.ticketType === filter,
+			);
 			return renderTicketList(feature, tickets);
 		}
 
@@ -92,7 +103,7 @@ export function runOp(root: string, params: TrackerParams): string {
 				req(params, "title"),
 				params.what ?? "",
 				params.blockedBy ?? [],
-				params.status ?? "ready-for-agent",
+				canonicalRole(root, params.status ?? "ready-for-agent"),
 				params.type,
 				params.criteria ?? [],
 			);
@@ -110,18 +121,16 @@ export function runOp(root: string, params: TrackerParams): string {
 		}
 
 		case "claim": {
+			// A closed ticket keeps its status: writing "claimed" through
+			// setTicketField would lift it back into the frontier.
+			const target = ticket(params, root);
+			if (isClosed(target)) throw new TrackerError(`cannot claim ${target.id}: it is ${target.status}`);
 			const updated = setTicketField(root, reqFeature(params), req(params, "ticket"), "Status", "claimed");
 			return `Claimed (set this before any work):\n\n${renderTicket(updated)}`;
 		}
 
 		case "resolve": {
-			const updated = resolveTicket(
-				root,
-				reqFeature(params),
-				req(params, "ticket"),
-				req(params, "answer"),
-				params.gist,
-			);
+			const updated = resolveTicket(root, reqFeature(params), req(params, "ticket"), req(params, "answer"), params.gist);
 			return `Resolved ${rel(root, updated.file)}${params.gist ? " (map Decisions-so-far updated)" : ""}:\n\n${renderTicket(updated)}`;
 		}
 
@@ -130,15 +139,19 @@ export function runOp(root: string, params: TrackerParams): string {
 			if (typeof index !== "number" || !Number.isInteger(index) || index < 1) {
 				throw new TrackerError('"tick" requires a 1-based numeric "index"');
 			}
+			const target = ticket(params, root);
+			if (isClosed(target)) throw new TrackerError(`cannot tick ${target.id}: it is ${target.status}`);
 			const updated = tickCriterion(root, reqFeature(params), req(params, "ticket"), index);
 			return `Ticked criterion ${index}:\n\n${renderTicket(updated)}`;
 		}
 
 		case "status": {
-			// triage's category roles live on their own line so a state change never clobbers them
-			const value = req(params, "status");
-			const label = (CATEGORY_ROLES as readonly string[]).includes(value.toLowerCase()) ? "Category" : "Status";
-			const updated = setTicketField(root, reqFeature(params), req(params, "ticket"), label, value);
+			// triage's category roles live on their own line so a state change never
+			// clobbers them; either the canonical role or this repo's mapped label
+			// spelling is accepted, and the file keeps the canonical role.
+			const role = canonicalRole(root, req(params, "status"));
+			const label = (CATEGORY_ROLES as readonly string[]).includes(role) ? "Category" : "Status";
+			const updated = setTicketField(root, reqFeature(params), req(params, "ticket"), label, role);
 			return `Updated ${rel(root, updated.file)}:\n\n${renderTicket(updated)}`;
 		}
 
@@ -155,14 +168,24 @@ export function runOp(root: string, params: TrackerParams): string {
 		}
 
 		case "comment": {
-			const updated = appendTicketSection(
-				root,
-				reqFeature(params),
-				req(params, "ticket"),
-				"Comments",
-				req(params, "what"),
-			);
+			const updated = appendTicketSection(root, reqFeature(params), req(params, "ticket"), "Comments", req(params, "what"));
 			return `Commented on ${rel(root, updated.file)}:\n\n${renderTicket(updated)}`;
+		}
+
+		case "edit": {
+			if (!params.title?.trim() && !params.what?.trim()) {
+				throw new TrackerError('"edit" requires "title" and/or "what"');
+			}
+			const updated = updateTicket(root, reqFeature(params), req(params, "ticket"), params.title, params.what);
+			return `Edited ${rel(root, updated.file)}:\n\n${renderTicket(updated)}`;
+		}
+
+		case "note": {
+			const feature = reqFeature(params);
+			const section = params.section?.trim() || "Notes";
+			assertSection(section);
+			appendMapLine(root, feature, section, req(params, "what"));
+			return `Appended to ${section} in .scratch/${feature}/map.md.`;
 		}
 
 		// ── GitHub backend (gh CLI; tickets are issues, docs/agents/issue-tracker.md configures which backend is in play)
@@ -209,6 +232,12 @@ export function runOp(root: string, params: TrackerParams): string {
 		case "gh-tick":
 			return ghTickOp(root, params);
 
+		case "gh-edit":
+			return ghEditOp(root, params);
+
+		case "gh-note":
+			return ghMapNoteOp(root, params);
+
 		default:
 			throw new TrackerError(`unsupported op ${JSON.stringify((params as { op?: string }).op)}`);
 	}
@@ -218,7 +247,5 @@ export function runOp(root: string, params: TrackerParams): string {
 export function runAllFrontiers(root: string): string {
 	const summaries = listFeatures(root);
 	if (summaries.length === 0) return "No features tracked (.scratch/ is empty or missing).";
-	return summaries
-		.map((summary) => `## .scratch/${summary.feature}\n\n${renderFrontier(listTickets(root, summary.feature))}`)
-		.join("\n\n");
+	return summaries.map((summary) => `## .scratch/${summary.feature}\n\n${renderFrontier(listTickets(root, summary.feature))}`).join("\n\n");
 }
