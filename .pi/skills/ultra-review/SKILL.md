@@ -42,7 +42,7 @@ Before round 2 or later, read every earlier report with the same review name. Pa
 Resolve `$ROOT` once per APPEND_SYSTEM (repository root), then let the script own the path, round number, and skeleton:
 
 ```bash
-python "$ROOT/.pi/skills/ultra-review/scripts/create_ultra_review_report.py" --workspace "$ROOT" --review-name <review-name> --scope "<scope>" --review-brief-sha256 <sha256> --scout-count 10 --directive-count <count>
+python3 "$ROOT/.pi/skills/ultra-review/scripts/create_ultra_review_report.py" --workspace "$ROOT" --review-name <review-name> --scope "<scope>" --review-brief-sha256 <sha256> --scout-count 10 --directive-count <count>
 ```
 
 Use the script's `report_path`; never improvise or overwrite it. Replace every `TODO`. If scouts submitted no candidates, state `No candidates reported.` After writing, print the report path and full content.
@@ -56,7 +56,7 @@ Use the script's `report_path`; never improvise or overwrite it. Replace every `
 
 ### Report shape
 
-Keep the script's headings: metadata header (Date, Review name, Round, Scope, Report path), Prior Round Guard, Findings, Verification Queue, Strongest Reason Not To Merge Yet, Next Receive Prompt. End with:
+Keep the script's headings: metadata header (Date, Review name, Round, Scope, Mode, Review brief sha256, Scouts, Caller directives, Report path), Prior Round Guard, Findings, Verification Queue, Strongest Reason Not To Merge Yet, Next Receive Prompt. The digest and counts are the report's identity — `/skill:ultra-review-receive` compares them against the workspace, so never edit them. End with:
 
 ```text
 Run /skill:ultra-review-receive to verify <report path> and implement confirmed owner-clean fixes.

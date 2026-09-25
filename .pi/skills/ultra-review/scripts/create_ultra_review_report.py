@@ -60,6 +60,10 @@ Date: {date_slug}
 Review name: {review_name}
 Round: {round_number}
 Scope: {scope}
+Mode: {mode}
+Review brief sha256: {review_brief_sha256}
+Scouts: {scout_count}
+Caller directives: {directive_count}
 Report path: {report_path.as_posix()}
 
 ## Prior Round Guard
@@ -99,7 +103,7 @@ TODO
 
 ## Next Receive Prompt
 
-Run /ultra-review-receive to verify {report_path.as_posix()} and implement confirmed owner-clean fixes.
+Run /skill:ultra-review-receive to verify {report_path.as_posix()} and implement confirmed owner-clean fixes.
 """
 
 
