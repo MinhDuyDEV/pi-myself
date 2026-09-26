@@ -311,6 +311,27 @@ test("a sync whose clone fails says the tree and the lock were left as they were
 	}
 });
 
+test("an upstream tree the lock cannot record is never swapped in", () => {
+	// `main` gains a registered skill with no description: buildLock refuses it,
+	// and that refusal used to come after the swap, leaving a new tree and the old lock
+	const upstream = fakeUpstream();
+	const git = (...args: string[]) => execFileSync("git", ["-C", upstream.dir, ...args], { env: GIT_ENV });
+	git("checkout", "--quiet", "main");
+	writeFileSync(join(upstream.dir, "skills", "engineering", "demo", "SKILL.md"), "---\nname: demo\n---\n");
+	git("commit", "--quiet", "-am", "no description");
+	const root = fakeCheckout();
+	const lockBefore = readFileSync(join(root, "skills-lock.json"), "utf8");
+	const result = syncFrom(root, upstream.dir);
+	assert.equal(result.status, 1, result.output);
+	assert.match(result.output, /promoted skill has no description: \.\/skills\/engineering\/demo/);
+	assert.match(result.output, /the vendored tree was left as it was/);
+	assert.match(result.output, /skills-lock\.json was not changed/);
+	assert.equal(existsSync(join(root, PHASE_BOUNDARIES)), true, "the previous tree is still in place");
+	assert.deepEqual(readdirSync(join(root, "vendor")), ["mattpocock-skills"], "no work folder is left");
+	assert.equal(readFileSync(join(root, "skills-lock.json"), "utf8"), lockBefore);
+	assert.equal(sync(root, "--check").status, 0, "the tree still matches its lock");
+});
+
 test("the first sync, with no vendor/ folder yet, creates the vendored tree", () => {
 	const upstream = fakeUpstream();
 	const root = fakeCheckout();

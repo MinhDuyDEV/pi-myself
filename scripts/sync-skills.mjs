@@ -77,7 +77,7 @@ function die(message) {
 function readSkill(skillMd) {
 	const content = readFileSync(skillMd, "utf8");
 	const match = content.match(/^---\n([\s\S]*?)\n---/);
-	if (!match) die(`no frontmatter in ${rel(ROOT, skillMd)}`);
+	if (!match) throw new Error(`no frontmatter in ${rel(ROOT, skillMd)}`);
 	const field = (name) => {
 		const m = match[1].match(new RegExp(`^${name}:\\s*(.+)$`, "m"));
 		if (!m) return undefined;
@@ -106,28 +106,35 @@ function rel(from, to) {
 
 const BETA_DIR = join(CLONE, "skills", "in-progress");
 
-function readRegistered() {
-	if (!existsSync(MANIFEST)) die(`vendored clone missing ${rel(ROOT, MANIFEST)} — is skills/ a mattpocock/skills checkout?`);
-	const manifest = JSON.parse(readFileSync(MANIFEST, "utf8"));
+/** The registered skills of the tree at `tree` (the vendored tree, or a staged
+ * copy about to replace it). Throws on a tree the lock cannot record, so a sync
+ * can refuse it before the swap rather than after. */
+function readRegistered(tree = CLONE) {
+	const manifestFile = join(tree, ".claude-plugin", "plugin.json");
+	const betaDir = join(tree, "skills", "in-progress");
+	if (!existsSync(manifestFile)) {
+		throw new Error(`vendored clone missing ${rel(ROOT, manifestFile)} — is skills/ a mattpocock/skills checkout?`);
+	}
+	const manifest = JSON.parse(readFileSync(manifestFile, "utf8"));
 	if (!Array.isArray(manifest.skills) || manifest.skills.length === 0) {
-		die(`${rel(ROOT, MANIFEST)} declares no skills`);
+		throw new Error(`${rel(ROOT, manifestFile)} declares no skills`);
 	}
 	const registered = [];
 	const seen = new Set();
 	const add = (entry, bucket) => {
-		const skillMd = resolve(join(CLONE, entry.replace(/^\.\//, "")), "SKILL.md");
-		if (!existsSync(skillMd)) die(`${bucket} skill missing SKILL.md: ${entry}`);
+		const skillMd = resolve(join(tree, entry.replace(/^\.\//, "")), "SKILL.md");
+		if (!existsSync(skillMd)) throw new Error(`${bucket} skill missing SKILL.md: ${entry}`);
 		const skill = readSkill(skillMd);
-		if (!skill.name) die(`${bucket} skill has no name in frontmatter: ${entry}`);
-		if (!skill.description) die(`${bucket} skill has no description: ${entry}`);
-		if (seen.has(skill.name)) die(`duplicate skill name across buckets: ${skill.name}`);
+		if (!skill.name) throw new Error(`${bucket} skill has no name in frontmatter: ${entry}`);
+		if (!skill.description) throw new Error(`${bucket} skill has no description: ${entry}`);
+		if (seen.has(skill.name)) throw new Error(`duplicate skill name across buckets: ${skill.name}`);
 		seen.add(skill.name);
 		registered.push({ entry, skillMd, skill, bucket });
 	};
 	for (const entry of manifest.skills) add(entry, "promoted");
-	if (existsSync(BETA_DIR)) {
-		for (const name of readdirSync(BETA_DIR).sort()) {
-			if (existsSync(join(BETA_DIR, name, "SKILL.md"))) add(`./skills/in-progress/${name}`, "beta");
+	if (existsSync(betaDir)) {
+		for (const name of readdirSync(betaDir).sort()) {
+			if (existsSync(join(betaDir, name, "SKILL.md"))) add(`./skills/in-progress/${name}`, "beta");
 		}
 	}
 	return registered;
@@ -294,6 +301,14 @@ function replaceVendoredTree(source) {
 		if (work) rmSync(work, { recursive: true, force: true });
 		throw new Error(`could not stage the new tree beside ${tree} (${error.message}); the vendored tree was left as it was`);
 	}
+	// Refuse a tree the lock cannot record before it replaces anything: buildLock
+	// runs after the swap, so its refusal used to leave the new tree and the old lock.
+	try {
+		readRegistered(join(work, "new"));
+	} catch (error) {
+		rmSync(work, { recursive: true, force: true });
+		throw new Error(`upstream's tree cannot be recorded in the lock (${error.message}); the vendored tree was left as it was`);
+	}
 	const previous = join(work, "previous");
 	try {
 		if (existsSync(CLONE)) renameSync(CLONE, previous);
@@ -332,7 +347,12 @@ function movePreviousTreeBack(previous, failure) {
 if (CHECK || RELOCK) {
 	if (!existsSync(LOCK)) die("skills-lock.json is missing. Run `npm run sync:skills` once to generate it.");
 	const lock = JSON.parse(readFileSync(LOCK, "utf8"));
-	const computed = buildLock(lock.upstream?.head ?? "unknown");
+	let computed;
+	try {
+		computed = buildLock(lock.upstream?.head ?? "unknown");
+	} catch (error) {
+		die(error.message);
+	}
 	const drift = skillDrift(lock, computed);
 
 	if (RELOCK) {
@@ -385,7 +405,16 @@ if (CHECK || RELOCK) {
 		// the lock is written only after a sync succeeds
 		die(`${error.message}\n(skills-lock.json was not changed)`);
 	}
-	const lockValue = buildLock(head);
+	let lockValue;
+	try {
+		lockValue = buildLock(head);
+	} catch (error) {
+		// the staged tree was checked before the swap, so this is a tree that
+		// changed since: say what is where rather than leave a silent mismatch
+		die(
+			`${error.message}\nthe new tree is in place but skills-lock.json was not changed; git checkout -- ${rel(ROOT, CLONE)} restores the previous tree`,
+		);
+	}
 	writeLock(lockValue);
 
 	console.log(`sync-skills: vendored ${lockValue.skillCount} registered skills @ ${head.slice(0, 12)}.`);
