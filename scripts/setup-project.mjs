@@ -35,6 +35,11 @@
  * `<name>.local` and a regular file takes its place. A role the project added
  * is never touched. Run from any directory; the target is the argument or the
  * current working directory.
+ *
+ * `--check` (anywhere in argv) is the dry run: every line a real run would
+ * print, prefixed `[check]`, and nothing written — no role, no `.local`, no
+ * baseline, no APPEND_SYSTEM.md removal. It exits 1 when a real run would
+ * change anything, 0 when the project is current.
  */
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
@@ -43,7 +48,9 @@ import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(fileURLToPath(new URL("./", import.meta.url)), "..");
 const packagePi = join(packageRoot, ".pi");
-const targetRoot = resolve(process.argv[2] ?? process.cwd());
+const argv = process.argv.slice(2);
+const CHECK = argv.includes("--check");
+const targetRoot = resolve(argv.find((arg) => arg !== "--check") ?? process.cwd());
 const targetPi = join(targetRoot, ".pi");
 
 /** Frontmatter a project owns per role; every other line comes from the package. */
@@ -63,6 +70,27 @@ if (!existsSync(agentsSource)) {
 }
 
 const sha256 = (text) => createHash("sha256").update(text).digest("hex");
+
+/** Every write goes through these: under --check they only count as a pending change. */
+let pendingWrites = 0;
+const fsWrite = {
+	mkdir(path) {
+		if (!CHECK) mkdirSync(path, { recursive: true });
+	},
+	write(path, text) {
+		pendingWrites++;
+		if (!CHECK) writeFileSync(path, text);
+	},
+	rename(from, to) {
+		pendingWrites++;
+		if (!CHECK) renameSync(from, to);
+	},
+	remove(path) {
+		pendingWrites++;
+		if (!CHECK) rmSync(path);
+	},
+};
+const LINE_PREFIX = CHECK ? "[check] " : "";
 
 /** pi-task only catalogs .md files with frontmatter — same filter here. */
 function isAgentFile(path) {
@@ -171,21 +199,21 @@ function syncAgent(sourcePath, target, rel) {
 	const link = lstatExists(target) && lstatSync(target).isSymbolicLink();
 	const existing = existsSync(target) ? readFileSync(target, "utf8") : undefined;
 	if (existing === undefined && !link) {
-		mkdirSync(join(target, ".."), { recursive: true });
-		writeFileSync(target, source);
+		fsWrite.mkdir(join(target, ".."));
+		fsWrite.write(target, source);
 		return previous === undefined ? ["created"] : ["created", "was deleted in this project; the roster is harness-owned"];
 	}
 	const content = existing === undefined ? source : withFields(source, projectChoices(existing, previous));
 	if (!link && existing === content) return ["unchanged"];
 	if (link) {
 		// never write through a link: keep the project's link, put a file in its place
-		renameSync(target, `${target}.local`);
-		writeFileSync(target, content);
+		fsWrite.rename(target, `${target}.local`);
+		fsWrite.write(target, content);
 		return ["updated", `your symlink kept as ${basename(target)}.local`];
 	}
 	const edited = editedByProject(existing, previous, source);
-	if (edited) writeFileSync(`${target}.local`, existing);
-	writeFileSync(target, content);
+	if (edited) fsWrite.write(`${target}.local`, existing);
+	fsWrite.write(target, content);
 	return ["updated", edited ? `your copy saved as ${basename(target)}.local` : undefined];
 }
 
@@ -202,11 +230,11 @@ function lstatExists(path) {
 const counts = { created: 0, updated: 0, removed: 0, kept: 0, unchanged: 0 };
 function record([outcome, note], label) {
 	counts[outcome]++;
-	if (outcome !== "unchanged" || note) console.log(`${outcome.padEnd(8)} ${label}${note ? ` (${note})` : ""}`);
+	if (outcome !== "unchanged" || note) console.log(`${LINE_PREFIX}${outcome.padEnd(8)} ${label}${note ? ` (${note})` : ""}`);
 }
 
 // 1. task roles — the package owns every line except the project's own choices
-mkdirSync(join(targetPi, "agents"), { recursive: true });
+fsWrite.mkdir(join(targetPi, "agents"));
 const packaged = readdirSync(agentsSource).filter((name) => name.endsWith(".md") && isAgentFile(join(agentsSource, name)));
 for (const entry of packaged) {
 	const rel = `agents/${entry}`;
@@ -222,7 +250,7 @@ for (const [rel, previous] of Object.entries(shippedBefore)) {
 	const existing = readFileSync(target, "utf8");
 	const untouched = typeof previous === "string" ? sha256(existing) === previous : normalizedHash(existing) === previous.sha256;
 	if (untouched) {
-		rmSync(target);
+		fsWrite.remove(target);
 		record(["removed", "pi-myself no longer ships this role"], rel);
 	} else {
 		record(["kept", "pi-myself no longer ships this role; your edits make it the project's now"], rel);
@@ -241,8 +269,8 @@ for (const [rel, previous] of Object.entries(shippedBefore)) {
 		const text = readFileSync(target, "utf8");
 		const unedited = typeof shippedBefore[rel] === "string" && sha256(text) === shippedBefore[rel];
 		if (unedited || text.includes(STALE_COPY_MARKER)) {
-			if (!unedited) writeFileSync(`${target}.local`, text);
-			rmSync(target);
+			if (!unedited) fsWrite.write(`${target}.local`, text);
+			fsWrite.remove(target);
 			const note = unedited ? "" : `; your copy saved as ${rel}.local — move its project rules into AGENTS.md`;
 			record(["removed", `the workflow policy is now injected by the pi-myself policy extension${note}`], rel);
 		}
@@ -255,14 +283,23 @@ if (targetRoot !== packageRoot) {
 	const note =
 		"Written by /setup-pi-myself: per role, the sha256 of the file pi-myself shipped (model, thinking and max_turns lines removed) and the values it shipped for those fields. Commit it: it tells a project edit apart from the package's own previous version (only an edit is backed up as <name>.local) and a project's own model/thinking/max_turns apart from the package's default (only the project's choice is kept).";
 	const body = `${JSON.stringify({ note, version: 2, files }, null, "\t")}\n`;
-	if (!existsSync(BASELINE) || readFileSync(BASELINE, "utf8") !== body) writeFileSync(BASELINE, body);
+	if (!existsSync(BASELINE) || readFileSync(BASELINE, "utf8") !== body) {
+		if (CHECK) console.log(`${LINE_PREFIX}updated  pi-myself-provisioned.json (the baseline a real run records)`);
+		fsWrite.write(BASELINE, body);
+	}
 }
 
 const extra = ["removed", "kept"]
 	.filter((outcome) => counts[outcome] > 0)
 	.map((outcome) => `, ${counts[outcome]} ${outcome}`)
 	.join("");
-console.log(`setup-project: ${counts.created} created, ${counts.updated} updated, ${counts.unchanged} unchanged${extra} in ${targetPi}`);
+const summary = `${counts.created} created, ${counts.updated} updated, ${counts.unchanged} unchanged${extra} in ${targetPi}`;
+if (CHECK) {
+	const verdict = pendingWrites > 0 ? "stale: run /setup-pi-myself to apply" : "current";
+	console.log(`setup-project --check: ${summary} — dry run, nothing written; ${verdict}`);
+} else {
+	console.log(`setup-project: ${summary}`);
+}
 
 // 5. memory slug check (pi-workspace-memory keys memory by the git root's folder
 //    name, so two repos with the same folder name silently share one memory).
@@ -276,6 +313,8 @@ if (memory.exists && !hadBaseline) {
 		"warning: a memory directory for this slug already exists before this repository had any session — another checkout with the same folder name may be sharing it; rename the folder if that is not intended.",
 	);
 }
+
+if (CHECK && pendingWrites > 0) process.exitCode = 1;
 
 /**
  * Mirror of pi-workspace-memory's getProjectSlug / getMemoryDir / loadSettings: folder-name slug

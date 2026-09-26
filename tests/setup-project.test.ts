@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
 	appendFileSync,
@@ -11,6 +11,7 @@ import {
 	mkdtempSync,
 	readdirSync,
 	readFileSync,
+	readlinkSync,
 	rmSync,
 	symlinkSync,
 	writeFileSync,
@@ -256,6 +257,52 @@ test("setup-project backs up a differing copy when there is no baseline to compa
 	writeFileSync(probe, readFileSync(probe, "utf8").replace(/^model: .*$/m, "model: local/reviewer"));
 	assert.match(runScript(target), /\b0 created, 0 updated\b/);
 	assert.ok(!existsSync(`${probe}.local`));
+});
+
+/** Every path under `dir` with its content (a link as its target): what "wrote nothing" is measured against. */
+function snapshot(dir: string): Record<string, string> {
+	const out: Record<string, string> = {};
+	if (!existsSync(dir)) return out;
+	for (const name of readdirSync(dir, { recursive: true, encoding: "utf8" }).sort()) {
+		const path = join(dir, name);
+		const stat = lstatSync(path);
+		out[name] = stat.isSymbolicLink() ? `-> ${readlinkSync(path)}` : stat.isDirectory() ? "<dir>" : readFileSync(path, "utf8");
+	}
+	return out;
+}
+
+function runCheck(args: string[], script = SCRIPT): { status: number | null; stdout: string } {
+	const result = spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
+	return { status: result.status, stdout: `${result.stdout}${result.stderr}` };
+}
+
+test("setup-project --check reports what a run would do, writes nothing, and exits 1 until the project is current", () => {
+	const fresh = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	const first = runCheck([fresh, "--check"]);
+	assert.equal(first.status, 1, "an unprovisioned project is not current");
+	assert.match(first.stdout, /^\[check\] created\s+agents\/reviewer\.md$/m, "today's line, marked as a dry run");
+	assert.match(first.stdout, /setup-project --check: \d+ created, 0 updated, 0 unchanged/);
+	assert.deepEqual(snapshot(fresh), {}, "a check writes no role, no baseline, not even .pi/");
+
+	runScript(fresh);
+	const current = runCheck(["--check", fresh]);
+	assert.equal(current.status, 0, `a just-provisioned project is current:\n${current.stdout}`);
+	assert.match(current.stdout, /setup-project --check: 0 created, 0 updated, \d+ unchanged/);
+
+	// a package update, a project edit, and an older run's APPEND_SYSTEM copy: all reported, none applied
+	const pkg = fakePackage();
+	const target = provisionedBefore(OLD_POLICY);
+	runScript(target, undefined, pkg.script);
+	writeFileSync(join(target, ".pi", "APPEND_SYSTEM.md"), OLD_POLICY);
+	appendFileSync(join(target, ".pi", "agents", "reviewer.md"), "\nproject rule\n");
+	appendFileSync(join(pkg.root, ".pi", "agents", "general.md"), "\nupstream change\n");
+	const before = snapshot(target);
+	const stale = runCheck([target, "--check"], pkg.script);
+	assert.equal(stale.status, 1);
+	assert.match(stale.stdout, /^\[check\] updated\s+agents\/general\.md$/m);
+	assert.match(stale.stdout, /^\[check\] updated\s+agents\/reviewer\.md \(your copy saved as reviewer\.md\.local\)$/m);
+	assert.match(stale.stdout, /^\[check\] removed\s+APPEND_SYSTEM\.md/m);
+	assert.deepEqual(snapshot(target), before, "no role, .local, baseline, or APPEND_SYSTEM change");
 });
 
 /** Rewrite one frontmatter field of a role file in place (a package role or a project copy). */

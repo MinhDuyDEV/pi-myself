@@ -15,30 +15,24 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        # 22.18.0 is package.json's engines minimum; 22.20.0 is the current pin
+        node-version: [22.18.0, 22.20.0]
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Set up Node.js ${{ matrix.node-version }}
         uses: actions/setup-node@v4
         with:
-          node-version: 22.20.0
+          node-version: ${{ matrix.node-version }}
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Lint and format check
-        run: npm run lint
-
-      - name: Verify vendored skills lock
-        run: npm run sync:check
-
-      - name: Run extension and skill tests
-        run: npm test
-
-      - name: Typecheck root project
-        run: npm run typecheck
-
-      - name: Typecheck extensions
-        run: npm run extensions:typecheck
+      # the single gate: lint, both typechecks, tests, sync check, agents check
+      - name: npm run check
+        run: npm run check
