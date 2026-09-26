@@ -39,8 +39,13 @@ const GUIDANCE = TRACKED.filter(
 /** `dir/file.ext`-shaped code spans; machine paths (~, /) are host facts, not repo paths. */
 const PATH_TOKEN = /`([A-Za-z0-9_.@-][A-Za-z0-9_.@/-]*\/[A-Za-z0-9_.@-]+\.(?:md|ts|mjs|json|py|sh))`/g;
 
-/** Bytes of always-in-context text; raising a budget is a decision, not a fix. */
-const BYTE_BUDGET: Record<string, number> = { "AGENTS.md": 6_000, ".pi/APPEND_SYSTEM.md": 12_000 };
+/**
+ * Bytes of always-in-context text; raising a budget is a decision, not a fix.
+ * APPEND_SYSTEM went 12,000 → 12,500 (2026-09-26) for the child contract's
+ * `bash` timeout rule: a hung gate costs a blocked child, which is worth more
+ * than the ~40 tokens a turn the extra line adds.
+ */
+const BYTE_BUDGET: Record<string, number> = { "AGENTS.md": 6_000, ".pi/APPEND_SYSTEM.md": 12_500 };
 
 const read = (file: string) => readFileSync(join(ROOT, file), "utf8");
 const repoPath = (absolute: string) => relative(ROOT, absolute).split(sep).join("/");
