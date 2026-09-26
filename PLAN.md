@@ -164,6 +164,8 @@ pi-myself/
 
 ## 9. Deferred / open ⏸
 
+- Tracker findings re-derived after the audit's T7–T19 rows were lost (`R`-ids, low severity, read from code only), deferred: the parent map is found only through the body's `Part of`/`## Parent`, never the native `/parent` endpoint (R11); `create-map` puts `notes` under "Not yet specified" and `what` under Notes, and the local op ignores `title` (R15); `gh-show` keeps only the 30 newest comments, so an Agent Brief can fall out (R17); an issue carrying two state roles sits in two triage buckets and `gh-status` strips the extra silently (R18); when the sub-issue link fails, map order silently falls back to number order (R19); `gh-list` is open-only (R21). Unverified leads: `gh-block` re-posts existing dependency links, and a failed `gh repo view` makes this repo's own `owner/repo#N` refs count as foreign.
+
 - `sync-skills.mjs` deletes the vendored tree before copying the new clone (no staging directory), so an interrupted `npm run sync:skills` leaves half a tree, and it clones the default branch while recording `ref: "main"` (audit S16). Fix: `--branch main`, copy into a sibling staging dir, swap by rename. Deferred because verifying it means a live upstream re-clone, which would also upgrade the vendored skills.
 
 - The tracker's GitHub **write** path (label creation, native sub-issue and dependency edges, `claim`/`close`) is covered only by fake-runner tests; exercising it live needs a throwaway repository and a `gh` token carrying `delete_repo`, which this machine's token lacks.

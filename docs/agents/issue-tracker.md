@@ -33,7 +33,7 @@ Create a GitHub issue.
 
 ## Parents are indexes, not work units
 
-A parent (spec, epic, wayfinder map) is excluded from the frontier by construction: children reference it with a `Part of: #NN` line in their body — the tracker tool's gh-frontier collects that set and drops those issues from its takeable list (reporting them in a footer). Keep parent issues label-free of triage roles: they are not agent-grabbable work.
+A parent (spec, epic, wayfinder map) is excluded from the frontier by construction: children reference it with a `Part of: #NN` line in their body — the tracker tool's gh-frontier collects that set and drops those issues from its takeable list (reporting them in a footer). Structure, not labels, keeps a parent off the frontier: a spec keeps the `ready-for-agent` label `to-spec` applies, and a spec with no tickets yet is still listed as takeable.
 
 ## When a skill says "fetch the relevant ticket"
 
