@@ -70,6 +70,9 @@ function fakeGh(
 		nativeSupport?: boolean;
 		labels?: string[];
 		subIssueOrder?: Record<number, number[]>;
+		/** Native parent per child: what `gh api repos/{o}/{r}/issues/<n>/parent`
+		 * answers (REST "Get parent issue"); a child with no entry gets a 404. */
+		parentOf?: Record<number, number>;
 		/** What `gh repo view --json nameWithOwner` answers. */
 		repoSlug?: string;
 		/** The authenticated login `@me` resolves to (default `me`). */
@@ -188,6 +191,14 @@ function fakeGh(
 			const subIssuesFor = /issues\/(\d+)\/sub_issues(?:\?|$)/.exec(path);
 			if (subIssuesFor) {
 				return JSON.stringify((options.subIssueOrder?.[Number(subIssuesFor[1])] ?? []).map((number) => ({ number })));
+			}
+			const parentFor = /issues\/(\d+)\/parent$/.exec(path);
+			if (parentFor) {
+				const parent = options.parentOf?.[Number(parentFor[1])];
+				if (parent === undefined) throw new TrackerError("gh api: Not Found (HTTP 404)");
+				const jq = args.includes("--jq") ? args[args.indexOf("--jq") + 1] : undefined;
+				if (jq !== ".number") throw new TrackerError(`unexpected --jq ${jq} on ${path}`);
+				return String(parent);
 			}
 			if (/issues\?state=/.test(path)) {
 				const state = /state=all/.test(path) ? "all" : "open";
@@ -1315,4 +1326,73 @@ test("a status or mapped label beginning with - never reaches gh as a flag", () 
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
+});
+
+// ── deferred findings (R11, R15, R17, R18, R19, R21) ─────────────────────────
+
+test("gh-resolve and gh-out-of-scope find a map linked only as a native parent (R11)", () => {
+	const mapBody = "## Decisions so far\n\n## Out of scope\n";
+	const world = () => {
+		const apiCalls: string[] = [];
+		const gh = fakeGh(
+			[
+				{ number: 1, title: "Map: import", state: "OPEN", body: mapBody, labels: ["wayfinder:map"] },
+				// linked through the GitHub UI: no `Part of` line in either body
+				{ number: 4, title: "Pick parser", state: "OPEN", body: "## Question\n\nCSV?", url: "https://example.test/issues/4" },
+				{ number: 5, title: "Support TSV", state: "OPEN", body: "## Question\n\nTSV?" },
+				{ number: 6, title: "Orphan", state: "OPEN", body: "## Question\n\nq?" },
+			],
+			{ parentOf: { 4: 1, 5: 1 }, beforeRun: (args) => args[0] === "api" && apiCalls.push(args.join(" ")) },
+		);
+		return { gh, apiCalls };
+	};
+
+	const resolved = world();
+	const out = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "CSV.", gist: "CSV beats TSV" }, resolved.gh.run);
+	assert.match(out, /map #1 Decisions so far updated/);
+	assert.ok(resolved.apiCalls.includes("api repos/{owner}/{repo}/issues/4/parent --jq .number"), resolved.apiCalls.join("\n"));
+	assert.match(
+		resolved.gh.edits.find((e) => e.args[1] === "edit" && e.number === 1)!.input ?? "",
+		/## Decisions so far\n\n- \[Pick parser\]\(https:\/\/example\.test\/issues\/4\): CSV beats TSV/,
+	);
+
+	const ruled = world();
+	const ruledOut = ghOutOfScopeOp("/tmp", { op: "gh-out-of-scope", ticket: "5", answer: "No TSV.", gist: "no TSV" }, ruled.gh.run);
+	assert.match(ruledOut, /map #1 Out of scope updated/);
+
+	// the missing-gist note finds the native map too
+	const noGist = world();
+	assert.match(
+		ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "CSV." }, noGist.gh.run),
+		/map #1 Decisions so far was NOT updated: no "gist" was given/,
+	);
+
+	// no body line and no native parent (the endpoint 404s): the reworded message
+	const orphan = world();
+	assert.match(
+		ghResolveOp("/tmp", { op: "gh-resolve", ticket: "6", answer: "x", gist: "g" }, orphan.gh.run),
+		/neither #6's body nor a native sub-issue link names a parent/,
+	);
+	assert.equal(
+		orphan.gh.edits.some((e) => e.number === 1),
+		false,
+	);
+});
+
+test("a body-named parent is used without asking GitHub for a native parent (R11)", () => {
+	const apiCalls: string[] = [];
+	const gh = fakeGh(
+		[
+			{ number: 1, title: "Map", state: "OPEN", body: "## Decisions so far\n", labels: ["wayfinder:map"] },
+			{ number: 2, title: "Other map", state: "OPEN", body: "## Decisions so far\n", labels: ["wayfinder:map"] },
+			{ number: 4, title: "Child", state: "OPEN", body: "Part of: #1\n\n## Question\n\nq?" },
+		],
+		{ parentOf: { 4: 2 }, beforeRun: (args) => args[0] === "api" && apiCalls.push(args.join(" ")) },
+	);
+	assert.match(ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "a", gist: "g" }, gh.run), /map #1 Decisions so far updated/);
+	assert.equal(
+		apiCalls.some((call) => call.includes("/parent")),
+		false,
+		"no extra call when the body names the parent",
+	);
 });

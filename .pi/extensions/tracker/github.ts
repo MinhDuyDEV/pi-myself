@@ -1053,12 +1053,28 @@ export function ghClaimOp(root: string, params: TrackerParams, run: GhRun = ghRu
 	return `Claimed ${issueLine(after)} (set this before any work).`;
 }
 
-/** The open, non-PR `wayfinder:map` issue a ticket's body names as its parent,
- * or the reason there is none. Only such an issue is a map: a to-tickets ticket
- * names its *spec* with `Part of`, and to-tickets forbids modifying a parent. */
+/** The issue's native parent (REST "Get parent issue",
+ * `GET /repos/{owner}/{repo}/issues/{n}/parent`), or undefined when it has none
+ * (the endpoint 404s) or the answer could not be read. */
+function nativeParentOf(root: string, number: number, run: GhRun): number | undefined {
+	try {
+		const parent = Number(run(root, ["api", `repos/{owner}/{repo}/issues/${number}/parent`, "--jq", ".number"]).trim());
+		return Number.isInteger(parent) && parent > 0 ? parent : undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** The open, non-PR `wayfinder:map` issue a ticket's parent is, or the reason
+ * there is none. The parent is the one the body names (`Part of` / `## Parent`),
+ * else the native sub-issue parent — a child linked in GitHub's UI carries no
+ * body line. Only such an issue is a map: a to-tickets ticket names its *spec*
+ * with `Part of`, and to-tickets forbids modifying a parent. */
 function parentMapOf(root: string, issue: GhIssue, heading: string, run: GhRun): { number: number; map: GhIssue } | string {
-	const parent = parentRefs(issue.body)[0];
-	if (!parent) return `no parent map named in #${issue.number}'s body; add the ${heading} line by hand`;
+	const parent = parentRefs(issue.body)[0] ?? nativeParentOf(root, issue.number, run);
+	if (!parent) {
+		return `no parent map: neither #${issue.number}'s body nor a native sub-issue link names a parent; add the ${heading} line by hand`;
+	}
 	const map = issueView(root, String(parent), run);
 	if (map.isPullRequest || map.state !== "OPEN" || !map.labels.includes("wayfinder:map")) {
 		return `#${parent} is not an open wayfinder:map issue, so no map was updated; the gist stays in the resolution comment`;
