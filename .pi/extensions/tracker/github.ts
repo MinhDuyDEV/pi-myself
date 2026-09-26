@@ -441,13 +441,16 @@ function databaseId(root: string, number: string, run: GhRun): number {
 }
 
 /** Native edges are canonical (they render in GitHub's UI) but not universally
- * enabled; a failure is reported, never fatal, because the body line mirrors it. */
-function tryNative(action: () => void, label: string, notes: string[]): void {
+ * enabled; a failure is reported, never fatal, because the body line mirrors it.
+ * Returns whether the edge was added, so a caller can apply a further fallback. */
+function tryNative(action: () => void, label: string, notes: string[]): boolean {
 	try {
 		action();
 		notes.push(`${label}: native edge added`);
+		return true;
 	} catch (error) {
 		notes.push(`${label}: native edge NOT added (${error instanceof Error ? error.message : String(error)}); body line is the fallback`);
+		return false;
 	}
 }
 
@@ -462,8 +465,8 @@ function addBlockedBy(root: string, child: string, blocker: number, run: GhRun, 
 	);
 }
 
-function addSubIssue(root: string, parent: string, child: string, run: GhRun, notes: string[]): void {
-	tryNative(
+function addSubIssue(root: string, parent: string, child: string, run: GhRun, notes: string[]): boolean {
+	return tryNative(
 		() => {
 			const id = databaseId(root, child, run);
 			run(root, ["api", "--method", "POST", `repos/{owner}/{repo}/issues/${parent}/sub_issues`, "-F", `sub_issue_id=${id}`]);
@@ -546,6 +549,23 @@ function nativeSubIssues(root: string, parent: number, run: GhRun): number[] | u
 	}
 }
 
+/** Refs named by task-list items (`- [ ] #N`, `- [x] #N`, `*` bullets too)
+ * anywhere in a body, in order: the map's fallback child list where sub-issues
+ * are not enabled. The ref must be the item's first token. */
+function taskListRefs(body: string): IssueRef[] {
+	const refs: IssueRef[] = [];
+	for (const item of body.matchAll(/^[ \t]*[-*][ \t]+\[[ xX]\][ \t]+(\S+)/gm)) {
+		const token = item[1] ?? "";
+		const match = refToken().exec(token);
+		if (!match || (match.index !== 0 && !/^https?:\/\//.test(token))) continue;
+		const number = Number(match[2] ?? match[5]);
+		if (!Number.isInteger(number) || number <= 0) continue;
+		const repo = match[1] ?? (match[3] && match[4] ? `${match[3]}/${match[4]}` : undefined);
+		refs.push(repo ? { number, repo } : { number });
+	}
+	return uniqueRefs(refs);
+}
+
 /** gh-frontier: open, unassigned, not a map, not a parent, no open blocker, no
  * not-ready triage state role (`needs-triage`/`needs-info`/`ready-for-human`,
  * matched in the canonical and this repo's mapped spelling).
@@ -553,7 +573,8 @@ function nativeSubIssues(root: string, parent: number, run: GhRun): number[] | u
  * body that names an open issue/PR. Parents (maps, specs, anything with
  * sub-issues or named by a `Part of` / `## Parent`) are indexes, not work units:
  * excluded and reported in a footer. Optional `parent` scopes to one map's
- * children, in map order. */
+ * children (native sub-issues, `Part of` lines, and the map's task-list items),
+ * in map order. */
 export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	// PRs are kept in the index: issues and PRs share one number space, so a
 	// `Blocked by: #12` may name a PR, and its state decides whether the edge
@@ -580,6 +601,12 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
 	// on the body line alone made such a map's frontier print "(nothing takeable)".
 	const nativeChildren = scopeParent === undefined ? undefined : nativeSubIssues(root, scopeParent, run);
 	const children = new Set<number>(nativeChildren ?? []);
+	// The map's task list is the fallback link where sub-issues are not enabled
+	// (gh-create-ticket writes it when the native link fails), so its items are
+	// children too — this repository's refs only.
+	const scopeIssue = scopeParent === undefined ? undefined : all.find((issue) => issue.number === scopeParent);
+	const taskOrder = scopeIssue ? splitLocalRefs(taskListRefs(scopeIssue.body), root, run).local : [];
+	for (const number of taskOrder) children.add(number);
 	if (scopeParent !== undefined) {
 		for (const issue of all) {
 			if (issue.isPullRequest || issue.state !== "OPEN") continue;
@@ -606,11 +633,14 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
 	}
 	const notReadyRole = (issue: GhIssue): string | undefined =>
 		issue.labels.map((label) => notReadyLabels.get(label)).find((role) => role !== undefined);
-	// Map order when scoped to a map: wayfinder's first-in-map-order wins, and the
-	// native sub-issue list is the only place that order is recorded. An unreadable
-	// or empty list means number order — and the heading says which one the list is
-	// actually in, rather than claiming an order it does not have.
-	const mapOrder = nativeChildren !== undefined && nativeChildren.length > 0 ? nativeChildren : undefined;
+	// Map order when scoped to a map: wayfinder's first-in-map-order wins. The
+	// native sub-issue order comes first, then the map's task-list order for
+	// children not in the native list, then issue number. With neither there is no
+	// map order — and the heading says which one the list is actually in, rather
+	// than claiming an order it does not have.
+	const native = nativeChildren ?? [];
+	const combined = [...native, ...taskOrder.filter((number) => !native.includes(number))];
+	const mapOrder = combined.length > 0 ? combined : undefined;
 	const orderOf = (issue: GhIssue): number => {
 		const at = mapOrder?.indexOf(issue.number) ?? -1;
 		return at === -1 ? Number.MAX_SAFE_INTEGER : at;
@@ -648,12 +678,16 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
 					return `  ${issueLine(issue)} · ${reason}${unread}`;
 				})
 			: ["  (none)"]),
-		...(scopeParent !== undefined && mapOrder === undefined
+		...(scopeParent !== undefined && native.length === 0
 			? [
 					"",
 					nativeChildren === undefined
-						? `_(#${scopeParent}'s native sub-issue list could not be read; children found only by a "Part of" line are listed, in issue-number order)_`
-						: `_(#${scopeParent} has no native sub-issue order to follow; these are in issue-number order)_`,
+						? taskOrder.length > 0
+							? `_(#${scopeParent}'s native sub-issue list could not be read; these follow its task list, then issue number)_`
+							: `_(#${scopeParent}'s native sub-issue list could not be read; children found only by a "Part of" line are listed, in issue-number order)_`
+						: taskOrder.length > 0
+							? `_(#${scopeParent} has no native sub-issue order; these follow its task list, then issue number)_`
+							: `_(#${scopeParent} has no native sub-issue order to follow; these are in issue-number order)_`,
 				]
 			: []),
 		...(misdirected.length
@@ -962,7 +996,8 @@ function parseBlockers(tokens: string[]): number[] {
 /** gh-create-ticket: one issue in to-tickets' tracker template (or, with
  * `type`, wayfinder's child shape: `## Question` + `wayfinder:<type>`).
  * Parent and blockers become native sub-issue / dependency edges, mirrored
- * by `Part of: #N` and `**Blocked by:** #N` lines. */
+ * by `Part of: #N` and `**Blocked by:** #N` lines; when the sub-issue link
+ * fails, a map parent gains a `- [ ] #N` task-list item instead. */
 export function ghCreateTicketOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	const title = (params.title ?? "").trim();
 	if (!title) throw new TrackerError('create-ticket requires "title"');
@@ -1001,7 +1036,7 @@ export function ghCreateTicketOp(root: string, params: TrackerParams, run: GhRun
 	ensureLabels(root, labels, run, notes);
 	const url = run(root, args, body).trim();
 	const number = numberFromUrl(url);
-	if (parent) addSubIssue(root, parent, number, run, notes);
+	if (parent && !addSubIssue(root, parent, number, run, notes)) notes.push(addToMapTaskList(root, parent, number, run));
 	for (const blocker of blockers) addBlockedBy(root, number, blocker, run, notes);
 	return [
 		`Created ${url} [${labels.join(", ")}]`,
@@ -1009,6 +1044,24 @@ export function ghCreateTicketOp(root: string, params: TrackerParams, run: GhRun
 		`Blocked by: ${blockers.length ? blockers.map((n) => `#${n}`).join(", ") : "none"}`,
 		...notes.map((n) => `- ${n}`),
 	].join("\n");
+}
+
+/** The fallback link when a native sub-issue link fails: "Where sub-issues
+ * aren't enabled, add the child to a task list in the map body"
+ * (docs/agents/issue-tracker.md, from issue-tracker-github.md). Only an open,
+ * non-PR `wayfinder:map` is edited — to-tickets forbids modifying a parent spec.
+ * Never fatal: the child already exists, so every outcome is a report line. */
+function addToMapTaskList(root: string, parent: string, child: string, run: GhRun): string {
+	try {
+		const map = issueView(root, parent, run);
+		if (map.isPullRequest || map.state !== "OPEN" || !map.labels.includes("wayfinder:map")) {
+			return `#${parent} is not a wayfinder map, so it was not edited: #${child} is linked only by its Part of line and will be ordered by number`;
+		}
+		run(root, ["issue", "edit", parent, "--body-file", "-"], appendUnderHeading(map.body, "Tickets", `[ ] #${child}`));
+		return `added #${child} to map #${parent}'s ## Tickets task list instead (it carries the link and the map order)`;
+	} catch (error) {
+		return `could not add #${child} to #${parent}'s task list (${errorMessage(error)}); #${child} is linked only by its Part of line`;
+	}
 }
 
 /** gh-create-map: the wayfinder map issue (label `wayfinder:map`). */

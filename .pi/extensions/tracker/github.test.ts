@@ -73,6 +73,8 @@ function fakeGh(
 		/** Native parent per child: what `gh api repos/{o}/{r}/issues/<n>/parent`
 		 * answers (REST "Get parent issue"); a child with no entry gets a 404. */
 		parentOf?: Record<number, number>;
+		/** Make only the native sub-issue link (`POST .../sub_issues`) fail. */
+		failSubIssuePost?: boolean;
 		/** What `gh repo view --json nameWithOwner` answers. */
 		repoSlug?: string;
 		/** The authenticated login `@me` resolves to (default `me`). */
@@ -151,6 +153,7 @@ function fakeGh(
 			const path = args.find((a) => a.startsWith("repos/")) ?? "";
 			if (args.includes("POST")) {
 				if (options.nativeSupport === false) throw new TrackerError("gh api: HTTP 404 Not Found");
+				if (options.failSubIssuePost && /\/sub_issues$/.test(path)) throw new TrackerError("gh api: HTTP 422 Unprocessable Entity");
 				posts.push(`${path} ${args[args.length - 1]}`);
 				const blockedBy = /issues\/(\d+)\/dependencies\/blocked_by$/.exec(path);
 				if (blockedBy) {
@@ -1510,4 +1513,115 @@ test("gh-status and gh-resolve wontfix name a state-role conflict they replace (
 		ghStatusOp("/tmp", { op: "gh-status", ticket: "8", status: "bug" }, category.run),
 		/#8 carries conflicting state roles \(needs-triage, wontfix\); adding bug left them in place/,
 	);
+});
+
+test("gh-create-ticket falls back to the map's task list when the sub-issue link fails (R19)", () => {
+	const gh = fakeGh(
+		[
+			{
+				number: 1,
+				title: "Map",
+				state: "OPEN",
+				body: "## Destination\n\nd\n\n## Tickets\n\n- [ ] #2\n\n## Out of scope\n",
+				labels: ["wayfinder:map"],
+			},
+			{ number: 2, title: "Earlier", state: "OPEN", body: "Part of: #1" },
+			{ number: 3, title: "Spec", state: "OPEN", body: "## Problem Statement\n\nx\n", labels: ["ready-for-agent"] },
+			{ number: 4, title: "Bare map", state: "OPEN", body: "## Destination\n\nd\n", labels: ["wayfinder:map"] },
+		],
+		{ failSubIssuePost: true },
+	);
+	const out = ghCreateTicketOp("/tmp", { op: "gh-create-ticket", title: "Which?", type: "research", parent: "1" }, gh.run);
+	assert.match(out, /sub-issue of #1: native edge NOT added/);
+	assert.match(out, /added #5 to map #1's ## Tickets task list/);
+	assert.equal(
+		gh.edits.find((e) => e.args[1] === "edit" && e.number === 1)!.input,
+		"## Destination\n\nd\n\n## Tickets\n\n- [ ] #2\n\n- [ ] #5\n\n## Out of scope\n",
+	);
+
+	// a map with no Tickets section gains one at the end
+	ghCreateTicketOp("/tmp", { op: "gh-create-ticket", title: "Next", type: "task", parent: "4" }, gh.run);
+	assert.equal(
+		gh.edits.filter((e) => e.args[1] === "edit" && e.number === 4).at(-1)!.input,
+		"## Destination\n\nd\n\n## Tickets\n\n- [ ] #6\n",
+	);
+
+	// a to-tickets spec is never edited (to-tickets: do NOT modify any parent issue)
+	const specOut = ghCreateTicketOp("/tmp", { op: "gh-create-ticket", title: "Counter", what: "w", parent: "3" }, gh.run);
+	assert.match(
+		specOut,
+		/#3 is not a wayfinder map, so it was not edited: #7 is linked only by its Part of line and will be ordered by number/,
+	);
+	assert.equal(
+		gh.edits.some((e) => e.args[1] === "edit" && e.number === 3),
+		false,
+	);
+
+	// a map that cannot be read is reported; the ticket already exists
+	const run: GhRun = (root, args, input) => {
+		if (args[0] === "issue" && args[1] === "view" && args[2] === "1") throw new TrackerError("gh issue view: HTTP 502");
+		return gh.run(root, args, input);
+	};
+	const unread = ghCreateTicketOp("/tmp", { op: "gh-create-ticket", title: "Later", type: "task", parent: "1" }, run);
+	assert.match(unread, /Created .*issues\/8/);
+	assert.match(unread, /could not add #8 to #1's task list \(gh issue view: HTTP 502\)/);
+
+	// the native link working means no task-list edit
+	const native = fakeGh([{ number: 1, title: "Map", state: "OPEN", body: "", labels: ["wayfinder:map"] }]);
+	ghCreateTicketOp("/tmp", { op: "gh-create-ticket", title: "Q", type: "research", parent: "1" }, native.run);
+	assert.equal(
+		native.edits.some((e) => e.args[1] === "edit"),
+		false,
+	);
+});
+
+test("gh-frontier parent= reads the map's task list for children and order (R19)", () => {
+	const gh = fakeGh([
+		{
+			number: 1,
+			title: "Map",
+			state: "OPEN",
+			body: "## Tickets\n\n- [ ] #4\n- [x] #2\n* [ ] #3\n- [ ] other/repo#5\n",
+			labels: ["wayfinder:map"],
+		},
+		{ number: 2, title: "Two", state: "OPEN", body: "" },
+		{ number: 3, title: "Three", state: "OPEN", body: "" },
+		{ number: 4, title: "Four", state: "OPEN", body: "" },
+		{ number: 5, title: "Five", state: "OPEN", body: "" },
+		{ number: 6, title: "Six", state: "OPEN", body: "Part of: #1" },
+	]);
+	const out = ghFrontierOp("/tmp", { op: "gh-frontier", parent: "1" }, gh.run);
+	assert.deepEqual(
+		[...out.matchAll(/^- #(\d+)/gm)].map((m) => Number(m[1])),
+		[4, 2, 3, 6],
+		"task-list order, then number; another repository's #5 is not a child",
+	);
+	assert.match(out, /first in map order wins/);
+	assert.match(out, /#1 has no native sub-issue order; these follow its task list, then issue number/);
+
+	// native order first, then task-list order for the rest
+	const mixed = fakeGh(
+		[
+			{ number: 1, title: "Map", state: "OPEN", body: "- [ ] #4\n- [ ] #3\n- [ ] #2\n", labels: ["wayfinder:map"], subIssues: 1 },
+			{ number: 2, title: "Two", state: "OPEN", body: "" },
+			{ number: 3, title: "Three", state: "OPEN", body: "" },
+			{ number: 4, title: "Four", state: "OPEN", body: "" },
+		],
+		{ subIssueOrder: { 1: [3] } },
+	);
+	const mixedOut = ghFrontierOp("/tmp", { op: "gh-frontier", parent: "1" }, mixed.run);
+	assert.deepEqual(
+		[...mixedOut.matchAll(/^- #(\d+)/gm)].map((m) => Number(m[1])),
+		[3, 4, 2],
+	);
+	assert.doesNotMatch(mixedOut, /no native sub-issue order|could not be read/, "a readable, non-empty native list needs no footer");
+
+	// an unreadable native list with a task list names the order it used
+	const run: GhRun = (root, args, input) => {
+		if (args.some((a) => /\/sub_issues\?/.test(a))) throw new TrackerError("gh api: HTTP 502");
+		return gh.run(root, args, input);
+	};
+	const unread = ghFrontierOp("/tmp", { op: "gh-frontier", parent: "1" }, run);
+	assert.match(unread, /first in map order wins/);
+	assert.match(unread, /#1's native sub-issue list could not be read; these follow its task list, then issue number/);
 });
