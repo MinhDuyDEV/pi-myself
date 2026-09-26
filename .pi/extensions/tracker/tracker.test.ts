@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import fs, { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -550,7 +551,7 @@ test("edit replaces a wayfinder ticket's ## Question body", () => {
 		assert.match(raw, /## Question\n\nreworded question/);
 		assert.equal(raw.includes("first phrasing"), false);
 		assert.match(raw, /\*\*Type:\*\* research/);
-		assert.match(raw, /\*\*Status:\*\* ready-for-agent/);
+		assert.match(raw, /\*\*Blocked by:\*\* None/, "field lines survive");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
@@ -731,6 +732,238 @@ test("withFileLock makes a second writer wait for the holder", async () => {
 		assert.equal(existsSync(releasedFlag), true, "the holder did not finish its critical section");
 		// the lock is released, not left behind
 		assert.equal(existsSync(`${target}.lock`), false);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+// ── follow-up audit (R7, R9, R10, R12, R13, R20) ─────────────────────────────
+
+test("create-ticket and block reject a blocker that names no ticket of the feature", () => {
+	const root = tempRepo();
+	try {
+		op(root, { op: "create-ticket", feature: "typo", title: "Tokens", what: "x" });
+		op(root, { op: "create-ticket", feature: "typo", title: "Sessions", what: "y" });
+		const dir = join(root, ".scratch", "typo", "issues");
+		assert.throws(
+			() => op(root, { op: "create-ticket", feature: "typo", title: "Ship", what: "z", blockedBy: ["07"] }),
+			/unknown blocker "07"/,
+		);
+		assert.deepEqual(readdirSync(dir).filter((f) => f.endsWith(".md")).length, 2, "nothing is written for a rejected blocker");
+		const before = readFileSync(join(dir, "02-sessions.md"), "utf8");
+		assert.throws(() => op(root, { op: "block", feature: "typo", ticket: "02", blockedBy: ["Tokns"] }), /unknown blocker "Tokns"/);
+		assert.equal(readFileSync(join(dir, "02-sessions.md"), "utf8"), before, "a rejected block writes nothing");
+
+		// ids, slugs, titles, and a conjunction of titles are all real tickets
+		op(root, { op: "block", feature: "typo", ticket: "02", blockedBy: ["#1"] });
+		op(root, { op: "create-ticket", feature: "typo", title: "Ship", what: "z", blockedBy: ["Tokens and Sessions", "sessions"] });
+		assert.match(readFileSync(join(dir, "03-ship.md"), "utf8"), /\*\*Blocked by:\*\* Tokens and Sessions, sessions/);
+		// clearing stays possible
+		op(root, { op: "block", feature: "typo", ticket: "02", blockedBy: [] });
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("the frontier names only open or unresolvable blockers, and a claimed ticket shows its claim", () => {
+	const root = tempRepo();
+	try {
+		op(root, { op: "create-ticket", feature: "fr", title: "First", what: "x" });
+		op(root, { op: "create-ticket", feature: "fr", title: "Second", what: "y", blockedBy: ["01"] });
+		op(root, { op: "create-ticket", feature: "fr", title: "Third", what: "z" });
+		op(root, { op: "create-ticket", feature: "fr", title: "Fourth", what: "w", blockedBy: ["01", "03"] });
+		op(root, { op: "resolve", feature: "fr", ticket: "01", answer: "done" });
+		op(root, { op: "claim", feature: "fr", ticket: "02" });
+		// a hand-written blocker that names no ticket (a typo, or a title since edited)
+		const fifth = join(root, ".scratch", "fr", "issues", "05-fifth.md");
+		writeFileSync(fifth, "# 5: Fifth\n\n**What to build:** v\n\n**Blocked by:** 99\n\n**Status:** ready-for-agent\n");
+
+		const frontier = op(root, { op: "frontier", feature: "fr" });
+		assert.match(frontier, /^ {2}02 — Second \[claimed\]$/m, "the claim, not a resolved blocker");
+		assert.match(frontier, /^ {2}04 — Fourth \(waiting on 03\)$/m, "the resolved blocker is not named");
+		assert.match(frontier, /^- 05 — Fifth/m, "an unresolvable blocker does not gate");
+		assert.match(frontier, /05 names 99/, "…and is disclosed");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("a repo configured for GitHub refuses the local ops, naming the gh-* op; /frontier says to use gh-frontier", () => {
+	const root = tempRepo();
+	const doc = join(root, "docs", "agents", "issue-tracker.md");
+	try {
+		mkdirSync(join(root, "docs", "agents"), { recursive: true });
+		writeFileSync(doc, "# Issue tracker: GitHub\n\nIssues live on GitHub.\n");
+		assert.throws(
+			() => op(root, { op: "create-ticket", feature: "gh", title: "T", what: "x" }),
+			/docs\/agents\/issue-tracker\.md configures GitHub.*use "gh-create-ticket"/,
+		);
+		assert.equal(existsSync(join(root, ".scratch")), false, "nothing is written to .scratch/");
+		assert.throws(() => op(root, { op: "frontier", feature: "gh" }), /use "gh-frontier"/);
+		const readout = runAllFrontiers(root);
+		assert.doesNotMatch(readout, /No features tracked/);
+		assert.match(readout, /gh-frontier/);
+
+		writeFileSync(doc, "# Issue tracker: Local Markdown\n\nIssues live in .scratch/.\n");
+		assert.throws(() => op(root, { op: "gh-list" }), /configures Local Markdown.*use "list"/);
+		op(root, { op: "create-ticket", feature: "local", title: "T", what: "x" });
+
+		writeFileSync(doc, "# Issue tracker: GitLab\n\nIssues live on GitLab.\n");
+		assert.throws(() => op(root, { op: "list", feature: "local" }), /configures GitLab.*CLI recipes/);
+		assert.throws(() => op(root, { op: "gh-list" }), /configures GitLab.*CLI recipes/);
+		assert.match(runAllFrontiers(root), /GitLab.*CLI recipes/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("resolve without a gist says the map was not updated, when a map exists", () => {
+	const root = tempRepo();
+	try {
+		op(root, { op: "create-map", feature: "gm", destination: "d" });
+		op(root, { op: "create-ticket", feature: "gm", title: "Q", what: "?", type: "research" });
+		const out = op(root, { op: "resolve", feature: "gm", ticket: "01", answer: "yes" });
+		assert.match(out, /map\.md was NOT updated: no "gist" was given/);
+
+		// no map: a gist is not required, and none is claimed
+		op(root, { op: "create-ticket", feature: "plain", title: "Q", what: "?" });
+		const plain = op(root, { op: "resolve", feature: "plain", ticket: "01", answer: "yes" });
+		assert.doesNotMatch(plain, /map/i);
+		op(root, { op: "create-ticket", feature: "plain", title: "R", what: "?" });
+		assert.doesNotMatch(
+			op(root, { op: "resolve", feature: "plain", ticket: "02", answer: "yes", gist: "g" }),
+			/map Decisions-so-far updated/,
+		);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("a wayfinder-typed ticket gets no triage Status by default; an explicit status wins; untyped keeps ready-for-agent", () => {
+	const root = tempRepo();
+	try {
+		const typed = op(root, { op: "create-ticket", feature: "wt", title: "Grill it", what: "?", type: "grilling" });
+		assert.doesNotMatch(typed, /\*\*Status:\*\*/);
+		const explicit = op(root, {
+			op: "create-ticket",
+			feature: "wt",
+			title: "Human",
+			what: "?",
+			type: "prototype",
+			status: "ready-for-human",
+		});
+		assert.match(explicit, /\*\*Status:\*\* ready-for-human/);
+		assert.match(op(root, { op: "create-ticket", feature: "wt", title: "Build", what: "x" }), /\*\*Status:\*\* ready-for-agent/);
+		assert.match(op(root, { op: "frontier", feature: "wt" }), /^- 01 — Grill it \[grilling\]/m, "a role-less child stays takeable");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("edit on a body with no Question / What-to-build section reports the section was appended", () => {
+	const root = tempRepo();
+	try {
+		mkdirSync(join(root, ".scratch", "bare", "issues"), { recursive: true });
+		const file = join(root, ".scratch", "bare", "issues", "01-bare.md");
+		writeFileSync(file, "# 1: Bare\n\n**Status:** ready-for-agent\n\nFree prose only.\n");
+		const out = op(root, { op: "edit", feature: "bare", ticket: "01", what: "new text" });
+		assert.match(out, /no Question or What-to-build section.*appended/);
+		assert.match(readFileSync(file, "utf8"), /Free prose only\.\n\n## What to build\n\nnew text/);
+		// a body that has the section is replaced, and says nothing about appending
+		op(root, { op: "create-ticket", feature: "bare", title: "Full", what: "old" });
+		assert.doesNotMatch(op(root, { op: "edit", feature: "bare", ticket: "02", what: "new" }), /appended/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("withFileLock's timeout names the staleness window", () => {
+	const root = tempRepo();
+	try {
+		const target = join(root, "guard.txt");
+		writeFileSync(`${target}.lock`, "live-holder");
+		assert.throws(() => withFileLock(target, () => {}), /timed out waiting for the tracker lock: .*waited 2s.*older than 10s/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("a stale-lock steal never deletes a lock another waiter just took", () => {
+	// Deterministic interleaving: this waiter judges the lock stale (a crashed
+	// writer's), and right after that judgment another waiter steals it and takes
+	// a fresh lock. Deleting "the lock" at that point deleted the other waiter's
+	// live lock, and both ran their critical sections at once.
+	const root = tempRepo();
+	const target = join(root, "guard.txt");
+	const lock = `${target}.lock`;
+	const realStat = fs.statSync;
+	try {
+		writeFileSync(lock, "crashed-writer");
+		const old = new Date(Date.now() - 60_000);
+		utimesSync(lock, old, old);
+		let swapped = false;
+		(fs as { statSync: unknown }).statSync = (path: fs.PathLike, ...rest: unknown[]) => {
+			const result = (realStat as (...args: unknown[]) => fs.Stats)(path, ...rest);
+			if (!swapped && path === lock) {
+				swapped = true;
+				writeFileSync(`${lock}.other`, "other-waiter");
+				renameSync(`${lock}.other`, lock); // the other waiter's fresh lock
+			}
+			return result;
+		};
+		syncBuiltinESMExports();
+		let ran = false;
+		assert.throws(
+			() =>
+				withFileLock(target, () => {
+					ran = true;
+				}),
+			/timed out/,
+		);
+		assert.equal(swapped, true, "the interleaving was exercised");
+		assert.equal(ran, false, "no critical section runs while the other waiter holds the lock");
+		assert.equal(readFileSync(lock, "utf8"), "other-waiter", "the other waiter's lock survives");
+	} finally {
+		(fs as { statSync: unknown }).statSync = realStat;
+		syncBuiltinESMExports();
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("an abandoned lock older than the staleness window is taken over", () => {
+	const root = tempRepo();
+	try {
+		const target = join(root, "guard.txt");
+		writeFileSync(`${target}.lock`, "crashed-writer");
+		const old = new Date(Date.now() - 60_000);
+		utimesSync(`${target}.lock`, old, old);
+		assert.equal(
+			withFileLock(target, () => "ran"),
+			"ran",
+		);
+		assert.equal(existsSync(`${target}.lock`), false);
+		assert.deepEqual(
+			readdirSync(root).filter((f) => f.includes(".lock")),
+			[],
+			"no stolen or released lock residue",
+		);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("a holder whose lock was stolen does not delete the thief's lock", () => {
+	const root = tempRepo();
+	try {
+		const target = join(root, "guard.txt");
+		const lock = `${target}.lock`;
+		withFileLock(target, () => {
+			// the holder overran the staleness window and another writer took over
+			rmSync(lock);
+			writeFileSync(lock, "thief");
+		});
+		assert.equal(existsSync(lock), true, "the thief's lock survives the holder's release");
+		assert.equal(readFileSync(lock, "utf8"), "thief");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

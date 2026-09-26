@@ -1,4 +1,4 @@
-import { type FeatureSummary, frontierOf, type Ticket } from "./tracker.js";
+import { blockerStateOf, type FeatureSummary, frontierOf, type Ticket } from "./tracker.js";
 
 export function renderTicket(t: Ticket): string {
 	const meta = [
@@ -40,26 +40,40 @@ export function renderFeatures(summaries: FeatureSummary[]): string {
 	return lines.join("\n");
 }
 
+/** The frontier readout. A blocked line names only the blockers still open; a
+ * ticket held by a claim (or a not-ready role) shows that instead. Blocker
+ * tokens that name no ticket gate nothing and are disclosed, the way
+ * gh-frontier discloses an unresolvable ref. */
 export function renderFrontier(tickets: Ticket[]): string {
 	const { takeable, blocked } = frontierOf(tickets);
 	if (tickets.length === 0) return "No tickets.";
+	const unreadOf = (t: Ticket): string[] => blockerStateOf(tickets, t).unresolved;
 	const takeableLines = takeable.length
 		? takeable.map(
 				(t) => `- ${t.id} — ${t.title}${t.ticketType ? ` [${t.ticketType}]` : ""} · ${t.doneChecklist}/${t.totalChecklist} criteria done`,
 			)
 		: ["(nothing takeable — blocked or claimed below)"];
 	const blockedLines = blocked.length
-		? blocked.map((t) =>
-				t.blockedBy.length
-					? `  ${t.id} — ${t.title} (waiting on ${t.blockedBy.join(", ")})`
-					: `  ${t.id} — ${t.title} [${t.status || "claimed"}]`,
-			)
+		? blocked.map((t) => {
+				const open = blockerStateOf(tickets, t).open;
+				const unread = unreadOf(t);
+				const hold = t.assignee ? `assignee: ${t.assignee}` : t.status || "claimed";
+				const reason = open.length ? `(waiting on ${open.join(", ")})` : `[${hold}]`;
+				return `  ${t.id} — ${t.title} ${reason}${unread.length ? ` · also names ${unread.join(", ")}, not gating` : ""}`;
+			})
 		: ["  (none)"];
+	const misdirected = takeable.filter((t) => unreadOf(t).length > 0);
 	return [
 		"## Frontier — takeable now (first by number wins)",
 		...takeableLines,
 		"",
 		"## Open but blocked or claimed",
 		...blockedLines,
+		...(misdirected.length
+			? [
+					"",
+					`_(not gating: ${misdirected.map((t) => `${t.id} names ${unreadOf(t).join(", ")}`).join("; ")} — no ticket of this feature matches, so fix the Blocked by line with "block")_`,
+				]
+			: []),
 	].join("\n");
 }

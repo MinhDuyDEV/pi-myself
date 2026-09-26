@@ -9,7 +9,8 @@
  * - GitHub Issues (ops prefixed `gh-`): tickets/wayfinder maps are issues via
  *   the `gh` CLI with the repo as cwd; triage roles and wayfinder types are
  *   labels; `Blocked by:`/`Part of:` lines in issue bodies carry the edges.
- *   Check docs/agents/issue-tracker.md first and use the backend it names.
+ *   docs/agents/issue-tracker.md's H1 picks the backend: when the file exists,
+ *   the other op family is refused with the op to use instead (ops.ts).
  *
  * The skills own the prose discipline (what an answer says, how a map is
  * indexed); this tool owns the mechanics so claims, resolves, blocking, and

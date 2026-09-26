@@ -5,6 +5,8 @@ import {
 	assertSection,
 	assertTicketType,
 	CATEGORY_ROLES,
+	canonicalRole,
+	hasTicketBodySection,
 	labelValue,
 	loadTriageLabelMap,
 	NOT_READY_ROLES,
@@ -894,9 +896,20 @@ export function ghCreateSpecOp(root: string, params: TrackerParams, run: GhRun =
 	);
 }
 
+/** A caller's status as this repo's label. A leading `-` is refused on the way
+ * in and on the way out of the triage-labels.md mapping: `gh label create -d …`
+ * (ensureLabels) reads such a name as a flag, not as the label. */
 function mapRole(root: string, status: string): string {
-	if (!/^[a-z0-9:_ -]+$/i.test(status)) throw new TrackerError(`invalid label: ${JSON.stringify(status)}`);
-	return loadTriageLabelMap(root).get(status) ?? status;
+	if (!/^[a-z0-9:_ -]+$/i.test(status) || status.startsWith("-")) {
+		throw new TrackerError(`invalid label ${JSON.stringify(status)}: use letters, digits, ":", "_", "-" or spaces, not starting with "-"`);
+	}
+	const label = loadTriageLabelMap(root).get(status) ?? status;
+	if (label.startsWith("-")) {
+		throw new TrackerError(
+			`invalid label ${JSON.stringify(label)} (docs/agents/triage-labels.md maps ${status} to it): a label starting with "-" would reach gh as a flag`,
+		);
+	}
+	return label;
 }
 
 /** Explicit "no blockers" spellings, so clearing a blocked ticket stays possible. */
@@ -1007,7 +1020,20 @@ export function ghCreateMapOp(root: string, params: TrackerParams, run: GhRun = 
 	);
 }
 
-/** gh-claim: assign @me — the session's first write (wayfinder). */
+/** The authenticated gh login (what `@me` means), or undefined when it cannot
+ * be read. Not cached: claims are rare, and `gh auth switch` changes it. */
+function currentLogin(root: string, run: GhRun): string | undefined {
+	try {
+		return run(root, ["api", "user", "--jq", ".login"]).trim() || undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+/** gh-claim: assign @me — the session's first write (wayfinder). Two sessions
+ * can both pass the unassigned check and both add themselves, so the assignees
+ * are re-read after the add: when anyone else is on the issue too, @me is
+ * removed again and the claim is reported lost, never "Claimed". */
 export function ghClaimOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	const number = reqNumber(params.ticket, "claim");
 	const view = issueView(root, number, run);
@@ -1016,22 +1042,51 @@ export function ghClaimOp(root: string, params: TrackerParams, run: GhRun = ghRu
 		return `#${number} is already claimed by @${view.assignees.join(", @")} — take it only with them.`;
 	}
 	run(root, ["issue", "edit", number, "--add-assignee", "@me"]);
-	return `Claimed ${issueLine(view)} (set this before any work).`;
+	const me = currentLogin(root, run);
+	const after = issueView(root, number, run);
+	// Without the login, more than one assignee is the only safe signal.
+	const others = me === undefined ? (after.assignees.length > 1 ? after.assignees : []) : after.assignees.filter((login) => login !== me);
+	if (others.length > 0) {
+		run(root, ["issue", "edit", number, "--remove-assignee", "@me"]);
+		return `Not claimed: the claim on #${number} lost to @${others.join(", @")}, assigned at the same time; @me was removed again — take another ticket, or work this one only with them.`;
+	}
+	return `Claimed ${issueLine(after)} (set this before any work).`;
 }
 
-/** Append a `- [title](url): gist` bullet under a section of the parent map's body.
- * Only an open, non-PR `wayfinder:map` issue is a map: a to-tickets ticket names
- * its *spec* with `Part of`, and to-tickets forbids modifying a parent issue. */
-function appendToParentMap(root: string, issue: GhIssue, heading: string, gist: string, run: GhRun): string {
+/** The open, non-PR `wayfinder:map` issue a ticket's body names as its parent,
+ * or the reason there is none. Only such an issue is a map: a to-tickets ticket
+ * names its *spec* with `Part of`, and to-tickets forbids modifying a parent. */
+function parentMapOf(root: string, issue: GhIssue, heading: string, run: GhRun): { number: number; map: GhIssue } | string {
 	const parent = parentRefs(issue.body)[0];
 	if (!parent) return `no parent map named in #${issue.number}'s body; add the ${heading} line by hand`;
 	const map = issueView(root, String(parent), run);
 	if (map.isPullRequest || map.state !== "OPEN" || !map.labels.includes("wayfinder:map")) {
 		return `#${parent} is not an open wayfinder:map issue, so no map was updated; the gist stays in the resolution comment`;
 	}
-	const updated = appendUnderHeading(map.body, heading, `[${issue.title}](${issue.url || `#${issue.number}`}): ${gist.trim()}`);
-	run(root, ["issue", "edit", String(parent), "--body-file", "-"], updated);
-	return `map #${parent} ${heading} updated`;
+	return { number: parent, map };
+}
+
+/** Append a `- [title](url): gist` bullet under a section of the parent map's body. */
+function appendToParentMap(root: string, issue: GhIssue, heading: string, gist: string, run: GhRun): string {
+	const found = parentMapOf(root, issue, heading, run);
+	if (typeof found === "string") return found;
+	const updated = appendUnderHeading(found.map.body, heading, `[${issue.title}](${issue.url || `#${issue.number}`}): ${gist.trim()}`);
+	run(root, ["issue", "edit", String(found.number), "--body-file", "-"], updated);
+	return `map #${found.number} ${heading} updated`;
+}
+
+/** A resolve without a gist on a ticket whose parent is a map: say the map's
+ * Decisions-so-far was not updated (it used to be skipped silently). Nothing is
+ * said when there is no map — a gist is only expected where a map indexes it. */
+function missingGistNote(root: string, issue: GhIssue, run: GhRun): string | undefined {
+	let found: ReturnType<typeof parentMapOf>;
+	try {
+		found = parentMapOf(root, issue, "Decisions so far", run);
+	} catch (error) {
+		return `could not read #${issue.number}'s parent to check for a map (${errorMessage(error)})`;
+	}
+	if (typeof found === "string") return undefined;
+	return `map #${found.number} Decisions so far was NOT updated: no "gist" was given — add "[${issue.title}](${issue.url || `#${issue.number}`}): <gist>" with gh-note (parent ${found.number}, section "Decisions so far")`;
 }
 
 /** Reply for a resolve/rule-out whose issue was closed before the op ran. The
@@ -1050,7 +1105,8 @@ export function ghResolveOp(root: string, params: TrackerParams, run: GhRun = gh
 	const number = reqNumber(params.ticket, "resolve");
 	const answer = (params.answer ?? "").trim();
 	if (!answer) throw new TrackerError('resolve requires "answer"');
-	const wontfix = params.status?.trim() === "wontfix";
+	// either spelling (canonical or this repo's mapped label), any case — as gh-status
+	const wontfix = params.status?.trim() ? canonicalRole(root, params.status) === "wontfix" : false;
 	const gist = params.gist?.trim();
 	const comment = wontfix ? answer : ["## Answer", "", answer, ...(gist ? ["", `Gist: ${gist}`] : [])].join("\n");
 	const issue = issueView(root, number, run);
@@ -1064,6 +1120,10 @@ export function ghResolveOp(root: string, params: TrackerParams, run: GhRun = gh
 	run(root, ["issue", "close", number, "--reason", wontfix ? "not planned" : "completed"]);
 	notes.unshift(`Resolved #${number} (closed${wontfix ? " as not planned with the wontfix state role" : " with a resolution comment"})`);
 	if (gist && !wontfix) notes.push(appendToParentMap(root, issue, "Decisions so far", gist, run));
+	if (!gist && !wontfix) {
+		const note = missingGistNote(root, issue, run);
+		if (note) notes.push(note);
+	}
 	return notes.join(" — ");
 }
 
@@ -1110,13 +1170,22 @@ export function ghEditOp(root: string, params: TrackerParams, run: GhRun = ghRun
 	if (title) args.push("--title", title);
 	if (what) args.push("--body-file", "-");
 	run(root, args, what ? replaceTicketBody(issue.body, what) : undefined);
-	return `Edited #${number}${title ? ` — title: ${JSON.stringify(title)}` : ""}${what ? " — body replaced" : ""}.`;
+	const body = !what
+		? ""
+		: hasTicketBodySection(issue.body)
+			? " — body replaced"
+			: ' — body: no ## Question or ## What to build section was found, so a "## What to build" section was appended and the old prose kept';
+	return `Edited #${number}${title ? ` — title: ${JSON.stringify(title)}` : ""}${body}.`;
 }
 
 /** gh-note: append a line under a section of a map issue's body (the Notes /
- * Not-yet-specified fog edits wayfinder does by hand). */
+ * Not-yet-specified fog edits wayfinder does by hand). The map number comes
+ * from `parent`; `ticket` is accepted as an alias, since every other gh op
+ * takes its issue number there. */
 export function ghMapNoteOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
-	const number = reqNumber(params.parent, "note");
+	const raw = params.parent?.trim() || params.ticket?.trim() || "";
+	if (!raw) throw new TrackerError(`note requires the map's issue number in "parent" (or "ticket")`);
+	const number = reqNumber(raw, "note");
 	const line = (params.what ?? "").trim();
 	if (!line) throw new TrackerError('note requires "what" (the line to append)');
 	const section = params.section?.trim() || "Notes";

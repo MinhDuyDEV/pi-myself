@@ -1,4 +1,5 @@
-import { relative } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, join, relative } from "node:path";
 import {
 	ghBlockOp,
 	ghClaimOp,
@@ -17,11 +18,12 @@ import {
 	ghTickOp,
 	ghTriageOp,
 } from "./github.js";
-import type { TrackerParams } from "./params.js";
+import { TRACKER_OPS, type TrackerParams } from "./params.js";
 import { renderFeatures, renderFrontier, renderTicket, renderTicketList } from "./render.js";
 import {
 	appendMapLine,
 	appendTicketSection,
+	assertBlockersExist,
 	assertSection,
 	CATEGORY_ROLES,
 	canonicalRole,
@@ -29,6 +31,7 @@ import {
 	createMap,
 	createSpec,
 	createTicket,
+	featureDir,
 	findTicket,
 	isClosed,
 	isFeatureSlug,
@@ -70,8 +73,52 @@ function ticket(params: TrackerParams, root: string) {
 	return findTicket(root, reqFeature(params), req(params, "ticket"));
 }
 
+const BACKEND_DOC = "docs/agents/issue-tracker.md";
+
+/** The backend `docs/agents/issue-tracker.md` names in its H1 (`# Issue
+ * tracker: GitHub` / `Local Markdown` / `GitLab`, as setup-matt-pocock-skills
+ * writes it), or undefined when the file is absent (no restriction). */
+function configuredBackend(root: string): { kind: "github" | "local" | "other"; name: string } | undefined {
+	let text: string;
+	try {
+		text = readFileSync(join(root, ...BACKEND_DOC.split("/")), "utf8");
+	} catch {
+		return undefined;
+	}
+	const h1 = /^#[ \t]+(.+)$/m.exec(text)?.[1]?.trim() ?? "";
+	const name = h1.replace(/^issue tracker\s*:\s*/i, "").trim();
+	if (/^github\b/i.test(name)) return { kind: "github", name };
+	if (/^local\b/i.test(name)) return { kind: "local", name };
+	return { kind: "other", name: name || "no backend in its H1" };
+}
+
+/** Refuse the op family the repo is not configured for: local ops in a GitHub
+ * repo wrote `.scratch/` tickets that never reached GitHub, and `gh-*` ops in a
+ * local repo wrote issues nobody reads. A backend this tool does not implement
+ * (GitLab, anything else) refuses both. The message names the op to use. */
+function assertConfiguredBackend(root: string, op: string): void {
+	if (!(TRACKER_OPS as readonly string[]).includes(op)) return;
+	const backend = configuredBackend(root);
+	if (backend === undefined) return;
+	const github = op.startsWith("gh-");
+	if (backend.kind === "github" && !github) {
+		throw new TrackerError(
+			`${BACKEND_DOC} configures ${backend.name}, so the local .scratch/ op "${op}" is refused (its tickets would never reach GitHub): use "gh-${op}" instead`,
+		);
+	}
+	if (backend.kind === "local" && github) {
+		throw new TrackerError(`${BACKEND_DOC} configures ${backend.name}, so the GitHub op "${op}" is refused: use "${op.slice(3)}" instead`);
+	}
+	if (backend.kind === "other") {
+		throw new TrackerError(
+			`${BACKEND_DOC} configures ${backend.name}, which the tracker tool does not implement: "${op}" is refused — follow that doc's CLI recipes instead`,
+		);
+	}
+}
+
 /** Dispatch one `tracker` tool call; returns markdown for the model. */
 export function runOp(root: string, params: TrackerParams): string {
+	assertConfiguredBackend(root, params.op);
 	switch (params.op) {
 		case "list": {
 			// no feature: the feature table; with one: every ticket of it (closed
@@ -98,16 +145,15 @@ export function runOp(root: string, params: TrackerParams): string {
 		}
 
 		case "create-ticket": {
-			const ticket = createTicket(
-				root,
-				reqFeature(params),
-				req(params, "title"),
-				params.what ?? "",
-				params.blockedBy ?? [],
-				canonicalRole(root, params.status ?? "ready-for-agent"),
-				params.type,
-				params.criteria ?? [],
-			);
+			const feature = reqFeature(params);
+			const title = req(params, "title");
+			const blockedBy = params.blockedBy ?? [];
+			assertBlockersExist(root, feature, blockedBy);
+			// A wayfinder child carries no triage role unless asked (as on GitHub,
+			// where a typed ticket gets no triage label): `ready-for-agent` made a
+			// HITL grilling/prototype ticket look agent-ready.
+			const status = params.status?.trim() ? canonicalRole(root, params.status) : params.type ? "" : "ready-for-agent";
+			const ticket = createTicket(root, feature, title, params.what ?? "", blockedBy, status, params.type, params.criteria ?? []);
 			return `Created ${rel(root, ticket.file)}\n\n${renderTicket(ticket)}`;
 		}
 
@@ -129,8 +175,17 @@ export function runOp(root: string, params: TrackerParams): string {
 		}
 
 		case "resolve": {
-			const updated = resolveTicket(root, reqFeature(params), req(params, "ticket"), req(params, "answer"), params.gist);
-			return `Resolved ${rel(root, updated.file)}${params.gist ? " (map Decisions-so-far updated)" : ""}:\n\n${renderTicket(updated)}`;
+			const feature = reqFeature(params);
+			const hasMap = existsSync(join(featureDir(root, feature), "map.md"));
+			const updated = resolveTicket(root, feature, req(params, "ticket"), req(params, "answer"), params.gist);
+			// Say what happened to the map: a missing gist used to skip the
+			// Decisions-so-far pointer silently. No map, no gist expected.
+			const mapNote = !hasMap
+				? ""
+				: params.gist?.trim()
+					? " (map Decisions-so-far updated)"
+					: ` — map.md was NOT updated: no "gist" was given (add "[${updated.title}](issues/${basename(updated.file)}): <gist>" with op "note", section "Decisions so far")`;
+			return `Resolved ${rel(root, updated.file)}${mapNote}:\n\n${renderTicket(updated)}`;
 		}
 
 		case "tick": {
@@ -156,13 +211,9 @@ export function runOp(root: string, params: TrackerParams): string {
 
 		case "block": {
 			const blockers = params.blockedBy ?? [];
-			const updated = setTicketField(
-				root,
-				reqFeature(params),
-				req(params, "ticket"),
-				"Blocked by",
-				blockers.length ? blockers.join(", ") : UNBLOCKED,
-			);
+			const feature = reqFeature(params);
+			assertBlockersExist(root, feature, blockers);
+			const updated = setTicketField(root, feature, req(params, "ticket"), "Blocked by", blockers.length ? blockers.join(", ") : UNBLOCKED);
 			return `Updated ${rel(root, updated.file)}:\n\n${renderTicket(updated)}`;
 		}
 
@@ -175,8 +226,11 @@ export function runOp(root: string, params: TrackerParams): string {
 			if (!params.title?.trim() && !params.what?.trim()) {
 				throw new TrackerError('"edit" requires "title" and/or "what"');
 			}
-			const updated = updateTicket(root, reqFeature(params), req(params, "ticket"), params.title, params.what);
-			return `Edited ${rel(root, updated.file)}:\n\n${renderTicket(updated)}`;
+			const { ticket: updated, bodyAppended } = updateTicket(root, reqFeature(params), req(params, "ticket"), params.title, params.what);
+			const appended = bodyAppended
+				? ' — it had no Question or What-to-build section, so the text was appended as a new "## What to build" section and the old prose kept'
+				: "";
+			return `Edited ${rel(root, updated.file)}${appended}:\n\n${renderTicket(updated)}`;
 		}
 
 		case "note": {
@@ -242,8 +296,17 @@ export function runOp(root: string, params: TrackerParams): string {
 	}
 }
 
-/** The wayfinder frontier of every feature at once — used by the /frontier command. */
+/** The wayfinder frontier of every feature at once — used by the /frontier
+ * command. A repo configured for another backend gets a pointer instead of a
+ * misleading "No features tracked". */
 export function runAllFrontiers(root: string): string {
+	const backend = configuredBackend(root);
+	if (backend?.kind === "github") {
+		return `${BACKEND_DOC} configures ${backend.name}, so tickets are GitHub issues, not .scratch/ files: run the tracker tool's "gh-frontier" op (with "parent" to scope it to one map) for the frontier.`;
+	}
+	if (backend?.kind === "other") {
+		return `${BACKEND_DOC} configures ${backend.name}, which the tracker tool does not implement: follow that doc's CLI recipes for the frontier.`;
+	}
 	const summaries = listFeatures(root);
 	if (summaries.length === 0) return "No features tracked (.scratch/ is empty or missing).";
 	return summaries.map((summary) => `## .scratch/${summary.feature}\n\n${renderFrontier(listTickets(root, summary.feature))}`).join("\n\n");

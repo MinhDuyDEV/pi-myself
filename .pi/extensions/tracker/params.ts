@@ -83,7 +83,7 @@ export const trackerSchema = Type.Object({
 	parent: Optional(
 		Type.String({
 			description:
-				"GitHub parent issue number: the spec issue for to-tickets, the map issue for wayfinder children (gh-create-ticket → sub-issue + Part of line; gh-frontier → scope to that parent's children).",
+				"GitHub parent issue number: the spec issue for to-tickets, the map issue for wayfinder children (gh-create-ticket → sub-issue + Part of line; gh-frontier → scope to that parent's children; gh-note → the map issue to append to, 'ticket' accepted as an alias).",
 		}),
 	),
 	criteria: Optional(Type.Array(Type.String(), { description: "Acceptance criteria, one per entry (create-ticket → `- [ ]` list)." })),

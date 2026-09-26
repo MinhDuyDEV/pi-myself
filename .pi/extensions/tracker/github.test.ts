@@ -58,7 +58,12 @@ interface FakeIssue {
  * issue it posts any `--comment`, then closes; on an issue that is already
  * closed it writes "! Issue … is already closed" to stderr (recorded in
  * `stderr`; a `GhRun` never sees it), exits 0, and posts nothing — the
- * `--comment` is silently dropped. */
+ * `--comment` is silently dropped.
+ *
+ * `issue edit --add-assignee @me` / `--remove-assignee @me` change the issue's
+ * assignees the way gh does (`@me` is the authenticated login, `options.me`,
+ * which `gh api user --jq .login` also answers). `beforeRun` sees every call
+ * first, so a test can land another session's write at an exact point. */
 function fakeGh(
 	issues: FakeIssue[],
 	options: {
@@ -67,8 +72,13 @@ function fakeGh(
 		subIssueOrder?: Record<number, number[]>;
 		/** What `gh repo view --json nameWithOwner` answers. */
 		repoSlug?: string;
+		/** The authenticated login `@me` resolves to (default `me`). */
+		me?: string;
+		/** Called with every gh invocation before the fake handles it. */
+		beforeRun?: (args: string[]) => void;
 	} = {},
 ) {
+	const me = options.me ?? "me";
 	const edits: Array<{ number: number; args: string[]; input?: string }> = [];
 	const posts: string[] = [];
 	const deletions: string[] = [];
@@ -117,6 +127,8 @@ function fakeGh(
 		sub_issues_summary: { total: i.subIssues ?? 0 },
 	});
 	const run: GhRun = (_root, args, input) => {
+		options.beforeRun?.(args);
+		if (args[0] === "api" && args[1] === "user") return me;
 		if (args[0] === "repo") {
 			if (args[1] === "view" && args.includes("nameWithOwner")) return options.repoSlug ?? "example/repo";
 			throw new TrackerError(`unexpected gh repo call: ${args.join(" ")}`);
@@ -237,6 +249,15 @@ function fakeGh(
 		}
 		if (sub === "edit") {
 			edits.push({ number: Number(numberOrFlag), args, input });
+			const issue = issues.find((i) => i.number === Number(numberOrFlag));
+			const login = (flag: string) => {
+				const value = args[args.indexOf(flag) + 1];
+				return value === "@me" ? me : (value ?? "");
+			};
+			if (issue && args.includes("--add-assignee")) issue.assignees = [...new Set([...(issue.assignees ?? []), login("--add-assignee")])];
+			if (issue && args.includes("--remove-assignee")) {
+				issue.assignees = (issue.assignees ?? []).filter((name) => name !== login("--remove-assignee"));
+			}
 			return "";
 		}
 		throw new TrackerError(`unexpected gh sub: ${sub}`);
@@ -1192,4 +1213,106 @@ test("gh-triage names the needs-info issues whose comments it did not read", () 
 	}));
 	const out = ghTriageOp("/tmp", { op: "gh-triage" }, fakeGh(issues).run);
 	assert.match(out, /comments were read for the 40 oldest needs-info issues only; #41, #42 were not checked for a reporter reply/);
+});
+
+// ── follow-up audit (R5, R10, R13, R14, R16, lead L3) ────────────────────────
+
+test("gh-claim re-reads the assignees: a claim that raced another session is withdrawn and reported lost", () => {
+	const issues: FakeIssue[] = [{ number: 2, title: "Contended", state: "OPEN", body: "" }];
+	const gh = fakeGh(issues, {
+		// another session's `--add-assignee` lands between this session's view and its own add
+		beforeRun: (args) => {
+			if (args.includes("--add-assignee")) issues[0]!.assignees = [...(issues[0]!.assignees ?? []), "rival"];
+		},
+	});
+	const out = ghClaimOp("/tmp", { op: "gh-claim", ticket: "2" }, gh.run);
+	assert.doesNotMatch(out, /Claimed/);
+	assert.match(out, /claim on #2 lost to @rival/);
+	assert.ok(
+		gh.edits.some((e) => e.args.includes("--remove-assignee") && e.args.includes("@me")),
+		"@me is removed again",
+	);
+	assert.deepEqual(issues[0]!.assignees, ["rival"]);
+
+	// uncontended: the re-read finds only @me
+	const free = fakeGh([{ number: 3, title: "Free", state: "OPEN", body: "" }]);
+	assert.match(ghClaimOp("/tmp", { op: "gh-claim", ticket: "3" }, free.run), /^Claimed #3/);
+	assert.deepEqual(free.issues[0]!.assignees, ["me"]);
+});
+
+test("gh-resolve without a gist says the parent map was not updated", () => {
+	const gh = fakeGh([
+		{ number: 1, title: "Map: import", state: "OPEN", body: "## Decisions so far\n", labels: ["wayfinder:map"] },
+		{ number: 2, title: "Spec", state: "OPEN", body: "## Problem Statement\n\nx\n", labels: ["ready-for-agent"] },
+		{ number: 4, title: "Pick parser", state: "OPEN", body: "Part of: #1\n\n## Question\n\nCSV?" },
+		{ number: 5, title: "Counter", state: "OPEN", body: `Part of: #2\n\n${BODY("None")}` },
+	]);
+	const out = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "CSV." }, gh.run);
+	assert.match(out, /map #1 Decisions so far was NOT updated: no "gist" was given/);
+	assert.equal(
+		gh.edits.some((e) => e.number === 1),
+		false,
+	);
+	// a spec parent is not a map: no gist is expected, nothing is said
+	assert.doesNotMatch(ghResolveOp("/tmp", { op: "gh-resolve", ticket: "5", answer: "Done." }, gh.run), /NOT updated/);
+});
+
+test("gh-edit on a body with no Question / What-to-build section reports the section was appended", () => {
+	const gh = fakeGh([{ number: 7, title: "Bare", state: "OPEN", body: "Free prose only.\n" }]);
+	const out = ghEditOp("/tmp", { op: "gh-edit", ticket: "7", what: "new text" }, gh.run);
+	assert.doesNotMatch(out, /body replaced/);
+	assert.match(out, /no ## Question or ## What to build section.*appended/);
+	assert.match(gh.edits.at(-1)!.input ?? "", /Free prose only\.\n\n## What to build\n\nnew text/);
+});
+
+test("gh-note takes the map number from parent, or ticket as an alias, and names parent when it is missing", () => {
+	const gh = fakeGh([{ number: 9, title: "Map", state: "OPEN", body: "## Notes\n\nn\n", labels: ["wayfinder:map"] }]);
+	assert.match(ghMapNoteOp("/tmp", { op: "gh-note", ticket: "9", what: "via ticket" }, gh.run), /Appended to Notes on #9/);
+	assert.throws(() => ghMapNoteOp("/tmp", { op: "gh-note", what: "x" }, gh.run), /note requires the map's issue number in "parent"/);
+});
+
+test("gh-resolve recognises wontfix in either spelling and any case, through triage-labels.md", () => {
+	const root = mkdtempSync(join(tmpdir(), "tracker-wontfix-"));
+	try {
+		mkdirSync(join(root, "docs", "agents"), { recursive: true });
+		writeFileSync(
+			join(root, "docs", "agents", "triage-labels.md"),
+			"| Label in mattpocock/skills | Label in our tracker | Meaning |\n| --- | --- | --- |\n| `wontfix` | `wont-fix` | x |\n",
+		);
+		for (const status of ["wont-fix", "Wont-Fix", "WONTFIX"]) {
+			const gh = fakeGh([{ number: 5, title: "Dup", state: "OPEN", body: "" }], { labels: ["wont-fix"] });
+			const out = ghResolveOp(root, { op: "gh-resolve", ticket: "5", answer: "Duplicate of #3.", status }, gh.run);
+			assert.match(out, /closed as not planned/, status);
+			assert.deepEqual(gh.edits.find((e) => e.args[1] === "close")!.args.slice(3, 5), ["--reason", "not planned"], status);
+			assert.doesNotMatch(gh.edits.find((e) => e.args[1] === "comment")!.input ?? "", /## Answer/, status);
+			assert.ok(
+				gh.edits.some((e) => e.args.includes("--add-label") && e.args.includes("wont-fix")),
+				status,
+			);
+		}
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("a status or mapped label beginning with - never reaches gh as a flag", () => {
+	const gh = fakeGh([{ number: 5, title: "T", state: "OPEN", body: "" }]);
+	assert.throws(() => ghStatusOp("/tmp", { op: "gh-status", ticket: "5", status: "-d" }, gh.run), /invalid label "-d"/);
+	assert.throws(() => ghCreateTicketOp("/tmp", { op: "gh-create-ticket", title: "T", status: "-d" }, gh.run), /invalid label "-d"/);
+	assert.deepEqual(gh.createdLabels, []);
+
+	const root = mkdtempSync(join(tmpdir(), "tracker-dash-"));
+	try {
+		mkdirSync(join(root, "docs", "agents"), { recursive: true });
+		writeFileSync(
+			join(root, "docs", "agents", "triage-labels.md"),
+			"| Label in mattpocock/skills | Label in our tracker | Meaning |\n| --- | --- | --- |\n| `needs-info` | `-n` | x |\n",
+		);
+		const mapped = fakeGh([{ number: 6, title: "T", state: "OPEN", body: "" }]);
+		assert.throws(() => ghStatusOp(root, { op: "gh-status", ticket: "6", status: "needs-info" }, mapped.run), /invalid label "-n"/);
+		assert.deepEqual(mapped.createdLabels, []);
+		assert.equal(mapped.edits.length, 0);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });

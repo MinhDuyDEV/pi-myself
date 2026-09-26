@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
 	closeSync,
 	existsSync,
@@ -9,6 +10,7 @@ import {
 	rmSync,
 	statSync,
 	writeFileSync,
+	writeSync,
 } from "node:fs";
 import { basename, join } from "node:path";
 
@@ -296,45 +298,81 @@ export function byIdOrTitle(tickets: Ticket[], token: string): Ticket | undefine
 	return tickets.find((t) => t.slug === raw.toLowerCase()) ?? tickets.find((t) => t.title.toLowerCase() === raw.toLowerCase());
 }
 
-/** Resolve one blocker token against every ticket: a RESOLVED blocker unblocks. */
+/** Resolve one blocker token against every ticket: a RESOLVED blocker unblocks.
+ * A title token also matches by its slug: the file slug never changes, so a
+ * blocker named by title still resolves after `edit` rewords that title. */
 function resolveBlocker(tickets: Ticket[], token: string): Ticket | undefined {
-	return byIdOrTitle(tickets, token) ?? byIdOrTitle(tickets, token.replace(/^\d+-/, ""));
+	return (
+		byIdOrTitle(tickets, token) ??
+		byIdOrTitle(tickets, token.replace(/^\d+-/, "")) ??
+		tickets.find((t) => t.slug === slugify(token.replace(/^\d+-/, "")))
+	);
 }
 
-/** True when every blocker this ticket names is closed. A token that resolves to
- * nothing is conservative (stays blocked); one that does not resolve but splits
- * on `and` is retried part by part, so a blocker written as a title containing
- * `and` still unblocks instead of blocking the ticket forever. */
-function allBlockersClosed(tickets: Ticket[], blockedBy: string[]): boolean {
-	for (const token of blockedBy) {
-		const target = resolveBlocker(tickets, token);
-		if (target !== undefined) {
-			if (!isClosed(target)) return false;
-			continue;
-		}
-		const parts = token
-			.split(/\band\b/i)
-			.map((part) => part.trim())
-			.filter(Boolean);
-		if (parts.length < 2) return false;
-		for (const part of parts) {
-			const partTarget = resolveBlocker(tickets, part);
-			if (partTarget === undefined || !isClosed(partTarget)) return false;
+/** The tickets one blocker token names, each with the text naming it, or
+ * undefined when it names no ticket. A token that does not resolve but splits
+ * on `and` is retried part by part (every part must resolve), so a blocker
+ * written as a title containing `and` is still read. */
+function blockerTargets(tickets: Ticket[], token: string): Array<{ name: string; ticket: Ticket }> | undefined {
+	const target = resolveBlocker(tickets, token);
+	if (target !== undefined) return [{ name: token, ticket: target }];
+	const parts = token
+		.split(/\band\b/i)
+		.map((part) => part.trim())
+		.filter(Boolean);
+	if (parts.length < 2) return undefined;
+	const targets: Array<{ name: string; ticket: Ticket }> = [];
+	for (const part of parts) {
+		const partTarget = resolveBlocker(tickets, part);
+		if (partTarget === undefined) return undefined;
+		targets.push({ name: part, ticket: partTarget });
+	}
+	return targets;
+}
+
+/** A ticket's blockers split the way the GitHub frontier splits them: `open`
+ * names the blockers still open (the only ones that gate), `unresolved` the
+ * tokens that name no ticket of the feature (not gating, disclosed). A resolved
+ * blocker is in neither. */
+export function blockerStateOf(tickets: Ticket[], ticket: Ticket): { open: string[]; unresolved: string[] } {
+	const open: string[] = [];
+	const unresolved: string[] = [];
+	for (const token of ticket.blockedBy) {
+		const targets = blockerTargets(tickets, token);
+		if (targets === undefined) unresolved.push(token);
+		else open.push(...targets.filter((target) => !isClosed(target.ticket)).map((target) => target.name));
+	}
+	return { open, unresolved };
+}
+
+/** Refuse blocker tokens that name no ticket of the feature, checked the way
+ * the frontier reads them (the joined `Blocked by:` value, split again), so a
+ * typo cannot publish an edge that gates nothing. */
+export function assertBlockersExist(repoRoot: string, feature: string, blockedBy: string[]): void {
+	assertFeature(feature);
+	const tokens = parseBlockerTokens(blockedBy.join(", "));
+	if (tokens.length === 0) return;
+	const tickets = listTickets(repoRoot, feature);
+	for (const token of tokens) {
+		if (blockerTargets(tickets, token) === undefined) {
+			throw new TrackerError(
+				`unknown blocker ${JSON.stringify(token)}: no ticket in .scratch/${feature}/issues/ matches it by number, slug, or title — create the blocker first, or fix the spelling`,
+			);
 		}
 	}
-	return true;
 }
 
 /** Open, unblocked, unclaimed, not held back by a triage state role — the
  * wayfinder frontier (first by number wins, list order preserves that). Files
  * keep the canonical role (`canonicalRole` on every write), so the `Status:`
- * line is compared as is. */
+ * line is compared as is. A blocker token that names no ticket does not gate
+ * (see blockerStateOf); renderFrontier discloses it. */
 export function frontierOf(tickets: Ticket[]): { takeable: Ticket[]; blocked: Ticket[] } {
 	const open = tickets.filter((t) => !isClosed(t));
 	const notReady = new Set<string>(NOT_READY_ROLES);
 	const takeable = open.filter(
 		(ticket) =>
-			ticket.status !== "claimed" && !notReady.has(ticket.status) && !ticket.assignee && allBlockersClosed(tickets, ticket.blockedBy),
+			ticket.status !== "claimed" && !notReady.has(ticket.status) && !ticket.assignee && blockerStateOf(tickets, ticket).open.length === 0,
 	);
 	return { takeable: takeable, blocked: open.filter((t) => !takeable.includes(t)) };
 }
@@ -356,15 +394,67 @@ function sleepSync(ms: number): void {
 	Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
+/** Create `lock` holding `owner`, or throw EEXIST when it is already there. */
+function createLock(lock: string, owner: string): void {
+	const fd = openSync(lock, "wx");
+	try {
+		writeSync(fd, owner);
+	} finally {
+		closeSync(fd);
+	}
+}
+
+/** The owner token a lock file holds, or undefined when there is no lock. */
+function lockOwner(lock: string): string | undefined {
+	try {
+		return readFileSync(lock, "utf8");
+	} catch {
+		return undefined;
+	}
+}
+
+/** Delete `lock` only while it is still the lock `owner` holds. Checking the
+ * owner and then deleting the path is a race (the lock can change hands in
+ * between), so the lock is first renamed to a unique name — an atomic move of
+ * exactly one lock — and only that moved file is inspected. A lock that turns
+ * out to be someone else's is put back (`wx`, so it never overwrites a lock
+ * taken in the gap). Returns whether `owner`'s lock was removed. */
+function removeLockIfOwnedBy(lock: string, owner: string): boolean {
+	const aside = `${lock}.${randomUUID()}.aside`;
+	try {
+		renameSync(lock, aside);
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw error;
+	}
+	const found = lockOwner(aside);
+	if (found !== owner) {
+		try {
+			createLock(lock, found ?? "");
+		} catch (error) {
+			// EEXIST: a third writer took the free path in the gap and holds it now.
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+		}
+	}
+	rmSync(aside, { force: true });
+	return found === owner;
+}
+
 /** Run `action` while holding `<file>.lock`, so parallel sessions cannot
  * interleave a read-modify-write and silently drop one of the two updates.
- * A lock older than LOCK_STALE_MS is treated as abandoned by a crashed writer. */
+ *
+ * The lock file holds a unique owner token. A lock older than LOCK_STALE_MS is
+ * treated as abandoned by a crashed writer and taken over, but only the exact
+ * lock judged stale is removed (removeLockIfOwnedBy): two waiters that both
+ * judged one lock stale used to have the second delete the first's fresh lock,
+ * and a holder that overran the window deleted its thief's lock on release. */
 export function withFileLock<T>(file: string, action: () => T): T {
 	const lock = `${file}.lock`;
+	const token = `${process.pid}:${randomUUID()}`;
 	const deadline = Date.now() + LOCK_WAIT_MS;
 	for (;;) {
 		try {
-			closeSync(openSync(lock, "wx"));
+			createLock(lock, token);
 			break;
 		} catch (error) {
 			const code = (error as NodeJS.ErrnoException).code;
@@ -372,24 +462,32 @@ export function withFileLock<T>(file: string, action: () => T): T {
 			// say so instead of leaking a bare ENOENT.
 			if (code === "ENOENT") throw new TrackerError(`cannot lock a path whose directory is missing: ${lock}`);
 			if (code !== "EEXIST") throw error;
+			// Owner first, then age: a lock that changes hands after this read is
+			// either fresh (not stale) or caught by the owner check when removed.
+			const owner = lockOwner(lock);
+			if (owner === undefined) continue; // the holder released it in between
 			let abandoned: boolean;
 			try {
 				abandoned = statSync(lock).mtimeMs < Date.now() - LOCK_STALE_MS;
 			} catch {
-				continue; // the holder released it between openSync and statSync
+				continue; // the holder released it between the read and statSync
 			}
 			if (abandoned) {
-				rmSync(lock, { force: true });
+				removeLockIfOwnedBy(lock, owner);
 				continue;
 			}
-			if (Date.now() > deadline) throw new TrackerError(`timed out waiting for the tracker lock: ${lock}`);
+			if (Date.now() > deadline) {
+				throw new TrackerError(
+					`timed out waiting for the tracker lock: ${lock} (waited ${LOCK_WAIT_MS / 1000}s; a lock is taken over only once it is older than ${LOCK_STALE_MS / 1000}s, so another session is most likely mid-write — retry, or delete the lock file if its writer crashed)`,
+				);
+			}
 			sleepSync(LOCK_POLL_MS);
 		}
 	}
 	try {
 		return action();
 	} finally {
-		rmSync(lock, { force: true });
+		removeLockIfOwnedBy(lock, token);
 	}
 }
 
@@ -492,7 +590,8 @@ function nextTicketNumber(dir: string): number {
 
 /** Create a ticket file per the to-tickets local template (or, with a
  * wayfinder `ticketType`, the wayfinder child shape: a `Type:` line and the
- * question as the body). */
+ * question as the body). An empty `status` writes no `Status:` line (a
+ * wayfinder child carries no triage role until one is asked for). */
 export function createTicket(
 	repoRoot: string,
 	feature: string,
@@ -537,6 +636,7 @@ function ticketBody(
 	criteria: string[] = [],
 ): string {
 	const blocked = `**Blocked by:** ${blockedBy.length ? blockedBy.join(", ") : "None (can start immediately)"}`;
+	const statusLines = status ? [`**Status:** ${status}`, ""] : [];
 	return (
 		ticketType
 			? [
@@ -546,8 +646,7 @@ function ticketBody(
 					"",
 					blocked,
 					"",
-					`**Status:** ${status}`,
-					"",
+					...statusLines,
 					"## Question",
 					"",
 					what || "(the question this ticket resolves)",
@@ -560,8 +659,7 @@ function ticketBody(
 					"",
 					blocked,
 					"",
-					`**Status:** ${status}`,
-					"",
+					...statusLines,
 					...(criteria.length ? criteria.map((c) => `- [ ] ${c.trim()}`) : ["- [ ] (acceptance criteria — replace from the spec)"]),
 					"",
 				]
@@ -658,9 +756,16 @@ export function replaceSection(text: string, heading: string, content: string): 
 	return `${text.slice(0, start).trimEnd()}\n\n${content}\n${tail ? `\n${tail}` : ""}`;
 }
 
+/** True when a body has a place `replaceTicketBody` replaces: a `## Question`
+ * or `## What to build` section, or a `**What to build:**` field line. */
+export function hasTicketBodySection(text: string): boolean {
+	return /^##\s+Question\s*$/m.test(text) || /^##\s+What to build\s*$/m.test(text) || /^\*{0,2}What to build\*{0,2}:/m.test(text);
+}
+
 /** Replace a ticket's body prose in either backend's shape: the `## Question`
  * section (wayfinder), a `## What to build` section (GitHub), or this backend's
- * `**What to build:**` field line. Appends a section when none is present. */
+ * `**What to build:**` field line. Appends a section when none is present
+ * (hasTicketBodySection says which happened, so callers can report it). */
 export function replaceTicketBody(text: string, what: string): string {
 	if (/^##\s+Question\s*$/m.test(text)) return replaceSection(text, "Question", what);
 	if (/^##\s+What to build\s*$/m.test(text)) return replaceSection(text, "What to build", what);
@@ -668,14 +773,27 @@ export function replaceTicketBody(text: string, what: string): string {
 	return `${text.trimEnd()}\n\n## What to build\n\n${what}\n`;
 }
 
-/** Edit a ticket's title and/or body in place, leaving its field lines alone. */
-export function updateTicket(repoRoot: string, feature: string, token: string, title?: string, what?: string): Ticket {
-	return mutateTicket(repoRoot, feature, token, (ticket) => {
-		let text = ticket.raw;
+/** Edit a ticket's title and/or body in place, leaving its field lines alone.
+ * `bodyAppended` is true when the body had no section to replace, so the text
+ * was appended as a new `## What to build` beside the old prose. */
+export function updateTicket(
+	repoRoot: string,
+	feature: string,
+	token: string,
+	title?: string,
+	what?: string,
+): { ticket: Ticket; bodyAppended: boolean } {
+	let bodyAppended = false;
+	const ticket = mutateTicket(repoRoot, feature, token, (current) => {
+		let text = current.raw;
 		if (title?.trim()) text = upsertTitle(text, title.trim());
-		if (what?.trim()) text = replaceTicketBody(text, what.trim());
+		if (what?.trim()) {
+			bodyAppended = !hasTicketBodySection(text);
+			text = replaceTicketBody(text, what.trim());
+		}
 		return text;
 	});
+	return { ticket, bodyAppended };
 }
 
 /** Append the answer under `## Answer` and set `Status: resolved`. */
