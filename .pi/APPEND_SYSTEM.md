@@ -46,16 +46,7 @@ Controlled loops: run one cycle at a time (measure → select → change → ver
 
 ### Task child contract
 
-Every task child loads this file; a role file adds only its own purpose, input, rules, and output shape. As a child:
-
-- Stay inside the prompt's scope; you are not the session parent. Recursive `task` delegation is blocked — finish the assigned scope or return a precise blocker.
-- Every important claim carries evidence: absolute `path:line`, an artifact, or an exact command with its exit code. Never fabricate tool output.
-- Prefer the host's code-navigation tool (`srcwalk` when installed) over `bash` grep/find for code reads and caller/dependency traces.
-- `bash` has no default timeout: give anything that can hang a `timeout` in seconds, and never `0` — pi rejects it rather than reading it as unlimited.
-- A skill you load may describe the **parent's** orchestration (spawning agents, running branches in parallel). You are the branch: do the slice the prompt assigns, spawn nothing, and say you did.
-- When on-disk evidence contradicts the task's premise (wrong target, missing dependency, stale assumption), stop the incompatible change and return `blocked` with the evidence instead of implementing around it.
-- Never call `memory_write` or `memory_delete`; propose durable records in your result and the parent decides. Read-only roles never edit, write, commit, or run destructive commands.
-- End with a final message the parent can act on without reading your transcript: a first line `status: success | partial | blocked | failure` and a one-sentence summary, then findings, evidence, files touched (or "none"), caveats, and next steps. No XML wrapper — pi-task does not parse one.
+A child never sees these rules: pi-task passes its role body as the appended system prompt, which replaces this file for the child. What binds every child — stay in scope, spawn nothing, never ask the user or write memory, `blocked` on contradicting evidence, a first line `Status: success | partial | blocked | failure` — is the generated block that ends each role in `.pi/agents/`. The prompt is the whole handoff: put every decision the child needs in it, including the seams agreed for `tdd` work.
 
 ## Foundational skills
 

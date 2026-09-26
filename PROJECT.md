@@ -11,7 +11,8 @@
 - `.pi/skills/` — our own skills: `memory` (pi-workspace-memory workflow), `harness-catalog` (the situation-to-command map over every registered skill, plus its `pi-mapping.md` host translations), `commit-guardrails` (the git-hook installer at `install-git-hooks.mjs`), `verification-before-completion`, `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, `test-proof-debt-audit`, `ultra-review`, `ultra-review-receive`, `repo-refresh`. A skill's own helper scripts live inside its directory, the way `ultra-review/scripts/` already did, because that is what a consuming repo receives.
 - `.pi/prompts/` — hand-written slash commands: `/verify`, `/init`.
 - `.pi/extensions/provision.ts` — `/setup-pi-myself` command only (no session-start check: the provisioned copies are the project's to edit); `.pi/extensions/lib/` holds shared helpers (repo root, package root, pi's agent dir) and is deliberately not an extension.
-- `.pi/APPEND_SYSTEM.md` — the workflow rules; provisioned into consuming repos by `scripts/setup-project.mjs` because pi loads it only from a project's own `.pi/`.
+- `.pi/APPEND_SYSTEM.md` — the workflow rules; provisioned into consuming repos by `scripts/setup-project.mjs` because pi loads it only from a project's own `.pi/`. A task child never sees it: pi-task's `--append-system-prompt` suppresses the discovered file.
+- `.pi/policy/CHILD-CONTRACT.md` — the child contract's one source; `scripts/sync-agents.mjs` splices it between the `child-contract` markers at the end of every role in `.pi/agents/`, so provisioned roles carry it too.
 - `docs/agents/` — the per-repo skill configuration (`setup-matt-pocock-skills` writes it) and `docs/adr/` the decisions; the harness's own host translation ships inside the `harness-catalog` skill instead, so a consuming repo gets it with the package.
 
 ## Development Support
@@ -20,6 +21,7 @@
 - `.pi/extensions/**/*.test.ts` — extension unit and lifecycle tests, colocated with source.
 - `scripts/run-extension-tests.mjs` — discovers and runs Node extension tests.
 - `scripts/sync-skills.mjs` — vendored sync + lock integrity (`--check`).
+- `scripts/sync-agents.mjs` — the child-contract splice (`npm run agents:sync`; `--check` is `npm run agents:check`, part of `npm run check`).
 - `npm run hooks:install` / `hooks:check` — the repo-local git guardrail, run through the installer shipped in the `commit-guardrails` skill (staged check, optional `--trailer` session id; `--check` verifies without writing).
 - `scripts/setup-project.mjs` — provisions and updates a consuming repo (`/setup-pi-myself`): task roles, `APPEND_SYSTEM.md`, `enableSkillCommands`. A rerun is an update — each role is rewritten from the package with only `model` and `thinking` carried over from the project's copy — and a copy the project changed outside those two fields is refreshed after being saved as `<name>.local` (the sha256 baseline in the project's `.pi/` is what distinguishes an edit from the package's previous version). `APPEND_SYSTEM.md` is harness policy and is always replaced; a role the project added is left alone; the one settings key the harness manages (`enableSkillCommands`) is enforced with the previous file kept as `settings.json.local`, and every other settings key is untouched; project-specific rules belong in the repo's `AGENTS.md`.
 - `package.json` — npm scripts and pi package registration.
@@ -43,10 +45,11 @@ Not source of truth, do not edit: `node_modules/`, `.pi/node_modules/`, `.pi/npm
 ## Verification
 
 ```bash
-npm run check                 # lint → both typechecks → tests → sync check (what CI runs)
+npm run check                 # lint → both typechecks → tests → sync check → agents check (what CI runs)
 npm run lint                  # Biome format + lint (read-only)
 npm test                      # extensions + skill hygiene tests
 npm run extensions:typecheck  # runtime extensions
 npm run typecheck             # root + tests
 npm run sync:check            # vendored lock integrity
+npm run agents:check          # every role carries the current child contract
 ```

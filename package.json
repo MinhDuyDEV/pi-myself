@@ -27,9 +27,11 @@
 		"hooks:check": "node .pi/skills/commit-guardrails/install-git-hooks.mjs --command \"npm run --silent lint:staged\" --check",
 		"typecheck": "tsc --noEmit",
 		"extensions:typecheck": "npx tsc -p .pi/extensions/tsconfig.json --noEmit",
-		"check": "npm run lint && npm run typecheck && npm run extensions:typecheck && npm test && npm run sync:check",
+		"check": "npm run lint && npm run typecheck && npm run extensions:typecheck && npm test && npm run sync:check && npm run agents:check",
 		"sync:skills": "node scripts/sync-skills.mjs",
 		"sync:check": "node scripts/sync-skills.mjs --check",
+		"agents:sync": "node scripts/sync-agents.mjs",
+		"agents:check": "node scripts/sync-agents.mjs --check",
 		"setup:project": "node scripts/setup-project.mjs"
 	},
 	"pi": {

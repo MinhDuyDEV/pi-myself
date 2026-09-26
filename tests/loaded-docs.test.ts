@@ -32,9 +32,16 @@ const GUIDANCE = TRACKED.filter(
 		file === "AGENTS.md" ||
 		file === "PROJECT.md" ||
 		file === ".pi/APPEND_SYSTEM.md" ||
-		/^\.pi\/(agents|prompts)\/[^/]+\.md$/.test(file) ||
+		/^\.pi\/(agents|prompts|policy)\/[^/]+\.md$/.test(file) ||
 		/^\.pi\/skills\/.+\.md$/.test(file),
 );
+
+/**
+ * The child contract `npm run agents:sync` splices into every role body: one
+ * source (`.pi/policy/CHILD-CONTRACT.md`) and seven generated copies, which
+ * tests/agents.test.ts holds identical. Only the source counts as a statement.
+ */
+const GENERATED_CONTRACT = /<!-- child-contract:begin[^\n]*-->\n[\s\S]*?\n<!-- child-contract:end -->\n?/g;
 
 /** `dir/file.ext`-shaped code spans; machine paths (~, /) are host facts, not repo paths. */
 const PATH_TOKEN = /`([A-Za-z0-9_.@-][A-Za-z0-9_.@/-]*\/[A-Za-z0-9_.@-]+\.(?:md|ts|mjs|json|py|sh))`/g;
@@ -55,6 +62,7 @@ test("the guidance set is what the gates think it is", () => {
 		"AGENTS.md",
 		".pi/APPEND_SYSTEM.md",
 		".pi/agents/reviewer.md",
+		".pi/policy/CHILD-CONTRACT.md",
 		".pi/prompts/verify.md",
 		".pi/skills/memory/SKILL.md",
 	]) {
@@ -112,6 +120,7 @@ test("no paragraph or bullet is repeated across guidance files", () => {
 	for (const file of GUIDANCE) {
 		const body = read(file)
 			.replace(/^---\n[\s\S]*?\n---\n/, "")
+			.replace(GENERATED_CONTRACT, "")
 			.replace(/```[\s\S]*?```/g, "");
 		const units = new Set<string>();
 		for (const block of body.split(/\n\s*\n/)) {

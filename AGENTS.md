@@ -10,6 +10,7 @@
 - `vendor/mattpocock-skills/` is the **vendored upstream** `mattpocock/skills` tree. It is read-only by rule: never edit files under it. Upgrade it with `npm run sync:skills` (re-clone + rehash `skills-lock.json`).
 - `.pi/prompts/<name>.md` defines the hand-written user slash commands (`/verify`, `/init`). Skills need no wrapper: pi exposes every skill natively as `/skill:<name>`. `/setup-pi-myself` is a command the `provision` extension registers.
 - `scripts/sync-skills.mjs` is the gate for all vendored-tree changes; `--check` verifies lock integrity and is run in CI and by `npm run sync:check`. `scripts/setup-project.mjs` provisions a consuming repo (run by `/setup-pi-myself`).
+- `.pi/policy/CHILD-CONTRACT.md` is the one source of the rules every task child follows; `npm run agents:sync` splices it into the end of each role, because a child sees only its role body. Edit the source, never a generated block.
 
 ## Commands
 
@@ -20,8 +21,9 @@
 - Root TypeScript: `npm run typecheck`.
 - Extension TypeScript: `npm run extensions:typecheck`.
 - Vendored sync: `npm run sync:skills` (upgrade), `npm run sync:check` (verify).
+- Child contract: `npm run agents:sync` (rewrite the role blocks), `npm run agents:check` (verify).
 - Git guardrail: `npm run hooks:install` (pre-commit staged check; `-- --trailer` also stamps the session id), `npm run hooks:check` (verify).
-- Everything at once: `npm run check` (lint → both typechecks → tests → sync check), which is what CI runs.
+- Everything at once: `npm run check` (lint → both typechecks → tests → sync check → agents check), which is what CI runs.
 
 `biome.json` excludes `vendor/` (read-only upstream) and `skills-lock.json` (generated), and turns `noNonNullAssertion` and `noExplicitAny` off for `*.test.ts` only, where fixtures and adapter fakes make them the terse, intentional form. Do not extend that override to source files; source keeps both rules on. `biome.json` takes no comments — Biome silently ignores `files.includes` when one is present, which deselects the `vendor/` exclusion.
 

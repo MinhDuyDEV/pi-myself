@@ -6,10 +6,16 @@ import { test } from "node:test";
 // Roster hygiene: seven roles in three model tiers, bodies written for the
 // child (no routing sections, no result-envelope boilerplate — pi-task parses
 // none), pipeline roles kept out of the proactive catalog, and every skill a
-// role declares must exist (pi-task fails the launch otherwise).
+// role declares must exist (pi-task fails the launch otherwise). A child sees
+// its role body and nothing of the parent's workflow rules — pi-task passes the
+// body as --append-system-prompt, which suppresses a discovered APPEND_SYSTEM.md
+// — so the child contract is spliced into every body from one source.
 
 const ROOT = resolve(import.meta.dirname, "..");
 const AGENTS = join(ROOT, ".pi", "agents");
+const CONTRACT_SOURCE = join(ROOT, ".pi", "policy", "CHILD-CONTRACT.md");
+/** The generated block `npm run agents:sync` writes at the end of every role body. */
+const CONTRACT_BLOCK = /\n<!-- child-contract:begin[^\n]*-->\n([\s\S]*?)\n<!-- child-contract:end -->\n$/;
 const VENDOR = join(ROOT, "vendor", "mattpocock-skills", "skills");
 const MAPPING = join(ROOT, ".pi", "skills", "harness-catalog", "pi-mapping.md");
 
@@ -55,20 +61,25 @@ const COORDINATOR_SKILLS: Record<string, { role: string; bodyPins: RegExp; why: 
 	},
 };
 
-/** Phrasing that means "spawn an agent" — what the pi mapping has to cover. */
-const SPAWN_PHRASING =
-	/spawn\s+(?:both\s+)?(?:\d+\+?\s+)?(?:parallel\s+)?sub-?agents?|spin up a sub-?agent|background agent|dispatch a sub-?agent/i;
+/**
+ * Phrasing that means "spawn an agent" — what the pi mapping has to cover. Any
+ * mention of a sub-agent counts: a narrow verb list missed phrasings such as
+ * "split the work into subagents", so a skill that only *mentions* one is
+ * exempted by name below, with the reason, instead.
+ */
+const SPAWN_PHRASING = /\bsub-?agents?\b|background agent/i;
+const SPAWN_MENTION_ONLY: Record<string, string> = {
+	"writing-for-agents":
+		"names a subagent dispatch as one kind of context boundary a document is written across; it never tells its reader to spawn one",
+};
 
 const ROSTER = ["explore", "scout", "general", "reviewer", "designer", "ultra-scout", "ultra-verifier"];
 const READ_TIER = new Set(["explore", "scout"]);
 const REVIEW_TIER = new Set(["reviewer", "ultra-scout"]);
 const PIPELINE = new Set(["ultra-scout", "ultra-verifier"]);
-/** One model per tier: change it here and in the role files together. */
-const TIER_MODEL = {
-	read: "opencode-go/deepseek-v4-flash",
-	reason: "opencode-go/deepseek-v4-flash",
-	review: "opencode-go/kimi-k3",
-};
+type Tier = "read" | "reason" | "review";
+/** Roles that must not change state: readonly, plus scout, whose one write is a named report. */
+const NO_TRACKER = new Set(["explore", "scout", "reviewer", "designer", "ultra-scout"]);
 
 /** `provider/deepseek-v4-flash` → `deepseek`: the vendor family, the unit of shared blind spots. */
 function modelFamily(model: string): string {
@@ -80,8 +91,20 @@ function modelFamily(model: string): string {
 	);
 }
 
-function tierOf(name: string): keyof typeof TIER_MODEL {
+function tierOf(name: string): Tier {
 	return READ_TIER.has(name) ? "read" : REVIEW_TIER.has(name) ? "review" : "reason";
+}
+
+function list(value: string | undefined): string[] {
+	return (value ?? "")
+		.split(",")
+		.map((item) => item.trim())
+		.filter(Boolean);
+}
+
+/** The role body a child receives, minus the generated contract block every role shares. */
+function ownBody(raw: string): string {
+	return raw.replace(/^---\n[\s\S]*?\n---/, "").replace(CONTRACT_BLOCK, "\n");
 }
 
 function frontmatter(raw: string): Record<string, string> {
@@ -129,11 +152,23 @@ test("the roster is exactly the seven roles", () => {
 	assert.deepEqual(roles.map((r) => r.name).sort(), [...ROSTER].sort());
 });
 
-test("every role sits in a tier with that tier's model and a one-line description", () => {
+/** The models the role files themselves declare, per tier — no second copy to keep in step. */
+function tierModels(): Record<Tier, Set<string>> {
+	const models: Record<Tier, Set<string>> = { read: new Set(), reason: new Set(), review: new Set() };
+	for (const role of roles) models[tierOf(role.name)].add(frontmatter(role.raw).model ?? "(none)");
+	return models;
+}
+
+test("every role sits in a tier that runs one model, with a one-line description", () => {
+	// Picking a model is mechanical only while a tier means one model: change a
+	// tier by editing the `model:` line of every role in it.
+	for (const [tier, models] of Object.entries(tierModels())) {
+		assert.equal(models.size, 1, `tier ${tier} runs one model, found ${[...models].join(", ")}`);
+	}
 	for (const role of roles) {
 		const fm = frontmatter(role.raw);
 		const tier = tierOf(role.name);
-		assert.equal(fm.model, TIER_MODEL[tier], `${role.name}: tier ${tier} model`);
+		assert.ok(fm.model, `${role.name}: model is set`);
 		assert.ok(fm.description && fm.description.length <= 400, `${role.name}: description present and one line`);
 		assert.match(role.raw, new RegExp(`Tier: \\*\\*${tier}\\*\\*`), `${role.name}: body names its tier`);
 		assert.notEqual(fm.readonly, "false", `${role.name}: readonly: false is the default, drop it`);
@@ -142,12 +177,12 @@ test("every role sits in a tier with that tier's model and a one-line descriptio
 
 test("the review tier judges on a different model family than the reason tier writes", () => {
 	// Author and reviewer on one vendor share blind spots; the independent review
-	// APPEND_SYSTEM requires is only independent if the family differs.
-	assert.notEqual(
-		modelFamily(TIER_MODEL.review),
-		modelFamily(TIER_MODEL.reason),
-		"review tier must not share the reason tier's model family",
-	);
+	// the workflow requires is only independent if the family differs. Read from
+	// the role files, so a swap in any one of them is caught.
+	const { reason, review } = tierModels();
+	const reasonFamilies = new Set([...reason].map(modelFamily));
+	const shared = [...review].map(modelFamily).filter((family) => reasonFamilies.has(family));
+	assert.deepEqual(shared, [], "review tier must not share the reason tier's model family");
 	for (const role of roles) {
 		if (REVIEW_TIER.has(role.name)) assert.equal(frontmatter(role.raw).readonly, "true", `${role.name}: the review tier never writes`);
 	}
@@ -164,24 +199,68 @@ test("read-tier roles never write except scout's single report; pipeline roles a
 
 test("bodies are written for the child: no routing sections, no result-envelope boilerplate", () => {
 	for (const role of roles) {
-		assert.doesNotMatch(role.raw, /^## (Use For|Do Not Use For)/m, `${role.name}: routing belongs in description + APPEND_SYSTEM`);
+		assert.doesNotMatch(role.raw, /^## (Use For|Do Not Use For)/m, `${role.name}: routing belongs in description + the workflow policy`);
 		assert.doesNotMatch(
 			role.raw,
-			/<result>|machine-readable envelope/,
-			`${role.name}: pi-task parses no envelope; the contract lives in APPEND_SYSTEM`,
+			/<result>|machine-readable envelope|parser's four statuses/,
+			`${role.name}: pi-task parses no envelope; the child contract states the plain report`,
 		);
 	}
-	const append = readFileSync(join(ROOT, ".pi", "APPEND_SYSTEM.md"), "utf8");
-	assert.match(append, /### Task child contract/, "APPEND_SYSTEM carries the shared child contract");
-	assert.doesNotMatch(append, /parser's four statuses/, "no phantom envelope parser");
+});
+
+test("every role ends with the generated child contract, identical to its one source", () => {
+	// The child never sees the parent's workflow rules, so a rule every child
+	// needs lives in the block `npm run agents:sync` splices from the source.
+	const source = readFileSync(CONTRACT_SOURCE, "utf8").trim();
+	for (const role of roles) {
+		const block = CONTRACT_BLOCK.exec(role.raw)?.[1];
+		assert.ok(block !== undefined, `${role.name}: no child-contract block at the end of the body — run npm run agents:sync`);
+		assert.equal(block, source, `${role.name}: the child-contract block drifted from its source — run npm run agents:sync`);
+		assert.equal(role.raw.split("child-contract:begin").length, 2, `${role.name}: exactly one child-contract block`);
+	}
+	assert.match(source, /Status: success/, "the contract's report line uses pi-task's own status wording");
+});
+
+test("a declared skill is named on the body's Load first line, because skills: only lists it", () => {
+	// pi-task passes a declared skill's path; loading stays progressive (pi-task
+	// README), and the child cannot see its own frontmatter. Without the line a
+	// declared skill is never read.
+	for (const role of roles) {
+		const skills = list(frontmatter(role.raw).skills);
+		const loadLine = ownBody(role.raw).match(/^Load first: (.+)$/m)?.[1] ?? "";
+		for (const skill of skills) assert.ok(loadLine.includes(`\`${skill}\``), `${role.name}: Load first line must name \`${skill}\``);
+		if (skills.length === 0) assert.equal(loadLine, "", `${role.name}: a Load first line with no declared skill`);
+	}
+});
+
+test("no child can ask the user, and a role that must not change state cannot reach the tracker", () => {
+	// A child's question lands in a pane nobody is answering and hangs the task
+	// until pi-task's 30-minute ceiling; the tracker writes (claim, resolve,
+	// comment) past readonly: true, which denies only write/edit/apply_patch.
+	for (const role of roles) {
+		const fm = frontmatter(role.raw);
+		const denied = list(fm.disallowed_tools);
+		assert.ok(denied.includes("ask_user"), `${role.name}: ask_user must be denied — a child returns blocked with the question`);
+		if (!NO_TRACKER.has(role.name)) continue;
+		const allowed = fm.tools === undefined ? undefined : list(fm.tools);
+		const reachable = allowed === undefined ? !denied.includes("tracker") : allowed.includes("tracker");
+		assert.ok(!reachable, `${role.name}: tracker must be unreachable (deny it, or leave it off the tools: allowlist)`);
+	}
+});
+
+test("every role sets max_turns so a long child wraps up before the hard timeout", () => {
+	// pi-task steers a wrap-up at max_turns (terminal backends, HerdR here); the
+	// only other bound is PI_TASK_HARD_TIMEOUT_MINUTES (default 30), which stops
+	// the child wherever it is instead of asking it to report.
+	for (const role of roles) {
+		const turns = Number(frontmatter(role.raw).max_turns);
+		assert.ok(Number.isInteger(turns) && turns > 0 && turns <= 100, `${role.name}: max_turns is a positive integer, got ${turns}`);
+	}
 });
 
 test("every declared skill exists and a coordinator skill carries its substitution", () => {
 	for (const role of roles) {
-		const skills = (frontmatter(role.raw).skills ?? "")
-			.split(",")
-			.map((s) => s.trim())
-			.filter(Boolean);
+		const skills = list(frontmatter(role.raw).skills);
 		for (const skill of skills) assert.ok(skillExists(skill), `${role.name} declares unknown skill ${skill}`);
 		assert.ok(
 			!skills.includes("code-review"),
@@ -192,7 +271,7 @@ test("every declared skill exists and a coordinator skill carries its substituti
 			if (pairing === undefined) continue;
 			assert.equal(role.name, pairing.role, `${skill} belongs to ${pairing.role} — ${pairing.why}`);
 			assert.match(
-				role.raw,
+				ownBody(role.raw),
 				pairing.bodyPins,
 				`${role.name}: ${skill} instructs a spawn, so the body must state the substitution (${pairing.why})`,
 			);
@@ -204,13 +283,14 @@ test("a tool a body names is reachable through that role's allowlist", () => {
 	// An explicit `tools:` line is the only way a pi-runtime child receives
 	// `srcwalk` (or any opt-in tool): pi-task intersects the list with the
 	// parent's tools, so an instruction to use an unlisted tool is dead text.
+	// The shared contract block names its tools conditionally ("when your
+	// tools include it") or to forbid them, so only the role's own text counts.
 	const offenders: string[] = [];
 	for (const role of roles) {
 		const tools = frontmatter(role.raw).tools;
 		if (tools === undefined) continue; // no allowlist: the child inherits every parent tool
-		const allowed = new Set(tools.split(",").map((t) => t.trim()));
-		const body = role.raw.replace(/^---\n[\s\S]*?\n---/, "");
-		for (const match of body.matchAll(/`([a-z][a-z0-9_]*)`/g)) {
+		const allowed = new Set(list(tools));
+		for (const match of ownBody(role.raw).matchAll(/`([a-z][a-z0-9_]*)`/g)) {
 			const token = match[1];
 			if (token === undefined || !KNOWN_TOOLS.has(token) || allowed.has(token)) continue;
 			offenders.push(`${role.name}: body names \`${token}\` but tools: does not list it`);
@@ -222,7 +302,7 @@ test("a tool a body names is reachable through that role's allowlist", () => {
 test("children cannot write memory, and every role stays on the pi runtime", () => {
 	for (const role of roles) {
 		const fm = frontmatter(role.raw);
-		const denied = (fm.disallowed_tools ?? "").split(",").map((t) => t.trim());
+		const denied = list(fm.disallowed_tools);
 		for (const tool of ["memory_write", "memory_delete"]) {
 			assert.ok(denied.includes(tool), `${role.name}: ${tool} must be denied — only the parent writes memory`);
 		}
@@ -241,8 +321,13 @@ test("every vendored skill that tells an agent to spawn one is mapped for pi", (
 		const dir = join(VENDOR, bucket);
 		for (const entry of readdirSync(dir, { withFileTypes: true })) {
 			if (!entry.isDirectory() || !hasSpawnPhrasing(join(dir, entry.name))) continue;
+			if (entry.name in SPAWN_MENTION_ONLY) continue;
 			if (!mapping.includes(`## \`${entry.name}\``)) offenders.push(entry.name);
 		}
+	}
+	for (const name of Object.keys(SPAWN_MENTION_ONLY)) {
+		const present = ["engineering", "productivity", "in-progress"].some((bucket) => existsSync(join(VENDOR, bucket, name)));
+		assert.ok(present, `${name} is exempted from the spawn mapping but no longer vendored; drop the exemption`);
 	}
 	assert.deepEqual(
 		offenders,
