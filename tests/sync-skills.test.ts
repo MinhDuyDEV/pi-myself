@@ -11,6 +11,7 @@ import {
 	readdirSync,
 	readFileSync,
 	readlinkSync,
+	rmSync,
 	symlinkSync,
 	writeFileSync,
 } from "node:fs";
@@ -156,9 +157,15 @@ function fakeUpstream(): { dir: string; main: string } {
 
 /** A real sync (clone included) whose https remote git itself rewrites to the
  * local fake: the script runs unchanged and no test reaches the network. */
-function syncFrom(root: string, upstream: string, nodeArgs: string[] = []): { status: number | null; output: string } {
+function syncFrom(
+	root: string,
+	upstream: string,
+	nodeArgs: string[] = [],
+	extraEnv: Record<string, string> = {},
+): { status: number | null; output: string } {
 	const env = {
 		...GIT_ENV,
+		...extraEnv,
 		GIT_ALLOW_PROTOCOL: "file",
 		GIT_CONFIG_COUNT: "1",
 		GIT_CONFIG_KEY_0: `url.file://${upstream}.insteadOf`,
@@ -280,6 +287,39 @@ test("a failed swap never deletes the previous tree it could not move back", () 
 	assert.match(twice.output, /injected rename failure 3/, "the move back's error");
 	const stranded = namedPrevious(stuck, twice.output);
 	assert.equal(existsSync(join(stranded, "skills", "engineering", "ask-matt", "PHASE-BOUNDARIES.md")), true);
+});
+
+test("a sync whose clone fails says the tree and the lock were left as they were, and leaves no temp folder", () => {
+	const noMain = fakeUpstream();
+	// only `next` is left: `--branch main` has nothing to clone
+	execFileSync("git", ["-C", noMain.dir, "branch", "-D", "main"], { env: GIT_ENV });
+	for (const [label, upstream] of [
+		["no upstream at all", join(tmpdir(), "pi-myself-no-such-upstream")],
+		["an upstream without main", noMain.dir],
+	] as const) {
+		const root = fakeCheckout();
+		const lockBefore = readFileSync(join(root, "skills-lock.json"), "utf8");
+		const temp = mkdtempSync(join(tmpdir(), "pi-myself-sync-tmp-"));
+		const result = syncFrom(root, upstream, [], { TMPDIR: temp });
+		assert.equal(result.status, 1, `${label}:\n${result.output}`);
+		assert.match(result.output, /git clone .* failed/, label);
+		assert.match(result.output, /the vendored tree was left as it was/, `${label}: the tree's state is stated`);
+		assert.match(result.output, /skills-lock\.json was not changed/, `${label}: the lock's state is stated`);
+		assert.equal(readFileSync(join(root, "skills-lock.json"), "utf8"), lockBefore, label);
+		assert.equal(sync(root, "--check").status, 0, `${label}: the tree still matches its lock`);
+		assert.deepEqual(readdirSync(temp), [], `${label}: the clone's temp folder is removed`);
+	}
+});
+
+test("the first sync, with no vendor/ folder yet, creates the vendored tree", () => {
+	const upstream = fakeUpstream();
+	const root = fakeCheckout();
+	rmSync(join(root, "vendor"), { recursive: true, force: true });
+	const result = syncFrom(root, upstream.dir);
+	assert.equal(result.status, 0, result.output);
+	assert.match(readFileSync(join(root, VENDOR_REL, "skills", "engineering", "demo", "SKILL.md"), "utf8"), /main branch's skill/);
+	assert.deepEqual(readdirSync(join(root, "vendor")), ["mattpocock-skills"]);
+	assert.equal(sync(root, "--check").status, 0, "the new lock checks clean");
 });
 
 test("the committed lock lists exactly the files git tracks under the vendored tree", () => {

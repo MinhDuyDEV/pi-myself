@@ -42,7 +42,18 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import {
+	cpSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	readlinkSync,
+	renameSync,
+	rmSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -228,10 +239,12 @@ function writeLock(lockValue) {
 
 const UPSTREAM_URL = "https://github.com/mattpocock/skills.git";
 
+/** Throws rather than exiting: an exit here skipped the caller's `finally`, so a
+ * failed clone leaked its temp folder and never said what it left behind. */
 function git(args, cwd, label) {
 	const result = spawnSync("git", args, { cwd, encoding: "utf8" });
 	if (result.status !== 0) {
-		die(`git ${args.join(" ")} (${label ?? cwd ?? "."}) failed:\n${(result.stderr || result.stdout || "").trim()}`);
+		throw new Error(`git ${args.join(" ")} (${label ?? cwd ?? "."}) failed:\n${(result.stderr || result.stdout || "").trim()}`);
 	}
 	return result.stdout.trim();
 }
@@ -239,11 +252,16 @@ function git(args, cwd, label) {
 function syncUpstream() {
 	const temp = mkdtempSync(join(tmpdir(), "sync-skills-"));
 	try {
-		// `--branch`: the lock records UPSTREAM_REF, so that is what is cloned;
-		// a bare clone takes whatever upstream's default branch is at the time.
-		git(["clone", "--quiet", "--depth", "1", "--branch", UPSTREAM_REF, UPSTREAM_URL, "upstream"], temp, "clone");
 		const cloneDir = join(temp, "upstream");
-		const head = git(["rev-parse", "HEAD"], cloneDir, "rev-parse");
+		let head;
+		try {
+			// `--branch`: the lock records UPSTREAM_REF, so that is what is cloned;
+			// a bare clone takes whatever upstream's default branch is at the time.
+			git(["clone", "--quiet", "--depth", "1", "--branch", UPSTREAM_REF, UPSTREAM_URL, "upstream"], temp, "clone");
+			head = git(["rev-parse", "HEAD"], cloneDir, "rev-parse");
+		} catch (error) {
+			throw new Error(`${error.message}\nthe vendored tree was left as it was`);
+		}
 		replaceVendoredTree(cloneDir);
 		return head;
 	} finally {
@@ -261,6 +279,8 @@ function replaceVendoredTree(source) {
 	const tree = rel(ROOT, CLONE);
 	let work;
 	try {
+		// the first sync of a repository has no vendor/ folder to stage beside
+		mkdirSync(dirname(CLONE), { recursive: true });
 		work = mkdtempSync(join(dirname(CLONE), ".sync-skills-"));
 		// verbatimSymlinks: upstream's AGENTS.md -> CLAUDE.md is a relative link;
 		// the default (false) rewrites it to an absolute path inside the temp
@@ -362,7 +382,8 @@ if (CHECK || RELOCK) {
 	try {
 		head = syncUpstream();
 	} catch (error) {
-		die(error.message);
+		// the lock is written only after a sync succeeds
+		die(`${error.message}\n(skills-lock.json was not changed)`);
 	}
 	const lockValue = buildLock(head);
 	writeLock(lockValue);
