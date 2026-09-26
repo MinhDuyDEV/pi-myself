@@ -103,7 +103,7 @@ Dated entries, oldest first: `docs/history.md`.
 
 - Tracker, unverified leads: `gh-block` re-posts links; a failed `gh repo view` makes own `owner/repo#N` refs foreign.
 - A real `npm run sync:skills` re-clone has not run since the staged swap (S16); tests use a local fake upstream.
-- The GitHub write path is tested against a fake `gh` only (live needs `delete_repo`), including a native parent found by the `/parent` endpoint (its 404 was checked live) and the task-list fallback.
+- The GitHub write path is tested against a fake `gh` only (live needs `delete_repo`), including a native parent found by the `/parent` endpoint (its 404 and answer shape were checked live; a parent in another repository is fake-only) and the task-list fallback.
 - GitHub body edits (gists, `gh-note`, the task-list fallback) lack `If-Match`; serialise map edits in one session.
 - `gh-frontier`/`gh-triage` fail past ~40,000 issues; `gh-triage` reads 40 `needs-info` threads a call; `gh-comment` may hit a PR.
 - `recall`: cache budget counts source bytes; LRU order untested; files over 40 MB skipped; `expand` indices can shift if a task starts or another process writes an older session (headings show entry times).
