@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
 
@@ -11,6 +11,53 @@ import { test } from "node:test";
 const ROOT = resolve(import.meta.dirname, "..");
 const AGENTS = join(ROOT, ".pi", "agents");
 const VENDOR = join(ROOT, "vendor", "mattpocock-skills", "skills");
+const MAPPING = join(ROOT, ".pi", "skills", "harness-catalog", "pi-mapping.md");
+
+/**
+ * Tools a role body may name, minus the names that are also ordinary shell
+ * commands (`grep`, `find`, `ls`, `sed`): a body may be naming the command it
+ * runs inside `bash`, so those cannot be read as a tool reference.
+ */
+const KNOWN_TOOLS = new Set([
+	"read",
+	"bash",
+	"edit",
+	"write",
+	"srcwalk",
+	"skill",
+	"tracker",
+	"recall",
+	"task",
+	"websearch",
+	"web_fetch",
+	"memory_read",
+	"memory_search",
+	"memory_write",
+	"memory_delete",
+]);
+
+/**
+ * Skills that tell their reader to spawn agents. A child cannot spawn, so the
+ * role that loads one must state the substitution in its body: the child IS the
+ * agent the skill would have spawned. The pinned sentence is what fails when
+ * that statement is deleted.
+ */
+const COORDINATOR_SKILLS: Record<string, { role: string; bodyPins: RegExp; why: string }> = {
+	research: {
+		role: "scout",
+		bodyPins: /write exactly that one file/,
+		why: "the scout is the background agent the skill would spawn",
+	},
+	"codebase-design": {
+		role: "designer",
+		bodyPins: /one design candidate/,
+		why: "the designer is one branch of design-it-twice",
+	},
+};
+
+/** Phrasing that means "spawn an agent" — what the pi mapping has to cover. */
+const SPAWN_PHRASING =
+	/spawn\s+(?:both\s+)?(?:\d+\+?\s+)?(?:parallel\s+)?sub-?agents?|spin up a sub-?agent|background agent|dispatch a sub-?agent/i;
 
 const ROSTER = ["explore", "scout", "general", "reviewer", "designer", "ultra-scout", "ultra-verifier"];
 const READ_TIER = new Set(["explore", "scout"]);
@@ -65,6 +112,19 @@ const roles = readdirSync(AGENTS)
 	.filter((f) => f.endsWith(".md") && f !== "README.md")
 	.map((f) => ({ name: f.replace(/\.md$/, ""), raw: readFileSync(join(AGENTS, f), "utf8") }));
 
+/** Does any markdown under a skill directory tell its reader to spawn an agent? */
+function hasSpawnPhrasing(dir: string): boolean {
+	for (const entry of readdirSync(dir, { withFileTypes: true })) {
+		const path = join(dir, entry.name);
+		if (entry.isDirectory()) {
+			if (hasSpawnPhrasing(path)) return true;
+			continue;
+		}
+		if (entry.name.endsWith(".md") && SPAWN_PHRASING.test(readFileSync(path, "utf8"))) return true;
+	}
+	return false;
+}
+
 test("the roster is exactly the seven roles", () => {
 	assert.deepEqual(roles.map((r) => r.name).sort(), [...ROSTER].sort());
 });
@@ -116,7 +176,7 @@ test("bodies are written for the child: no routing sections, no result-envelope 
 	assert.doesNotMatch(append, /parser's four statuses/, "no phantom envelope parser");
 });
 
-test("every declared skill exists and no role loads a coordinator skill", () => {
+test("every declared skill exists and a coordinator skill carries its substitution", () => {
 	for (const role of roles) {
 		const skills = (frontmatter(role.raw).skills ?? "")
 			.split(",")
@@ -127,5 +187,82 @@ test("every declared skill exists and no role loads a coordinator skill", () => 
 			!skills.includes("code-review"),
 			`${role.name}: code-review spawns sub-agents, which a child cannot; it is the parent's skill`,
 		);
+		for (const skill of skills) {
+			const pairing = COORDINATOR_SKILLS[skill];
+			if (pairing === undefined) continue;
+			assert.equal(role.name, pairing.role, `${skill} belongs to ${pairing.role} — ${pairing.why}`);
+			assert.match(
+				role.raw,
+				pairing.bodyPins,
+				`${role.name}: ${skill} instructs a spawn, so the body must state the substitution (${pairing.why})`,
+			);
+		}
 	}
+});
+
+test("a tool a body names is reachable through that role's allowlist", () => {
+	// An explicit `tools:` line is the only way a pi-runtime child receives
+	// `srcwalk` (or any opt-in tool): pi-task intersects the list with the
+	// parent's tools, so an instruction to use an unlisted tool is dead text.
+	const offenders: string[] = [];
+	for (const role of roles) {
+		const tools = frontmatter(role.raw).tools;
+		if (tools === undefined) continue; // no allowlist: the child inherits every parent tool
+		const allowed = new Set(tools.split(",").map((t) => t.trim()));
+		const body = role.raw.replace(/^---\n[\s\S]*?\n---/, "");
+		for (const match of body.matchAll(/`([a-z][a-z0-9_]*)`/g)) {
+			const token = match[1];
+			if (token === undefined || !KNOWN_TOOLS.has(token) || allowed.has(token)) continue;
+			offenders.push(`${role.name}: body names \`${token}\` but tools: does not list it`);
+		}
+	}
+	assert.deepEqual(offenders, []);
+});
+
+test("children cannot write memory, and every role stays on the pi runtime", () => {
+	for (const role of roles) {
+		const fm = frontmatter(role.raw);
+		const denied = (fm.disallowed_tools ?? "").split(",").map((t) => t.trim());
+		for (const tool of ["memory_write", "memory_delete"]) {
+			assert.ok(denied.includes(tool), `${role.name}: ${tool} must be denied — only the parent writes memory`);
+		}
+		// The roles name pi-only tools and pi-only denies; pi-task's Claude
+		// translator rejects both, so a runtime swap has to fail here, loudly.
+		assert.ok(fm.runtime === undefined || fm.runtime === "pi", `${role.name}: harness roles are pi-runtime only, not ${fm.runtime}`);
+	}
+});
+
+test("every vendored skill that tells an agent to spawn one is mapped for pi", () => {
+	// A passing mention is not a mapping: the requirement is a section of its
+	// own, `## \`<skill>\``, because that is where the translation is written.
+	const mapping = readFileSync(MAPPING, "utf8");
+	const offenders: string[] = [];
+	for (const bucket of ["engineering", "productivity", "in-progress"]) {
+		const dir = join(VENDOR, bucket);
+		for (const entry of readdirSync(dir, { withFileTypes: true })) {
+			if (!entry.isDirectory() || !hasSpawnPhrasing(join(dir, entry.name))) continue;
+			if (!mapping.includes(`## \`${entry.name}\``)) offenders.push(entry.name);
+		}
+	}
+	assert.deepEqual(
+		offenders,
+		[],
+		"a vendored skill instructs a spawn with no `## \\`<skill>\\`` mapping section in the harness-catalog skill; on pi the child cannot spawn, so the translation has to be written down",
+	);
+});
+
+test("the catalog routes every discoverable skill", () => {
+	// A registered skill with no catalog row is a skill nobody invokes: this is
+	// how eight skills stayed invisible until the catalog existed.
+	const catalog = readFileSync(join(ROOT, ".pi", "skills", "harness-catalog", "SKILL.md"), "utf8");
+	const lock = JSON.parse(readFileSync(join(ROOT, "skills-lock.json"), "utf8")) as {
+		skills: Record<string, { bucket: string }>;
+	};
+	const local = readdirSync(join(ROOT, ".pi", "skills"), { withFileTypes: true })
+		.filter((entry) => entry.isDirectory() && existsSync(join(ROOT, ".pi", "skills", entry.name, "SKILL.md")))
+		.map((entry) => entry.name);
+	const offenders = [...Object.keys(lock.skills), ...local].filter(
+		(name) => !catalog.includes(`/skill:${name}`) && !catalog.includes(`\`${name}\``),
+	);
+	assert.deepEqual(offenders, [], "every discoverable skill needs a row in .pi/skills/harness-catalog/SKILL.md");
 });

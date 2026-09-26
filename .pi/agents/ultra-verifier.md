@@ -3,6 +3,7 @@ description: Verify a /skill:ultra-review report: freeze and preflight, one disp
 model: opencode-go/deepseek-v4-flash
 thinking: max
 proactive: false
+disallowed_tools: memory_write, memory_delete
 tools: read, bash, write, edit
 ---
 

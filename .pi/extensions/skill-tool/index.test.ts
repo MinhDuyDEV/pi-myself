@@ -77,6 +77,30 @@ test("skill tool: enum is exactly the model-invoked set, loads bodies, refuses u
 	}
 });
 
+test("skill tool: a body's reference files reach the model with their directory", async () => {
+	// `details` is UI-only, so a relative link the body names (`DEEPENING.md`)
+	// is unopenable unless the directory travels in the content the model reads.
+	const root = skillRoot({ codebase: "Design modules.", plain: "No references here." });
+	writeFileSync(join(root, "codebase", "DEEPENING.md"), "# Deepening\n");
+	process.env.PI_SKILL_TOOL_DIRS = root;
+	try {
+		const { api, tools } = mockPi();
+		skillToolExtension(api);
+		const tool = tools.find((t) => t.name === "skill")!;
+
+		const withReferences = await tool.execute("1", { name: "codebase" }, undefined, undefined);
+		assert.match(withReferences.content[0].text, /Reference files in this skill's own directory/);
+		assert.match(withReferences.content[0].text, /DEEPENING\.md/, "the model learns which reference files exist");
+		assert.match(withReferences.content[0].text, /body of codebase/, "the body still travels");
+
+		const without = await tool.execute("2", { name: "plain" }, undefined, undefined);
+		assert.doesNotMatch(without.content[0].text, /Reference files in this skill's own directory/);
+	} finally {
+		delete process.env.PI_SKILL_TOOL_DIRS;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("defaultSkillRoots: project and user skills come before the package's, deduped by real path", () => {
 	const repoRoot = resolve(import.meta.dirname, "..", "..", "..");
 	const home = mkdtempSync(join(tmpdir(), "skill-tool-home-"));

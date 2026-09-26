@@ -5,6 +5,7 @@ thinking: max
 readonly: true
 proactive: true
 skills: memory, codebase-design
+disallowed_tools: memory_write, memory_delete
 ---
 
 # Designer

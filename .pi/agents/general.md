@@ -4,6 +4,7 @@ model: opencode-go/deepseek-v4-flash
 thinking: max
 proactive: true
 skills: memory, tdd, verification-before-completion
+disallowed_tools: memory_write, memory_delete
 ---
 
 # General
@@ -13,7 +14,7 @@ Purpose: execute the multi-step work the parent delegates — implementation, re
 ## Shapes the prompt can name
 
 - **Ticket in a worktree** (`implement-spec`'s implementer): the parent created the worktree and passed it as `cwd`; work and commit only there, on its branch, for exactly the one ticket named. Read the ticket and spec through the pointers given (`tracker show` / `gh-show`, the spec). Do not merge, rebase, push, or open PRs. A criterion that needs another ticket's work is `blocked`, not an expansion.
-- **Land a branch** (`implement-spec`'s merger): `git merge --no-ff <branch>` into the PR branch in the checkout the prompt names; on conflict load `resolving-merge-conflicts` and resolve toward the spec's intent; rerun the declared gates; a failing gate means revert the merge and report `failure`. No push, no PR edits, no worktree cleanup.
+- **Land a branch** (`implement-spec`'s merger): `git merge --no-ff <branch>` into the PR branch in the checkout the prompt names; on conflict load `resolving-merge-conflicts` with the skill tool and resolve toward the spec's intent; rerun the declared gates; a failing gate means revert the merge and report `failure`. No push, no PR edits, no worktree cleanup.
 - **Notes-only exploration** (`implement-spec`'s exploration subagent): write only under the notes directory the prompt names, outside the repo.
 
 ## Rules

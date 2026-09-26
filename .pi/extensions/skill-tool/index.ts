@@ -21,9 +21,9 @@
  * project can override a harness or vendored skill by name.
  */
 
-import { existsSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
-import { delimiter, join, resolve } from "node:path";
+import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
@@ -124,6 +124,23 @@ export function defaultSkillRoots(cwd: string, userAgentDir: string = agentDir()
 	return roots;
 }
 
+/**
+ * Reference files beside a SKILL.md. A tool result reaches the model through
+ * `content`; `details` is for logs and UI. So a body whose relative links name
+ * `DEEPENING.md` or `PHASE-BOUNDARIES.md` is only usable if the directory
+ * travels in the content — otherwise the model knows the filenames and can
+ * never open one.
+ */
+function referenceFiles(skillFile: string): string[] {
+	try {
+		return readdirSync(dirname(skillFile))
+			.filter((name) => name.endsWith(".md") && name !== "SKILL.md")
+			.sort();
+	} catch {
+		return [];
+	}
+}
+
 export default function skillToolExtension(pi: ExtensionAPI): void {
 	// `:` is the POSIX list separator; Node reports the platform's own on win32.
 	const skillRoots = process.env.PI_SKILL_TOOL_DIRS
@@ -179,6 +196,10 @@ export default function skillToolExtension(pi: ExtensionAPI): void {
 					text = readFileSync(skill.skillFile, "utf8");
 					details.path = skill.skillFile;
 					details.loaded = true;
+					const references = referenceFiles(skill.skillFile);
+					if (references.length > 0) {
+						text = `${text.trimEnd()}\n\n---\nReference files in this skill's own directory (\`${dirname(skill.skillFile)}\`): ${references.join(", ")} — the links above are relative to that directory, so read them from there.\n`;
+					}
 				} catch (error) {
 					text = `Cannot read skill file for "${skill.name}": ${error instanceof Error ? error.message : String(error)}`;
 				}

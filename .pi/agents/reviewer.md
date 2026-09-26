@@ -5,6 +5,7 @@ thinking: max
 readonly: true
 proactive: true
 skills: memory, verification-before-completion
+disallowed_tools: memory_write, memory_delete
 ---
 
 # Reviewer

@@ -8,7 +8,7 @@ Three model tiers, so picking a model is mechanical: **read** roles map or searc
 
 | Role | Tier | Writes? | Serves (Matt's skills) |
 | --- | --- | --- | --- |
-| `explore` | read (`thinking: low`) | no | grilling's fact-finding, to-spec exploration, `/init` discovery |
+| `explore` | read (`thinking: low`) | no | grilling's fact-finding, to-spec exploration, `/init` discovery, `improve-codebase-architecture`'s friction walk |
 | `scout` | read (`thinking: high`) | one report file when the prompt names a path | `research` skill, wayfinder `research` tickets, any docs/web question |
 | `general` | reason | yes | `implement` step execution; `implement-spec`'s implementer (cwd = a worktree the parent made), merger (land a branch), and notes-only exploration |
 | `designer` | reason | no | `codebase-design`'s DESIGN-IT-TWICE (several in parallel, one candidate each) |
@@ -16,7 +16,7 @@ Three model tiers, so picking a model is mechanical: **read** roles map or searc
 | `reviewer` | review | no | the independent review APPEND_SYSTEM requires before merge-ready; either axis of `code-review` when it delegates |
 | `ultra-scout` | review | no | `/skill:ultra-review` (10 identical scouts) — `proactive: false`, launched only by that skill |
 
-Read-tier roles are `readonly: true` except `scout`, whose only write is the one report path a prompt authorises. Review-tier roles are always `readonly: true`.
+Read-tier roles are `readonly: true` except `scout`, whose only write is the one report path a prompt authorises. Review-tier roles are always `readonly: true`. A scout's single-file bound is prose, not machinery: pi-task cannot scope a write to a path, and `readonly: true` would break the report shape, so the bound is stated in the body and pinned by a test.
 
 ## Pick by task
 
@@ -32,12 +32,23 @@ Read-tier roles are `readonly: true` except `scout`, whose only write is the one
 
 pi-task parses frontmatter line by line: one-line `description`, comma-separated `tools` / `skills`. Honoured fields: `description`, `model`, `thinking`, `readonly`, `proactive`, `hidden`, `tools`, `disallowed_tools`, `skills`, `fast`. `skills:` names resolve against pi's registry and an unknown name fails the launch. `readonly: true` denies write/edit/apply_patch but not `bash`. Recursive `task` delegation is always blocked in children.
 
+`skills:` is a **preload**, not a wish list: every listed skill rides in every run of that role. A skill a role needs in one shape only — the merge shape's `resolving-merge-conflicts` — is named in the body and loaded on demand with the skill tool instead. Every role also carries `disallowed_tools: memory_write, memory_delete`, which makes the child contract's "only the parent writes memory" rule mechanical rather than advisory.
+
+An explicit `tools:` line is an allowlist intersected with the parent's own tool names, so naming a tool a machine lacks costs nothing (it is dropped); it is also the only way a pi-runtime child gets the code-navigation tool `srcwalk`. These roles are pi-runtime only: the Claude translator rejects the pi-only names they rely on.
+
 ## Worktrees
 
 pi-task never creates, merges, or removes worktrees. For parallel mutating work the **parent** runs `git worktree add`, passes the worktree as `cwd`, and later merges (a `general` "land a branch" task) and removes it. Task workspaces are not filesystem isolation by themselves.
+
+Two or more `general` implementers on one spec, end to end:
+
+1. `git worktree add ../<repo>-t<n> -b ticket-<n>` once per takeable ticket, then launch every `general` task in one message, each with its own `cwd` and that ticket's pointer.
+2. Let every writer stop before reviewing: a `reviewer` task reads a branch only after its task settled, never a live one.
+3. Land branches one at a time with a `general` "land a branch" task and rerun the declared gates after each landing, so a conflict belongs to the branch that caused it.
+4. `git worktree remove ../<repo>-t<n>` once its branch has landed; the branch itself stays for the parent's normal flow.
 
 ## Prompt template (parent → `task`)
 
 Goal, non-goals, write/read policy (and the `cwd` when it is a worktree), pointers to the ticket/spec/notes instead of pasted prose, expected output, stop condition, verification recipe. Read the child's artifacts yourself before trusting its summary.
 
-`tests/agents.test.ts` gates the roster: tier models, review family ≠ reason family, `proactive: false` on the pipeline roles, no routing sections or result-envelope boilerplate in bodies.
+`tests/agents.test.ts` gates the roster: tier models, review family ≠ reason family, `proactive: false` on the pipeline roles, no routing sections or result-envelope boilerplate in bodies, every tool a body names reachable through that role's allowlist, a mitigation sentence behind every coordinator skill a role loads, the mechanical memory deny, and — across the vendored trees — a host translation in the `harness-catalog` skill for every skill that tells an agent to spawn one.

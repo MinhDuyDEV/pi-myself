@@ -113,7 +113,7 @@ test("current-state prose about the beta bucket's invocation class matches the l
 		"CONTEXT.md",
 		".pi/APPEND_SYSTEM.md",
 		".pi/agents/README.md",
-		"docs/in-progress-skills.md",
+		".pi/skills/harness-catalog/pi-mapping.md",
 	];
 	const offenders: string[] = [];
 	for (const doc of docs) {

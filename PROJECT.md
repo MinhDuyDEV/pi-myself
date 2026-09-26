@@ -8,10 +8,11 @@
 - `.pi/extensions/` — runtime extensions: `skill-tool` (the `skill` tool, whose enum mirrors pi's own skill loader), `tracker` (two backends: `.scratch/` local markdown + GitHub Issues via `gh-*` ops; locked, atomically-replaced writes; `/frontier`), `smart-zone` (footer meter + `/smartzone`), `dcp/` (session-history `recall`), `continue-after-compaction`, `provision` (`/setup-pi-myself`).
 - `.pi/extensions/tracker/conventions.test.ts` — the gate tying the tracker's op set to the vendored tracker templates: a documented operation that is neither wired nor recorded fails the suite.
 - `.pi/settings.json` — dogfood defaults (skill commands, compaction reserves, retry).
-- `.pi/skills/` — our own skills: `memory` (pi-workspace-memory workflow), `verification-before-completion`, `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, `test-proof-debt-audit`, `ultra-review`, `ultra-review-receive`, `repo-refresh`.
+- `.pi/skills/` — our own skills: `memory` (pi-workspace-memory workflow), `harness-catalog` (the situation-to-command map over every registered skill, plus its `pi-mapping.md` host translations), `commit-guardrails` (the git-hook installer at `install-git-hooks.mjs`), `verification-before-completion`, `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, `test-proof-debt-audit`, `ultra-review`, `ultra-review-receive`, `repo-refresh`. A skill's own helper scripts live inside its directory, the way `ultra-review/scripts/` already did, because that is what a consuming repo receives.
 - `.pi/prompts/` — hand-written slash commands: `/verify`, `/init`, `/remember`.
 - `.pi/extensions/provision.ts` — `/setup-pi-myself` command only (no session-start check: the provisioned copies are the project's to edit); `.pi/extensions/lib/` holds shared helpers (repo root, package root, pi's agent dir) and is deliberately not an extension.
 - `.pi/APPEND_SYSTEM.md` — the workflow rules; provisioned into consuming repos by `scripts/setup-project.mjs` because pi loads it only from a project's own `.pi/`.
+- `docs/agents/` — the per-repo skill configuration (`setup-matt-pocock-skills` writes it) and `docs/adr/` the decisions; the harness's own host translation ships inside the `harness-catalog` skill instead, so a consuming repo gets it with the package.
 
 ## Development Support
 
@@ -19,6 +20,7 @@
 - `.pi/extensions/**/*.test.ts` — extension unit and lifecycle tests, colocated with source.
 - `scripts/run-extension-tests.mjs` — discovers and runs Node extension tests.
 - `scripts/sync-skills.mjs` — vendored sync + lock integrity (`--check`).
+- `npm run hooks:install` / `hooks:check` — the repo-local git guardrail, run through the installer shipped in the `commit-guardrails` skill (staged check, optional `--trailer` session id; `--check` verifies without writing).
 - `scripts/setup-project.mjs` — provisions a consuming repo: task roles, `APPEND_SYSTEM.md`, `enableSkillCommands` (idempotent; `/setup-pi-myself`). A rerun refreshes task-role copies still matching what the package last shipped (hash baseline in the project's `.pi/`); edited or deleted roles are kept. `APPEND_SYSTEM.md` is harness policy and is always replaced — an edited copy is backed up as `APPEND_SYSTEM.md.local`; project-specific rules belong in the repo's `AGENTS.md`.
 - `package.json` — npm scripts and pi package registration.
 - `biome.json` — formatter + linter config (tabs, double quotes, `preset: recommended`); excludes `vendor/` and the generated lock, and relaxes two rules for `*.test.ts` only. Takes no comments: Biome silently drops `files.includes` when one is present.

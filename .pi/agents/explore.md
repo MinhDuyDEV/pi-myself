@@ -5,7 +5,8 @@ thinking: low
 readonly: true
 proactive: true
 skills: memory
-tools: read, grep, find, ls, bash
+disallowed_tools: memory_write, memory_delete
+tools: read, grep, find, ls, bash, srcwalk
 ---
 
 # Explore

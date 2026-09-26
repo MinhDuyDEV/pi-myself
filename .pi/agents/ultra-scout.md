@@ -4,7 +4,8 @@ model: opencode-go/kimi-k3
 thinking: max
 readonly: true
 proactive: false
-tools: read, bash
+disallowed_tools: memory_write, memory_delete
+tools: read, bash, srcwalk
 ---
 
 # Ultra Scout

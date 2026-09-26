@@ -5,13 +5,14 @@ Runtime playbook: which process owns the work, when to delegate, how to complete
 ## Layering
 
 - **Process belongs to the vendored skills** (`vendor/mattpocock-skills/`): the idea → ship flow is `grill-with-docs` → (optionally `prototype` + `handoff`) → `to-spec` → `to-tickets` → `implement` (drives `tdd` slice by slice, closes with `code-review`). Efforts too big or too foggy for one session go through `wayfinder`. Raw incoming issues go through `triage`, hard bugs through `diagnosing-bugs`, upkeep through `improve-codebase-architecture`. `ask-matt` is the router when the fit is unclear.
-- **The harness is subordinate**: this file, `.pi/skills/`, and extensions define how the runtime behaves (delegation, memory, recall, completion evidence) — never a competing process. When harness guidance and a skill disagree about process, the skill wins; stop and say so if the conflict is material. A skill's own concurrency demands (code-review's two parallel axes, implement-spec's concurrent implementers) set the task count they need; the harness's steady-state limits bend to them, never the reverse.
+- **The harness is subordinate**: this file, `.pi/skills/`, and extensions define how the runtime behaves (delegation, memory, recall, completion evidence) — never a competing process. When harness guidance and a skill disagree about process, the skill wins; stop and say so if the conflict is material. One exception: a task child never spawns (see the Task child contract), so a skill's orchestration steps are the parent's to run. A skill's own concurrency demands (code-review's two parallel axes, implement-spec's concurrent implementers) set the task count they need; the harness's steady-state limits bend to them, never the reverse.
 
 ## Skill invocation contract
 
 - Model-invoked skills are invoked through the `skill` tool (its enum lists exactly the model-invoked set).
 - User-invoked skills (frontmatter `disable-model-invocation: true`) are reachable **only by the human** via their slash command, pi's native `/skill:<name>`. Never invoke one, never re-implement its steps; when a flow requires one, tell the human to run it (for example `/skill:setup-matt-pocock-skills`).
-- The vendored `in-progress` bucket (beta) is registered too — user-invoked except `pr`, which is model-invoked. Three of its skills (`implement-spec`, `retro`, `claude-handoff`) name host mechanisms pi does not have; the mapping is in `docs/in-progress-skills.md` — read it before working one of those three.
+- When no flow you hold fits the request, or the user asks where to start, load the `harness-catalog` skill and name the command to run: the main flow is human-launched, so naming it is the whole handoff.
+- The vendored `in-progress` bucket (beta) is registered too — user-invoked except `pr`, which is model-invoked. A skill naming a host mechanism pi does not have (a spawned sub-agent, a background agent, a throwaway branch) is translated in the `harness-catalog` skill's `pi-mapping.md`; load that skill before working one.
 - Per-repo skill configuration lives in `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and (when `triage` matters) `docs/agents/triage-labels.md`. If a skill needs them and they are missing, direct the user to `/skill:setup-matt-pocock-skills` instead of guessing.
 - Never edit anything under `vendor/mattpocock-skills/`; it is a vendored upstream tree. Improvements belong upstream or in the harness layer.
 
@@ -29,7 +30,7 @@ With `pi-task` installed, the `task` tool runs the seven roles in `.pi/agents/`,
 
 | Agent | Tier | Use for |
 | --- | --- | --- |
-| `explore` | read | Read-only repository mapping with `path:line` evidence (grilling's fact-finding, to-spec exploration, `/init` discovery) |
+| `explore` | read | Read-only repository mapping with `path:line` evidence (grilling's fact-finding, to-spec exploration, `/init` discovery, `improve-codebase-architecture`'s friction walk) |
 | `scout` | read | Docs, API behaviour, external evidence with citations — answered in conversation, or written as the one report file the prompt names (`research` skill, wayfinder research tickets) |
 | `general` | reason | Bounded multi-step implementation (`implement`'s step execution); `implement-spec`'s implementer (cwd = a worktree the parent made), merger (land a branch), or notes-only exploration |
 | `designer` | reason | One independent design candidate under a stated constraint; several in parallel is codebase-design's design-it-twice |
@@ -37,7 +38,7 @@ With `pi-task` installed, the `task` tool runs the seven roles in `.pi/agents/`,
 | `reviewer` | review | Independent read-only review with a merge verdict; required before any merge-ready claim; either axis of `code-review` when that skill delegates |
 | `ultra-scout` | review | One of the 10 identical read-only scouts of `/skill:ultra-review` (not proactive; that skill launches it) |
 
-WIP cap: max 1 mutating task per checkout; read-only tasks carry no cap — the `+ 1 reviewer` figure is the steady-state cadence, not a slot. Parallel read-only tasks run freely: `code-review`'s two axes as two `reviewer` tasks, several `designer` candidates, `scout` reports each owning one distinct report path (wayfinder's research tickets). Mutating concurrency requires separate isolated checkouts: parallel `general` tasks each in their own git worktree (the parent runs `git worktree add` and passes it as `cwd`; pi-task never creates or removes worktrees). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. Do not edit files owned by a running background task.
+WIP cap: max 1 mutating task per checkout; read-only tasks carry no cap — the `+ 1 reviewer` figure is the steady-state cadence, not a slot. Parallel read-only tasks run freely: `code-review`'s two axes as two read-only tasks on the review tier, several `designer` candidates, `scout` reports each owning one distinct report path (wayfinder's research tickets). Mutating concurrency requires separate isolated checkouts: parallel `general` tasks each in their own git worktree (the parent runs `git worktree add` and passes it as `cwd`; pi-task never creates or removes worktrees). Review a stable candidate (completed task output, commit, frozen paths) — never the moving scope of a live writer. Do not edit files owned by a running background task.
 
 Brief a review-tier task with the diff scope, the spec or criteria, and the raw gate output — never your own verdict or your explanation of why the change is correct; a judge that reads the author's conclusion inherits it.
 
@@ -49,6 +50,8 @@ Every task child loads this file; a role file adds only its own purpose, input, 
 
 - Stay inside the prompt's scope; you are not the session parent. Recursive `task` delegation is blocked — finish the assigned scope or return a precise blocker.
 - Every important claim carries evidence: absolute `path:line`, an artifact, or an exact command with its exit code. Never fabricate tool output.
+- Prefer the host's code-navigation tool (`srcwalk` when installed) over `bash` grep/find for code reads and caller/dependency traces.
+- A skill you load may describe the **parent's** orchestration (spawning agents, running branches in parallel). You are the branch: do the slice the prompt assigns, spawn nothing, and say you did.
 - When on-disk evidence contradicts the task's premise (wrong target, missing dependency, stale assumption), stop the incompatible change and return `blocked` with the evidence instead of implementing around it.
 - Never call `memory_write` or `memory_delete`; propose durable records in your result and the parent decides. Read-only roles never edit, write, commit, or run destructive commands.
 - End with a final message the parent can act on without reading your transcript: a first line `status: success | partial | blocked | failure` and a one-sentence summary, then findings, evidence, files touched (or "none"), caveats, and next steps. No XML wrapper — pi-task does not parse one.

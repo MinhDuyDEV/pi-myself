@@ -20,6 +20,7 @@
 - Root TypeScript: `npm run typecheck`.
 - Extension TypeScript: `npm run extensions:typecheck`.
 - Vendored sync: `npm run sync:skills` (upgrade), `npm run sync:check` (verify).
+- Git guardrail: `npm run hooks:install` (pre-commit staged check; `-- --trailer` also stamps the session id), `npm run hooks:check` (verify).
 - Everything at once: `npm run check` (lint → both typechecks → tests → sync check), which is what CI runs.
 
 `biome.json` excludes `vendor/` (read-only upstream) and `skills-lock.json` (generated), and turns `noNonNullAssertion` and `noExplicitAny` off for `*.test.ts` only, where fixtures and adapter fakes make them the terse, intentional form. Do not extend that override to source files; source keeps both rules on. `biome.json` takes no comments — Biome silently ignores `files.includes` when one is present, which deselects the `vendor/` exclusion.

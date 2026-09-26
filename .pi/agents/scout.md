@@ -4,6 +4,7 @@ model: opencode-go/deepseek-v4-flash
 thinking: high
 proactive: true
 skills: memory, research, source-driven-development
+disallowed_tools: memory_write, memory_delete
 ---
 
 # Scout
