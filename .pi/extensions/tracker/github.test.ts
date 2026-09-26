@@ -1461,6 +1461,68 @@ test("a native parent in another repository is never read as this repository's i
 	);
 });
 
+test("a body-named parent in another repository is never read as this repository's issue (R11 confirming review)", () => {
+	const world = (partOf: string) =>
+		fakeGh([
+			{ number: 1, title: "Local map", state: "OPEN", body: "## Decisions so far\n", labels: ["wayfinder:map"] },
+			{ number: 4, title: "Child", state: "OPEN", body: `Part of: ${partOf}\n\n## Question\n\nq?` },
+		]);
+	for (const foreign of ["example/other#1", "https://github.com/example/other/issues/1"]) {
+		const gh = world(foreign);
+		const out = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "a", gist: "g" }, gh.run);
+		assert.match(out, /#4's parent is example\/other#1, in another repository, so no map was updated/, foreign);
+		assert.equal(
+			gh.edits.some((e) => e.args[1] === "edit" && e.number === 1),
+			false,
+			`${foreign}: local #1 is not the parent`,
+		);
+	}
+	// this repository's own name is a local parent
+	const own = world("example/repo#1");
+	assert.match(ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "a", gist: "g" }, own.run), /map #1 Decisions so far updated/);
+
+	// without this repository's name nothing can be told: unknown, and no edit
+	const blind = world("example/other#1");
+	const noSlug: GhRun = (root, args, input) => {
+		if (args[0] === "repo") throw new TrackerError("gh repo view: no default repository");
+		return blind.run(root, args, input);
+	};
+	// a root no other test used: the repository name is cached per root
+	const unread = ghResolveOp("/tmp/r11-no-slug", { op: "gh-resolve", ticket: "4", answer: "a", gist: "g" }, noSlug);
+	assert.match(
+		unread,
+		/#4's parent: this repository's name could not be read to tell whether example\/other#1 is its issue, so no map was updated/,
+	);
+	assert.equal(
+		blind.edits.some((e) => e.args[1] === "edit" && e.number === 1),
+		false,
+	);
+});
+
+test("a map edit that fails after the close is a report line, never an exception (R11 confirming review)", () => {
+	const world = () => {
+		const gh = fakeGh([
+			{ number: 1, title: "Map", state: "OPEN", body: "## Decisions so far\n\n## Out of scope\n", labels: ["wayfinder:map"] },
+			{ number: 4, title: "Child", state: "OPEN", body: "Part of: #1\n\n## Question\n\nq?" },
+		]);
+		const run: GhRun = (root, args, input) => {
+			if (args[0] === "issue" && args[1] === "edit" && args[2] === "1") throw new TrackerError("gh issue edit: HTTP 502");
+			return gh.run(root, args, input);
+		};
+		return { gh, run };
+	};
+	const resolving = world();
+	const resolved = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "a", gist: "g" }, resolving.run);
+	assert.match(resolved, /^Resolved #4 \(closed with a resolution comment\)/);
+	assert.match(
+		resolved,
+		/could not update map #1's Decisions so far \(gh issue edit: HTTP 502\); add "\[Child\]\(.*\): g" with gh-note \(parent 1, section "Decisions so far"\)/,
+	);
+	const ruling = world();
+	const ruled = ghOutOfScopeOp("/tmp", { op: "gh-out-of-scope", ticket: "4", answer: "no", gist: "g" }, ruling.run);
+	assert.match(ruled, /^Closed #4 as out of scope — could not update map #1's Out of scope \(gh issue edit: HTTP 502\)/);
+});
+
 test("a body-named parent is used without asking GitHub for a native parent (R11)", () => {
 	const apiCalls: string[] = [];
 	const gh = fakeGh(
@@ -1748,6 +1810,13 @@ test("gh-list lists closed issues, or all, when asked (R21)", () => {
 	// the default stays open
 	ghListOp("/tmp", { op: "gh-list" }, gh.run);
 	assert.deepEqual(calls.at(-1)!.slice(2, 4), ["--state", "open"]);
+
+	// pi validates arguments but never strips undeclared ones: gh's own flag name
+	// would otherwise list open issues without a word
+	assert.throws(
+		() => ghListOp("/tmp", { op: "gh-list", state: "closed" } as never, gh.run),
+		/"state" is not a gh-list parameter: use "issueState"/,
+	);
 
 	// op functions can be called without schema validation
 	const before = calls.length;

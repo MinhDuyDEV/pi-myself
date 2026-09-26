@@ -496,6 +496,11 @@ const LIST_LIMIT = 1000;
 /** gh-list: issues in one GitHub state (`issueState`: open by default, closed,
  * or all), optionally filtered by label (`status`). */
 export function ghListOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
+	// pi validates arguments but never strips undeclared ones, and `state` is
+	// gh's own flag name: ignored, it would list open issues without a word
+	if ((params as { state?: unknown }).state !== undefined) {
+		throw new TrackerError(`"state" is not a gh-list parameter: use "issueState" (open, closed or all); "status" filters by label`);
+	}
 	// op functions can be called without the tool schema's validation
 	const state = params.issueState ?? "open";
 	if (!(GH_LIST_STATES as readonly string[]).includes(state)) {
@@ -1146,17 +1151,30 @@ export function ghClaimOp(root: string, params: TrackerParams, run: GhRun = ghRu
 	return `Claimed ${issueLine(after)} (set this before any work).`;
 }
 
+/** Where a ref points: this repository's issue (`local`), another repository's
+ * (`foreign`), or `unknown` when this repository's name could not be read to
+ * tell. A ref that names no repository is local. Read as a bare number, a
+ * foreign ref would name this repository's issue of that number. */
+type RefHome = { kind: "local"; number: number } | { kind: "foreign"; ref: string } | { kind: "unknown"; cause: string };
+
+function refHome(root: string, ref: IssueRef, run: GhRun): RefHome {
+	if (ref.repo === undefined) return { kind: "local", number: ref.number };
+	const here = localRepoSlug(root, run);
+	if (here === undefined) {
+		return { kind: "unknown", cause: `this repository's name could not be read to tell whether ${ref.repo}#${ref.number} is its issue` };
+	}
+	return ref.repo.toLowerCase() === here.toLowerCase()
+		? { kind: "local", number: ref.number }
+		: { kind: "foreign", ref: `${ref.repo}#${ref.number}` };
+}
+
 /** An issue's native parent (REST "Get parent issue",
  * `GET /repos/{owner}/{repo}/issues/{n}/parent`). Only the endpoint's 404 means
  * `none` (checked live: "No parent issue found (HTTP 404)"); any other failure
  * is `unknown`, because an answer that never came says nothing about a parent.
- * Sub-issues may cross repositories of one owner, so a parent elsewhere is
- * `foreign`: read as a bare number it would name this repository's issue. */
-type NativeParent =
-	| { kind: "found"; number: number }
-	| { kind: "none" }
-	| { kind: "foreign"; ref: string }
-	| { kind: "unknown"; cause: string };
+ * The ref carries the parent's repository: sub-issues may cross repositories
+ * of one owner. */
+type NativeParent = { kind: "found"; ref: IssueRef } | { kind: "none" } | { kind: "unknown"; cause: string };
 
 function nativeParentOf(root: string, number: number, run: GhRun): NativeParent {
 	let answer: string;
@@ -1177,9 +1195,7 @@ function nativeParentOf(root: string, number: number, run: GhRun): NativeParent 
 	// `https://api.github.com/repos/OWNER/REPO`, or an Enterprise host's `/api/v3/repos/...`
 	const repo = /\/repos\/([^/]+\/[^/]+)\/?$/.exec(String(parsed.repository_url ?? ""))?.[1];
 	if (!Number.isInteger(parent) || parent <= 0 || repo === undefined) return unexpected;
-	const here = localRepoSlug(root, run);
-	if (here === undefined) return { kind: "unknown", cause: `this repository's name could not be read to compare with ${repo}#${parent}` };
-	return repo.toLowerCase() === here.toLowerCase() ? { kind: "found", number: parent } : { kind: "foreign", ref: `${repo}#${parent}` };
+	return { kind: "found", ref: { number: parent, repo } };
 }
 
 /** An open, non-PR `wayfinder:map` issue: the only parent this tool edits. A
@@ -1195,27 +1211,32 @@ function isOpenMap(issue: GhIssue): boolean {
 type ParentMap = { kind: "map"; number: number; map: GhIssue } | { kind: "none"; reason: string } | { kind: "unknown"; reason: string };
 
 /** The parent is the one the body names (`Part of` / `## Parent`), else the
- * native sub-issue parent — a child linked in GitHub's UI carries no body line. */
+ * native sub-issue parent — a child linked in GitHub's UI carries no body line.
+ * Either may be in another repository, and then it is not this repository's
+ * issue of that number (gh-frontier and gh-triage read the body line the same way). */
 function parentMapOf(root: string, issue: GhIssue, heading: string, run: GhRun): ParentMap {
-	let parent = parentRefs(issue.body)[0];
-	if (parent === undefined) {
+	let named = parentRefList(issue.body)[0];
+	if (named === undefined) {
 		const native = nativeParentOf(root, issue.number, run);
 		if (native.kind === "unknown")
 			return { kind: "unknown", reason: `#${issue.number}'s native parent could not be read (${native.cause})` };
-		if (native.kind === "foreign") {
-			return {
-				kind: "none",
-				reason: `#${issue.number}'s parent is ${native.ref}, in another repository, so no map was updated; the gist stays in the resolution comment`,
-			};
-		}
 		if (native.kind === "none") {
 			return {
 				kind: "none",
 				reason: `no parent map: neither #${issue.number}'s body nor a native sub-issue link names a parent; add the ${heading} line by hand`,
 			};
 		}
-		parent = native.number;
+		named = native.ref;
 	}
+	const home = refHome(root, named, run);
+	if (home.kind === "unknown") return { kind: "unknown", reason: `#${issue.number}'s parent: ${home.cause}` };
+	if (home.kind === "foreign") {
+		return {
+			kind: "none",
+			reason: `#${issue.number}'s parent is ${home.ref}, in another repository, so no map was updated; the gist stays in the resolution comment`,
+		};
+	}
+	const parent = home.number;
 	let map: GhIssue;
 	try {
 		map = issueView(root, String(parent), run);
@@ -1239,8 +1260,14 @@ function appendToParentMap(root: string, issue: GhIssue, heading: string, gist: 
 	if (found.kind === "unknown") {
 		return `${found.reason}, so no map was updated; the gist stays in the resolution comment — add the ${heading} line by hand if it has a map`;
 	}
-	const updated = appendUnderHeading(found.map.body, heading, `[${issue.title}](${issue.url || `#${issue.number}`}): ${gist.trim()}`);
-	run(root, ["issue", "edit", String(found.number), "--body-file", "-"], updated);
+	const line = `[${issue.title}](${issue.url || `#${issue.number}`}): ${gist.trim()}`;
+	try {
+		run(root, ["issue", "edit", String(found.number), "--body-file", "-"], appendUnderHeading(found.map.body, heading, line));
+	} catch (error) {
+		// a throw here would report a closed issue as a failed op, and a retry
+		// would post a second resolution comment and still add no gist
+		return `could not update map #${found.number}'s ${heading} (${errorMessage(error)}); add "${line}" with gh-note (parent ${found.number}, section "${heading}")`;
+	}
 	return `map #${found.number} ${heading} updated`;
 }
 
