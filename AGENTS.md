@@ -1,6 +1,6 @@
 # AGENTS.md
 
-`pi-myself` is a pi package: a harness around the vendored **mattpocock/skills** core. `PLAN.md` is the decision record and architecture contract; `PROJECT.md` is the repository map. Trust `package.json` for registered pi paths and current tracked files and tests for behavior.
+`pi-myself` is a pi package: a harness around the vendored **mattpocock/skills** core. `PLAN.md` is the current-state contract and `docs/history.md` its dated history; `PROJECT.md` is the repository map. Trust `package.json` for registered pi paths, and tracked files and tests for behavior.
 
 ## Entry Points
 
@@ -24,7 +24,7 @@
 - Git guardrail: `npm run hooks:install` (pre-commit staged check; `-- --trailer` also stamps the session id), `npm run hooks:check` (verify).
 - Everything at once: `npm run check` (lint → both typechecks → tests → sync check → agents check), which is what CI runs.
 
-`biome.json` excludes `vendor/` (read-only upstream) and `skills-lock.json` (generated), and turns `noNonNullAssertion` and `noExplicitAny` off for `*.test.ts` only, where fixtures and fakes make them the terse, intentional form. Do not extend that override to source files; source keeps both rules on. `biome.json` takes no comments — Biome silently ignores `files.includes` when one is present, which deselects the `vendor/` exclusion.
+`biome.json` excludes `vendor/` and `skills-lock.json` (generated), and turns `noNonNullAssertion` and `noExplicitAny` off for `*.test.ts` only, where fixtures and fakes make them the terse, intentional form. Do not extend that override to source files; source keeps both rules on. `biome.json` takes no comments — Biome silently ignores `files.includes` when one is present, which deselects the `vendor/` exclusion.
 
 ## Boundaries and Safety
 

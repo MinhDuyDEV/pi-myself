@@ -5,11 +5,13 @@ import { test } from "node:test";
 
 // Current-state docs must not carry stale counts. Every "N roles" / "N promoted
 // skills" / "N beta skills" / "N local skills" / "N extensions" phrase in the
-// docs a reader trusts for the present is compared with the tree. PLAN.md is a
-// decision record with history ("10 roles → 7") and is deliberately not scanned.
+// docs a reader trusts for the present is compared with the tree, PLAN.md (the
+// current-state contract) included. docs/history.md is a dated record that keeps
+// the counts of its day ("10 roles → 7") and is deliberately not scanned.
 
 const ROOT = resolve(import.meta.dirname, "..");
 const CURRENT_STATE_DOCS = [
+	"PLAN.md",
 	"README.md",
 	"AGENTS.md",
 	"PROJECT.md",

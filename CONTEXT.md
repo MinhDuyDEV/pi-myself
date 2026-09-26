@@ -1,6 +1,6 @@
 # pi-myself
 
-A pi coding-agent harness built around Matt Pocock's skills as the process core. Plans and decisions: `PLAN.md`. Repo map: `PROJECT.md`. Behavior rules: `AGENTS.md`.
+A pi coding-agent harness built around Matt Pocock's skills as the process core. Current-state contract: `PLAN.md`; decisions and their reasons: `docs/adr/`; dated history: `docs/history.md`. Repo map: `PROJECT.md`. Behavior rules: `AGENTS.md`.
 
 ## Language
 

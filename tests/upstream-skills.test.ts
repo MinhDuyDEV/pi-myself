@@ -121,8 +121,9 @@ test("current-state prose about the beta bucket's invocation class matches the l
 	const modelInvokedBeta = Object.entries(lock.skills)
 		.filter(([, meta]) => meta.bucket === "beta" && meta.modelInvoked)
 		.map(([name]) => name);
-	// PLAN.md is a dated decision record and keeps its historical wording.
+	// docs/history.md is a dated record and keeps its historical wording.
 	const docs = [
+		"PLAN.md",
 		"README.md",
 		"AGENTS.md",
 		"PROJECT.md",

@@ -1,6 +1,6 @@
 # Project Map
 
-`pi-myself` is a configuration and extension package for the pi coding agent built around the vendored `mattpocock/skills` core. `package.json` defines registered pi paths; `README.md` is the user-facing overview; `PLAN.md` is the decision record. Verify volatile behavior against tracked files and tests.
+`pi-myself` is a configuration and extension package for the pi coding agent built around the vendored `mattpocock/skills` core. `package.json` defines registered pi paths; `README.md` is the user-facing overview; `PLAN.md` is the current-state contract, `docs/adr/` holds decisions with their reasons, and `docs/history.md` the dated history. Verify volatile behavior against tracked files and tests.
 
 ## Shipped pi Surface
 
@@ -13,7 +13,7 @@
 - `.pi/extensions/provision.ts` — `/setup-pi-myself` command only (no session-start check: rerunning the command is the update path); `.pi/extensions/lib/` holds shared helpers (repo root, package root, pi's agent dir) and is deliberately not an extension.
 - `.pi/policy/WORKFLOW.md` — the workflow policy; the `policy` extension injects it from the installed package as the parent's `<harness>` section on every run (ADR 0003), so it is never copied into a consuming repo. Deliberately not an `APPEND_SYSTEM.md`, which pi would also load here. Task children skip it.
 - `.pi/policy/CHILD-CONTRACT.md` — the child contract's one source; `scripts/sync-agents.mjs` splices it between the `child-contract` markers at the end of every role in `.pi/agents/`, so provisioned roles carry it too.
-- `docs/agents/` — the per-repo skill configuration (`setup-matt-pocock-skills` writes it) and `docs/adr/` the decisions; the harness's own host translation ships inside the `harness-catalog` skill instead, so a consuming repo gets it with the package.
+- `docs/agents/` — the per-repo skill configuration (`setup-matt-pocock-skills` writes it) `docs/adr/` the decisions, and `docs/history.md` the dated record (not current guidance); the harness's own host translation ships inside the `harness-catalog` skill instead, so a consuming repo gets it with the package.
 
 ## Development Support
 

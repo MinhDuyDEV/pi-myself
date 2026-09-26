@@ -13,7 +13,8 @@ import { test } from "node:test";
 //      directory, or runtime state that .gitignore declares;
 //   2. no paragraph or bullet is stated twice across files (PLAN.md §6: a
 //      section survives only if no other loaded text already says it);
-//   3. the two files that ride along in every turn stay inside a byte budget.
+//   3. the files that ride along in every turn stay inside a byte budget.
+// PLAN.md gets a size cap of its own, apart from those budgets (see below).
 
 const ROOT = resolve(import.meta.dirname, "..");
 // a tracked file deleted but not yet `git rm`-ed is gone, not a crash
@@ -58,6 +59,16 @@ const BYTE_BUDGET: Record<string, number> = {
 	".pi/policy/WORKFLOW.md": 12_500,
 	".pi/policy/CHILD-CONTRACT.md": 2_500,
 };
+
+/**
+ * PLAN.md is not always-in-context text; it is the current-state contract, and
+ * it stays one because the dated history lives in docs/history.md and the
+ * decisions with their reasons in docs/adr/ (split 2026-09-26, when the file
+ * had reached 80 KB and its sections had drifted from the tree). A contract
+ * small enough to check against the tree in one read is the point, so raising
+ * the cap is a decision, and history goes to docs/history.md instead.
+ */
+const PLAN_MAX_BYTES = 10_000;
 
 const read = (file: string) => readFileSync(join(ROOT, file), "utf8");
 const repoPath = (absolute: string) => relative(ROOT, absolute).split(sep).join("/");
@@ -154,4 +165,12 @@ test("always-in-context files stay inside their byte budget", () => {
 			`${file} is ${bytes} bytes against a budget of ${budget} (${room}): move detail into a skill or reference, or raise the budget deliberately`,
 		);
 	}
+});
+
+test("PLAN.md stays a current-state contract inside its size cap", () => {
+	const bytes = statSync(join(ROOT, "PLAN.md")).size;
+	assert.ok(
+		bytes <= PLAN_MAX_BYTES,
+		`PLAN.md is ${bytes} bytes against a cap of ${PLAN_MAX_BYTES} (${bytes - PLAN_MAX_BYTES} over): move dated entries to docs/history.md and reasons to an ADR in docs/adr/, or raise the cap deliberately`,
+	);
 });

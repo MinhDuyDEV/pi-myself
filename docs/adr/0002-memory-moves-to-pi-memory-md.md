@@ -4,7 +4,7 @@ Supersedes ADR 0001 (session-end memory nudge).
 
 **Note (2026-09-15):** the extension was renamed upstream to `pi-workspace-memory` (`git:github.com/sting8k/pi-workspace-memory`). Storage, tools, and this decision are unchanged; the text below keeps the name it was decided under.
 
-**Note (2026-09-26):** the `/remember` prompt was deleted (PLAN.md §8, prompt audit) because it restated the `memory` skill's steps without adding unique guidance. Decision 1's discipline is unchanged — the `memory` skill and APPEND_SYSTEM's in-turn saving rule carry it — so the clause below that has `/remember` walking the skill is now historical.
+**Note (2026-09-26):** the `/remember` prompt was deleted (`docs/history.md`, prompt audit) because it restated the `memory` skill's steps without adding unique guidance. Decision 1's discipline is unchanged — the `memory` skill and APPEND_SYSTEM's in-turn saving rule carry it — so the clause below that has `/remember` walking the skill is now historical.
 
 ## Context
 

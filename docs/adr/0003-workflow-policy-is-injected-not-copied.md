@@ -1,6 +1,8 @@
 # ADR 0003: The workflow policy is injected by an extension, not copied into each repo
 
-Supersedes the copy parts of PLAN.md §5 "Harness rules never reach a consuming repo" (2026-09-14) and of the provisioning decisions of 2026-09-15 and 2026-09-26 as far as they concern `APPEND_SYSTEM.md`. The task-role copy is unchanged.
+Supersedes the copy parts of the 2026-09-14 answer to "Harness rules never reach a consuming repo" (then a row of PLAN.md §5; `docs/history.md`, "Harness audit + cleanup") and of the provisioning decisions of 2026-09-15 and 2026-09-26 as far as they concern `APPEND_SYSTEM.md`. The task-role copy is unchanged.
+
+**Note (2026-09-26):** ADR 0005 stops provisioning from touching `settings.json`, so the first consequence below now reads: `/setup-pi-myself` is needed only for roles.
 
 ## Context
 
