@@ -845,7 +845,7 @@ test("gh-show names omitted comments and truncated bodies", () => {
 	const many = Array.from({ length: 35 }, (_, i) => ({ author: `u${i}`, body: `note ${i}` }));
 	const gh = fakeGh([{ number: 4, title: "T", state: "OPEN", body: "b", comments: many }]);
 	const out = ghShowOp("/tmp", { op: "gh-show", ticket: "4" }, gh.run);
-	assert.match(out, /## Comments \(30 of 35 — the 5 oldest were not shown\)/);
+	assert.match(out, /## Comments \(30 of 35 — 5 older comments were not shown; read them all with `gh issue view 4 --comments`\)/);
 	assert.equal(/note 0\b/.test(out), false, "the 5 oldest are the omitted ones");
 	assert.match(out, /note 34/);
 
@@ -1413,4 +1413,28 @@ test("gh-create-map: notes fills Notes, fog fills Not yet specified, and notes w
 		/Notes = "notes" \(or "what"\); Not yet specified = "fog"/,
 	);
 	assert.equal(gh.edits.length, before, "nothing is created");
+});
+
+test("gh-show keeps structured comments older than the newest 30, in order, and names the full read (R17)", () => {
+	const at = (i: number) => new Date(Date.UTC(2026, 0, 1, 0, i)).toISOString();
+	const comments = Array.from({ length: 40 }, (_, i) => ({ author: `u${i}`, body: `chatter ${i}`, createdAt: at(i) }));
+	comments[1] = { author: "maint", body: "## Agent Brief\n\nbrief body", createdAt: at(1) };
+	comments[2] = { author: "maint", body: "Summary first.\n\n## Triage Notes\n\nneed repro", createdAt: at(2) };
+	comments[4] = { author: "me", body: "## Answer\n\nCSV.", createdAt: at(4) };
+	comments[5] = { author: "me", body: "## Out of scope\n\nno TSV", createdAt: at(5) };
+	// a heading named mid-line is prose, not the structured comment
+	comments[6] = { author: "u6", body: "see the ## Agent Brief above", createdAt: at(6) };
+	const gh = fakeGh([{ number: 4, title: "T", state: "OPEN", body: "b", comments }]);
+	const out = ghShowOp("/tmp", { op: "gh-show", ticket: "4" }, gh.run);
+	assert.match(out, /## Comments \(34 of 40 — 6 older comments were not shown; read them all with `gh issue view 4 --comments`\)/);
+	for (const kept of ["brief body", "need repro", "CSV.", "no TSV", "chatter 10", "chatter 39"]) assert.ok(out.includes(kept), kept);
+	for (const dropped of ["chatter 0\n", "chatter 3\n", "see the ## Agent Brief above", "chatter 9\n"]) {
+		assert.equal(out.includes(dropped), false, dropped);
+	}
+	const order = ["brief body", "need repro", "CSV.", "no TSV", "chatter 10", "chatter 39"].map((text) => out.indexOf(text));
+	assert.deepEqual(
+		order,
+		[...order].sort((a, b) => a - b),
+		"chronological order",
+	);
 });

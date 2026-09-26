@@ -678,6 +678,11 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
  * heading — triage reads prior `## Triage Notes` from here, so a silent cut
  * would make it re-ask a resolved question. */
 const MAX_SHOWN_COMMENTS = 30;
+/** Comments gh-show keeps however old: triage's `## Agent Brief`
+ * (triage/AGENT-BRIEF.md) and `## Triage Notes` (triage/SKILL.md), and this
+ * tool's own gh-resolve / gh-out-of-scope comments. A heading at a line start,
+ * matched the way gh-triage matches Triage Notes. */
+const STRUCTURED_COMMENT = /^##\s+(?:Agent Brief|Triage Notes|Answer|Out of scope)\b/m;
 /** Per-comment character cap. A longer body is truncated with the remainder named. */
 const MAX_COMMENT_CHARS = 4_000;
 /** Blocker refs gh-show resolves to a state. One API call per ref. */
@@ -726,7 +731,8 @@ function stateLabel(issue: GhIssue): string {
 export function ghShowOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	const issue = issueView(root, reqNumber(params.ticket, "show"), run, true);
 	const total = issue.comments.length;
-	const comments = total > MAX_SHOWN_COMMENTS ? issue.comments.slice(-MAX_SHOWN_COMMENTS) : issue.comments;
+	// the newest MAX_SHOWN_COMMENTS plus every older structured comment, in order
+	const comments = issue.comments.filter((comment, index) => index >= total - MAX_SHOWN_COMMENTS || STRUCTURED_COMMENT.test(comment.body));
 	const omitted = total - comments.length;
 	const blockers = resolveBlockerRefs(root, issue.body, run);
 	return [
@@ -738,7 +744,7 @@ export function ghShowOp(root: string, params: TrackerParams, run: GhRun = ghRun
 		...(comments.length
 			? [
 					"",
-					`## Comments (${comments.length}${omitted > 0 ? ` of ${total} — the ${omitted} oldest were not shown` : ""})`,
+					`## Comments (${comments.length}${omitted > 0 ? ` of ${total} — ${omitted} older comments were not shown; read them all with \`gh issue view ${issue.number} --comments\`` : ""})`,
 					...comments.map(renderComment),
 				]
 			: []),
