@@ -12,7 +12,7 @@ The same day's review layer audit asked whether a post-PR review layer would add
 
 1. **Three tiers**: **read** (`explore`, `scout`) maps and searches and never changes code; **reason** (`general`, `designer`, `ultra-verifier`) changes or designs; **review** (`reviewer`, `ultra-scout`) judges what the reason tier wrote and is always `readonly: true`.
 2. **One model per tier**, set on the `model:` line of each role in it; pi-task has no shared default.
-3. **The review tier runs a different model family from the reason tier** (today `opencode-go/kimi-k3` against `opencode-go/deepseek-v4-flash`). `tests/agents.test.ts` fails when a tier runs two models or when the review family equals the reason family, reading both from the role files.
+3. **The review tier runs a different model family from the reason tier** (the `model:` lines of the role files say which). `tests/agents.test.ts` fails when a tier runs two models or when the review family equals the reason family, reading both from the role files.
 
 Not taken (2026-09-15): `pi-review-loop` (the same agent re-prompting itself, or a human review UI) and a harness `/skill:pr-review` (deferred until a team repo needs it).
 

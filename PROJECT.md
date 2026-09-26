@@ -4,7 +4,7 @@
 
 ## Shipped pi Surface
 
-- `vendor/mattpocock-skills/` — vendored upstream mattpocock/skills (process core; read-only; its `skills/engineering` + `skills/productivity` trees are registered with pi).
+- `vendor/mattpocock-skills/` — vendored upstream mattpocock/skills (process core; read-only; its `skills/engineering`, `skills/productivity`, and `skills/in-progress` (beta) trees are registered with pi).
 - `.pi/extensions/` — runtime extensions: `policy` (injects the workflow policy into the session parent's system prompt), `guard` (refuses write/edit into the vendored tree, the lock, and runtime state; default `bash` timeout), `host-commands` (`/clear`; bare `/<skill>` → `/skill:<skill>`), `skill-tool` (the `skill` tool, whose skill set mirrors pi's own skill loader), `tracker` (two backends: `.scratch/` local markdown + GitHub Issues via `gh-*` ops; locked, atomically-replaced writes; `/frontier`), `smart-zone` (footer meter + `/smartzone`), `dcp/` (session-history `recall`), `continue-after-compaction`, `provision` (`/setup-pi-myself`).
 - `.pi/extensions/tracker/conventions.test.ts` — the gate tying the tracker's op set to the vendored tracker templates: a documented operation that is neither wired nor recorded fails the suite.
 - `.pi/settings.json` — dogfood defaults (skill commands, compaction reserves, retry).

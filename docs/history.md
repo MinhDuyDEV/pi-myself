@@ -1,6 +1,6 @@
 # History
 
-A dated record of what was decided, built, and found, moved verbatim out of `PLAN.md` §8 "Roadmap" on 2026-09-26, oldest first. It is not current guidance: names, counts, paths, and statuses in an entry are as they stood on its date, and a section number (§N) means `PLAN.md` as it stood then. What holds now is `PLAN.md`; the reasons behind hard-to-reverse decisions are in `docs/adr/`. Add an entry at the end; never rewrite one.
+A dated record of what was decided, built, and found, moved verbatim out of `PLAN.md` §8 "Roadmap" on 2026-09-26, oldest first. It is not current guidance: names, counts, paths, and statuses in an entry are as they stood on its date, and a section number (§N) means `PLAN.md` as it stood then. What holds now is `PLAN.md`; the reasons behind hard-to-reverse decisions are in `docs/adr/`. Add an entry after the last dated entry, before the carried notes; never rewrite one.
 
 - **Phase 1**: ✅ scaffold, vendored skills + lock + wrapper generation, ports (skills/extensions/agents/tests), skill-tool, docs, CI.
 - **Phase 2**: ✅ `tracker` extension (local `.scratch/`, 11 ops + `/frontier`); ✅ `smart-zone` meter; ✅ `.pi/settings.json` (dogfood defaults). Remaining: dogfood pi-myself on itself with grill-with-docs → to-spec → to-tickets.

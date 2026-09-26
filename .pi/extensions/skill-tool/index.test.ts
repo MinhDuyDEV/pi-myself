@@ -12,6 +12,7 @@ import skillToolExtension, { defaultSkillRoots } from "./index.js";
 
 interface RegisteredTool {
 	name: string;
+	promptGuidelines?: string[];
 	parameters?: { properties?: { name?: { anyOf?: Array<{ const?: string }>; type?: string; description?: string } } };
 	execute: (
 		id: string,
@@ -72,6 +73,16 @@ test("skill tool: lists exactly the model-invoked set, loads bodies, refuses use
 		const refused = await tool.execute("2", { name: "wayfinder" }, undefined, undefined);
 		assert.equal(refused.details.loaded, false);
 		assert.match(refused.content[0].text, /\/skill:wayfinder/, "user-invoked names hand the human the slash command");
+
+		// implement and implement-spec write model-invoked skills as slash commands
+		// (`/tdd`, `/code-review`); the guideline reaches every session and child
+		// that has this tool, including those that never see the workflow policy.
+		assert.ok(
+			(tool.promptGuidelines ?? []).some(
+				(line) => /slash command/i.test(line) && /\/tdd|\/code-review/.test(line) && /this tool/.test(line),
+			),
+			"a guideline says a model-invoked skill written as a slash command means calling this tool",
+		);
 
 		const unknown = await tool.execute("3", { name: "nope" }, undefined, undefined);
 		assert.match(unknown.content[0].text, /Unknown skill "nope"/);

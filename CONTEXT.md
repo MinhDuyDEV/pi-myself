@@ -35,11 +35,28 @@ The session parent's runtime rules (layering, skill invocation, routing, task ro
 _Avoid_: "APPEND_SYSTEM" (the copied file it replaced; a repo's own `.pi/APPEND_SYSTEM.md` is something else, which pi still appends)
 
 **Child contract**:
-The rules every task child obeys (scope, no spawning, no questions to the user, no memory writes, evidence, `blocked`, the `Status:` report line). One source, `.pi/policy/CHILD-CONTRACT.md`, spliced by `npm run agents:sync` into the end of each role body — the only harness text a child receives, since the **workflow policy** is injected into the parent only.
+The rules every task child obeys (scope, no spawning, no questions to the user, no memory writes, evidence, `blocked`, the `Status:` report line). One source, `.pi/policy/CHILD-CONTRACT.md`, spliced by `npm run agents:sync` into the end of each role body. Beside its role body a child gets only pi's base prompt, `AGENTS.md`, and the skills list: the **workflow policy** is injected into the parent only (ADR 0004).
 _Avoid_: "child rules in the workflow policy" (a child never sees it)
 
+**Model tier**:
+One of three groups of task roles that run one model: **read** (`explore`, `scout`), **reason** (`general`, `designer`, `ultra-verifier`), **review** (`reviewer`, `ultra-scout`). The **review family** (the review tier's model vendor) must differ from the **reason family**, so a judge does not share its author's blind spots (ADR 0006).
+_Avoid_: "tier" alone (see Flagged ambiguities)
+
+**Stack companion**:
+A local skill that carries craft rather than a host fact — `typescript-coding-standards`, `security-and-hardening`, `source-driven-development` (model-invoked, loaded by domain) and `test-proof-debt-audit` (human-run) — kept under D5's stack-companion clause (PLAN.md §2), and deferring to a vendored skill wherever one owns the overlapping process.
+_Avoid_: "textbook skill"
+
+**Provisioning baseline**:
+`.pi/pi-myself-provisioned.json` in a consuming repo: per role, the hash of what the package shipped without its project-owned lines, plus the `model`, `thinking`, and `max_turns` it shipped. It tells a project's edit or choice apart from the package's previous version (ADR 0005).
+
+**Doctor**:
+`/setup-pi-myself --check`: a read-only report on a repo's harness setup, one `ok`/`warn` line per check, each warning with its fix.
+
+**Host token**:
+A command, file, or mechanism a vendored skill names that pi lacks or names differently (`/clear`, `/handoff`, `CLAUDE.md`, `claude --bg`, a script that reads stdin). Each needs a row in `pi-mapping.md`'s host table; `tests/agents.test.ts` fails on one without it.
+
 **Memory record**:
-One identity-addressed Markdown file the `pi-workspace-memory` extension keeps under `~/.pi/memory-md/projects/<slug>/records/` — `state.<id>` for a fact still true, `event.<id>` for a finding tied to a moment. The harness tier of distilled knowledge; outside git, per machine.
+One identity-addressed Markdown file the `pi-workspace-memory` extension keeps under `<localPath>/projects/<slug>/records/` (`localPath` defaults to `~/.pi/memory-md`) — `state.<id>` for a fact still true, `event.<id>` for a finding tied to a moment. The harness tier of distilled knowledge; outside git, per machine.
 _Avoid_: "MEMORY.md" (retired, ADR 0002), "note"
 
 **Lock**:
@@ -75,4 +92,5 @@ The ~150k-token window within which the model still reasons sharply (ask-matt's 
 
 - "skills" was overloaded: the vendored `skills/engineering|productivity` trees vs our own `.pi/skills/` layer. Resolved: always say **vendored tree** for the former and **local skills** for the latter.
 - "status" meant both a tracker field ("Status: claimed") and a GitHub label. Resolved: locally it is the `Status:` line; on GitHub it is a **label** (triage role); the `gh-status` op replaces all existing role labels.
+- "tier" meant both the three-tier **state boundary** (PLAN.md §3: domain, work tracking, harness) and a **model tier** of task roles. Resolved: say "state tier" or "model tier", never "tier" alone.
 - "dogfood" as a noun ("the dogfood round") means: running Matt's flow on this repo to plan this repo's work, using the harness being built. Kept as project jargon.

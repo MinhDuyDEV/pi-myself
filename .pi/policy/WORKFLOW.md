@@ -9,10 +9,10 @@ Runtime playbook: which process owns the work, when to delegate, how to complete
 
 ## Skill invocation contract
 
-- Model-invoked skills are invoked through the `skill` tool (its `name` parameter lists exactly the model-invoked set).
+- Model-invoked skills are invoked through the `skill` tool (its `name` parameter lists exactly the model-invoked set), also when a skill writes one as a slash command (`/tdd`, `/code-review` inside `implement`).
 - User-invoked skills (frontmatter `disable-model-invocation: true`) are reachable **only by the human** via their slash command, pi's native `/skill:<name>`. Never invoke one, never re-implement its steps; when a flow requires one, tell the human to run it (for example `/skill:setup-matt-pocock-skills`).
 - When no flow you hold fits the request, or the user asks where to start, load the `harness-catalog` skill and name the command to run: the main flow is human-launched, so naming it is the whole handoff.
-- The vendored `in-progress` bucket (beta) is registered too — user-invoked except `pr`, which is model-invoked. A skill naming a host mechanism pi does not have (a spawned sub-agent, a background agent, a throwaway branch) is translated in the `harness-catalog` skill's `pi-mapping.md`; load that skill before working one.
+- The vendored `in-progress` bucket (beta) is registered too — user-invoked except `pr`, which is model-invoked. A skill naming a host mechanism pi lacks or names differently (a spawned sub-agent, a background agent, `/clear`, `CLAUDE.md`, a script that reads stdin, `tdd`'s seam agreement inside a child) is translated in the `harness-catalog` skill's `pi-mapping.md`; load that skill before working one.
 - Per-repo skill configuration lives in `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, and (when `triage` matters) `docs/agents/triage-labels.md`. If a skill needs them and they are missing, direct the user to `/skill:setup-matt-pocock-skills` instead of guessing.
 - Never edit anything under `vendor/mattpocock-skills/`; it is a vendored upstream tree. Improvements belong upstream or in the harness layer.
 

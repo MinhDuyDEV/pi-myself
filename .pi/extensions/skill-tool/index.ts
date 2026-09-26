@@ -185,6 +185,7 @@ export default function skillToolExtension(pi: ExtensionAPI): void {
 		promptSnippet: "Load a named skill's instructions and follow them.",
 		promptGuidelines: [
 			"When a workflow says 'Call the Skill tool with \"name\"', call this tool with that name and follow the loaded instructions.",
+			"A model-invoked skill a workflow writes as a slash command (`/tdd`, `/code-review` inside implement) means: call this tool with that name — never hand it to the human.",
 			"User-invoked skills are not available here: direct the human to run the slash command (e.g. /skill:wayfinder) instead of improvising its steps.",
 		],
 		parameters: Type.Object({

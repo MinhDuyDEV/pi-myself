@@ -10,7 +10,7 @@
 - `vendor/mattpocock-skills/` is the **vendored upstream** `mattpocock/skills` tree. It is read-only by rule: never edit files under it. Upgrade it with `npm run sync:skills`.
 - `.pi/prompts/<name>.md` defines the hand-written user slash commands (`/verify`, `/init`). Skills need no wrapper: pi exposes every skill natively as `/skill:<name>`. `/setup-pi-myself` is a command the `provision` extension registers.
 - `scripts/sync-skills.mjs` is the gate for all vendored-tree changes; its lock digests every vendored file. `scripts/setup-project.mjs` provisions a consuming repo (run by `/setup-pi-myself`).
-- `.pi/policy/`: `WORKFLOW.md` is the parent's workflow policy, injected by the `policy` extension; `CHILD-CONTRACT.md` holds the rules every task child follows, spliced into the end of each role by `npm run agents:sync` (a child sees only its role body). Edit these sources, never a generated block.
+- `.pi/policy/`: `WORKFLOW.md` is the parent's workflow policy, injected by the `policy` extension; `CHILD-CONTRACT.md` holds the rules every task child follows, spliced into the end of each role by `npm run agents:sync` (a child never sees the policy). Edit these sources, never a generated block.
 
 ## Commands
 

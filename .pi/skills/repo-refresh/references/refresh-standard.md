@@ -16,13 +16,13 @@ The baseline every refreshed repository is held to. Where a repository runs Matt
 
 Each kind of file has one owner. Refresh consolidates *into* these; it never removes or relocates them.
 
-| Tier | Owner | Files |
+| Kind | Owner | Files |
 | --- | --- | --- |
-| How to work here | `/init` | `AGENTS.md` (or `CLAUDE.md`; never both), `PROJECT.md` |
+| How to work here | `/init` | `AGENTS.md` (or `CLAUDE.md` alone; a `CLAUDE.md` beside `AGENTS.md` is a deliberate mirror for Claude Code, since pi reads only `AGENTS.md`), `PROJECT.md` |
 | Domain | `domain-modeling` (via `grill-with-docs`) | `CONTEXT.md` (or `CONTEXT-MAP.md` + per-context `CONTEXT.md`), `docs/adr/` |
 | Process configuration | `setup-matt-pocock-skills` | `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, `docs/agents/triage-labels.md`, the `## Agent skills` block in `AGENTS.md` |
 | Work tracking | the configured tracker | `.scratch/<feature>/{spec.md,map.md,issues/}` for the local backend; GitHub or GitLab issues otherwise |
-| Harness runtime | pi-myself | `.pi/agents/` (provisioned roles, refreshed by `/setup-pi-myself`, not edited; `pi-myself-provisioned.json` is its baseline) and `.pi/settings.json`. The workflow policy is injected from the package, so an `APPEND_SYSTEM.md` carrying it is a stale copy `/setup-pi-myself` removes. A repo's own `.pi/skills/` and `.pi/prompts/` are the repo's, refreshed like any other doc |
+| Harness runtime | pi-myself | `.pi/agents/` (provisioned roles, refreshed by `/setup-pi-myself`, not edited; `pi-myself-provisioned.json` is its baseline). `.pi/settings.json` is the repo's own. The workflow policy is injected from the package, so an `APPEND_SYSTEM.md` carrying it is a stale copy `/setup-pi-myself` removes. A repo's own `.pi/skills/` and `.pi/prompts/` are the repo's, refreshed like any other doc |
 
 Everything else under `docs/` is a candidate: parallel doctrine, contract, observability, project, and miscellaneous trees whose content belongs to an owner above get merged into it and deleted. Research reports the `research` skill wrote stay where the repo keeps notes unless superseded by an ADR or spec. Durable operational knowledge that belongs to no tracked file goes to memory (`memory_write`), not to a new document.
 

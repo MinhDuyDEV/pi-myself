@@ -35,7 +35,7 @@ extension when no command or prompt owns the name; `/skill:<name>` always works.
 | a script that reads stdin (`diagnosing-bugs`' HITL loop, `wizard`) | pi's `bash` tool runs commands with stdin closed, so the first `read` ends the script. The agent writes the script and checks it with `bash -n`; the human runs it in their own terminal or a HerdR/tmux pane and pastes the output back |
 | `/compact` | pi's own `/compact`; the phase-boundary decision order is restated in the workflow policy |
 | MCP servers | pi has no MCP client; only an adapter extension adds one (`retro` names MCP as a review question only) |
-| a background agent | a background `task`; pi-task spawns the child as a separate pi process |
+| a background agent | a background `task`: a separate pi process on the HerdR or tmux backend, an in-process session on the SDK backend |
 | a sub-agent / the Task tool | `task` with one of the roles in `.pi/agents/` |
 | a throwaway branch | plain git; nothing to translate |
 | `.claude-plugin`, `agents/openai.yaml` | upstream packaging for other hosts, not harness surface |
