@@ -2,19 +2,21 @@
 /**
  * setup-project — provision a repository for pi-myself.
  *
- * Why: pi loads three things only from the project (or user) config dir,
+ * Why: pi loads two things only from the project (or user) config dir,
  * never from an installed package:
  *
  *   1. task roles — pi-task scans its bundled defaults, ~/.pi/agent/agents,
  *      and <repo>/.pi/agents only;
- *   2. `.pi/APPEND_SYSTEM.md` — the harness workflow rules (routing, WIP cap,
- *      completion, memory discipline);
- *   3. project settings — `enableSkillCommands` is what exposes user-invoked
+ *   2. project settings — `enableSkillCommands` is what exposes user-invoked
  *      skills as `/skill:<name>`.
  *
  * Skills, prompts, and extensions need no such step: the package manifest
  * (pi.skills / pi.prompts / pi.extensions) reaches the session and task
- * children through the PackageManager.
+ * children through the PackageManager. That includes the workflow policy,
+ * which the `policy` extension injects from the package (ADR 0003); older runs
+ * copied it into `.pi/APPEND_SYSTEM.md`, and this script migrates that copy
+ * away (an edited one is kept as APPEND_SYSTEM.md.local). A repository's own
+ * APPEND_SYSTEM.md is never touched.
  *
  * A rerun is an UPDATE, not a merge. The package owns the role files — the
  * roster, the body, and every frontmatter line that shapes what a child may do
@@ -25,8 +27,7 @@
  *     package's, because the tier models are a local cost/latency choice and
  *     nothing else in the file is;
  *   - a copy the project edited is saved beside itself as `<name>.local` before
- *     it is replaced (the previous backup is overwritten) — the same
- *     convention APPEND_SYSTEM.md uses.
+ *     it is replaced (the previous backup is overwritten).
  *
  * The sha256 baseline (`.pi/pi-myself-provisioned.json`) is what tells "the
  * project edited this" apart from "this is the package's own previous
@@ -38,7 +39,7 @@
  * target is the argument or the current working directory.
  */
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -57,13 +58,17 @@ function isAgentFile(path) {
 }
 
 const agentsSource = join(packagePi, "agents");
-const appendSystemSource = join(packagePi, "APPEND_SYSTEM.md");
-if (!existsSync(agentsSource) || !existsSync(appendSystemSource)) {
-	console.error(
-		`setup-project: no .pi/agents + .pi/APPEND_SYSTEM.md next to this script (${packagePi}) — run from an unmodified pi-myself package`,
-	);
+if (!existsSync(agentsSource)) {
+	console.error(`setup-project: no .pi/agents next to this script (${packagePi}) — run from an unmodified pi-myself package`);
 	process.exit(1);
 }
+
+/**
+ * The workflow policy's opening line (the policy extension's STALE_COPY_MARKER;
+ * a test pins the two together). A project's APPEND_SYSTEM.md carrying it is a
+ * copy an older run of this script provisioned.
+ */
+const STALE_COPY_MARKER = "Runtime playbook: which process owns the work";
 
 /** What the package shipped per provisioned file at the last run — how the project's own edit is told apart from the package's previous version. */
 const BASELINE = join(targetPi, "pi-myself-provisioned.json");
@@ -126,11 +131,10 @@ function syncAgent(source, target, rel) {
 	return ["updated", edited ? `your copy saved as ${basename(target)}.local` : undefined];
 }
 
-const counts = { created: 0, updated: 0, unchanged: 0 };
+const counts = { created: 0, updated: 0, removed: 0, unchanged: 0 };
 function record([outcome, note], label) {
 	counts[outcome]++;
-	if (outcome === "created" || outcome === "updated") console.log(`${outcome.padEnd(8)} ${label}${note ? ` (${note})` : ""}`);
-	else if (note) console.log(`${outcome.padEnd(8)} ${label} (${note})`);
+	if (outcome !== "unchanged" || note) console.log(`${outcome.padEnd(8)} ${label}${note ? ` (${note})` : ""}`);
 }
 
 // 1. task roles — the package owns every line except model and thinking
@@ -140,25 +144,28 @@ for (const entry of readdirSync(agentsSource).filter((n) => n.endsWith(".md") &&
 	record(syncAgent(join(agentsSource, entry), join(targetPi, rel), rel), rel);
 }
 
-// 2. workflow rules — harness policy, always replaced; an edited project copy is
-// backed up as APPEND_SYSTEM.md.local (the previous backup is replaced)
+// 2. workflow rules — injected by the policy extension now, so a copy an older
+// run provisioned is removed (pi would append it and the extension would then
+// withhold the current policy). Stale = the hash the baseline recorded, or the
+// policy's opening line; an edited stale copy is kept as APPEND_SYSTEM.md.local.
+// A repository's own APPEND_SYSTEM.md has neither and is left alone.
 {
 	const rel = "APPEND_SYSTEM.md";
 	const target = join(targetPi, rel);
-	shippedNow[rel] = sha256(appendSystemSource);
-	if (!existsSync(target)) {
-		copyFileSync(appendSystemSource, target);
-		counts.created++;
-		console.log(`created  ${rel}`);
-	} else if (sha256(target) === sha256(appendSystemSource)) {
-		counts.unchanged++;
-	} else {
-		copyFileSync(target, `${target}.local`);
-		copyFileSync(appendSystemSource, target);
-		counts.updated++;
-		console.log(
-			`updated  ${rel} (project copy saved as APPEND_SYSTEM.md.local; moved its project rules into AGENTS.md if you still need them)`,
-		);
+	if (existsSync(target)) {
+		const text = readFileSync(target, "utf8");
+		const unedited = shippedBefore[rel] !== undefined && sha256(target) === shippedBefore[rel];
+		if (unedited || text.includes(STALE_COPY_MARKER)) {
+			if (!unedited) writeFileSync(`${target}.local`, text);
+			rmSync(target);
+			record(
+				[
+					"removed",
+					`the workflow policy is now injected by the pi-myself policy extension${unedited ? "" : `; your copy saved as ${rel}.local — move its project rules into AGENTS.md`}`,
+				],
+				rel,
+			);
+		}
 	}
 }
 
@@ -198,12 +205,13 @@ if (additions.length > 0 || corrections.length > 0) {
 if (targetRoot !== packageRoot) {
 	const files = Object.fromEntries(Object.entries(shippedNow).sort(([a], [b]) => a.localeCompare(b)));
 	const note =
-		"Written by /setup-pi-myself: sha256 of each role and of APPEND_SYSTEM.md as the pi-myself package shipped it at the last run. Commit it; it is how a project edit is told apart from the package's own previous version, which decides whether a copy is backed up as <name>.local before being refreshed.";
+		"Written by /setup-pi-myself: sha256 of each role as the pi-myself package shipped it at the last run. Commit it; it is how a project edit is told apart from the package's own previous version, which decides whether a copy is backed up as <name>.local before being refreshed.";
 	const body = `${JSON.stringify({ note, files }, null, "\t")}\n`;
 	if (!existsSync(BASELINE) || readFileSync(BASELINE, "utf8") !== body) writeFileSync(BASELINE, body);
 }
 
-console.log(`setup-project: ${counts.created} created, ${counts.updated} updated, ${counts.unchanged} unchanged in ${targetPi}`);
+const removed = counts.removed > 0 ? `, ${counts.removed} removed` : "";
+console.log(`setup-project: ${counts.created} created, ${counts.updated} updated, ${counts.unchanged} unchanged${removed} in ${targetPi}`);
 
 // 5. memory slug check (pi-workspace-memory keys memory by the git root's folder name,
 //    so two repos with the same folder name silently share one memory)

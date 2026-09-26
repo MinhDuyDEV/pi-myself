@@ -2,7 +2,7 @@
 
 `vendor/mattpocock-skills/` is written for a generic agent host. A few registered skills name a
 host mechanism pi does not have one-to-one; this file is the mapping for every one of them, and
-everything else in the registered trees runs as written. `APPEND_SYSTEM.md` carries only the
+everything else in the registered trees runs as written. The workflow policy carries only the
 pointer, because it is read in every turn and this file is needed only while working one of these
 skills. `tests/agents.test.ts` scans the vendored trees for the spawn phrasing below and fails when
 a skill that uses it has no mapping here.
@@ -23,7 +23,7 @@ Checked against pi's own loader and CLI, so nobody "fixes" these twice:
 | The skill names | On pi |
 | --- | --- |
 | `CLAUDE.md` | pi discovers `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` — the file it names is read either way |
-| `/compact` | pi's own `/compact`; the phase-boundary decision order is restated in `APPEND_SYSTEM.md` |
+| `/compact` | pi's own `/compact`; the phase-boundary decision order is restated in the workflow policy |
 | MCP servers | pi loads MCP from its own configuration |
 | A background agent | a background `task`; pi-task spawns the child as a separate pi process |
 | A sub-agent / the Task tool | `task` with one of the roles in `.pi/agents/` |
@@ -45,7 +45,7 @@ background `general` task.
 | merger subagent | a `general` task in the shape the prompt names: land the branch |
 | exploration subagent | a `general` task, notes-only shape |
 | frontier query | `tracker` op `gh-frontier` with `parent` = the spec's issue number; `frontier` for the local `.scratch/` backend |
-| worktree per implementer | the WIP cap's isolated-checkout exception, stated once in `APPEND_SYSTEM.md` under `## Task roles` |
+| worktree per implementer | the WIP cap's isolated-checkout exception, stated once in the workflow policy under `## Task roles` |
 
 ## `wayfinder`
 
@@ -57,8 +57,8 @@ points the ticket at it. Scouts run in parallel, each owning a distinct report p
 ## `code-review`
 
 Both axes run as parallel sub-agents. On pi they are two read-only tasks on the review tier, scoped
-to conformance (standards, spec) and never replacing the independent `reviewer` task APPEND_SYSTEM
-requires before a merge-ready claim — that task owns correctness, security, and regressions.
+to conformance (standards, spec) and never replacing the independent `reviewer` task the workflow
+policy requires before a merge-ready claim — that task owns correctness, security, and regressions.
 
 ## `codebase-design`
 

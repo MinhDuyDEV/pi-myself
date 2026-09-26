@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
 	appendFileSync,
 	copyFileSync,
@@ -17,9 +18,10 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 
 // The provisioning script is the only path by which an installed pi-myself
-// package makes its task roles, workflow rules (APPEND_SYSTEM.md), and the
-// settings key that exposes /skill: commands visible in a consuming repo — pi
-// loads all three from the project config dir only. Keep it honest: package
+// package makes its task roles and the settings key that exposes /skill:
+// commands visible in a consuming repo — pi loads both from the project config
+// dir only. The workflow rules are no longer copied: the policy extension
+// injects them, and a copy an older run provisioned is migrated away. Keep it honest: package
 // content, pi-task's frontmatter requirement, idempotency, user-edit
 // protection for files, user-value protection for settings.
 
@@ -36,7 +38,6 @@ function fakePackage(): { root: string; script: string } {
 	mkdirSync(join(root, "scripts"));
 	copyFileSync(SCRIPT, join(root, "scripts", "setup-project.mjs"));
 	cpSync(join(ROOT, ".pi", "agents"), join(root, ".pi", "agents"), { recursive: true });
-	copyFileSync(join(ROOT, ".pi", "APPEND_SYSTEM.md"), join(root, ".pi", "APPEND_SYSTEM.md"));
 	return { root, script: join(root, "scripts", "setup-project.mjs") };
 }
 
@@ -48,7 +49,7 @@ function packagedAgentFiles(): string[] {
 	});
 }
 
-test("setup-project provisions exactly the packaged agent files plus APPEND_SYSTEM.md", () => {
+test("setup-project provisions exactly the packaged agent files, and no APPEND_SYSTEM.md", () => {
 	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
 	runScript(target);
 
@@ -64,10 +65,9 @@ test("setup-project provisions exactly the packaged agent files plus APPEND_SYST
 		assert.match(copy, /^description: \S.+/m, `${name} must keep a catalog-visible description`);
 	}
 
-	assert.equal(
-		readFileSync(join(target, ".pi", "APPEND_SYSTEM.md"), "utf8"),
-		readFileSync(join(ROOT, ".pi", "APPEND_SYSTEM.md"), "utf8"),
-		"APPEND_SYSTEM.md must be provisioned verbatim",
+	assert.ok(
+		!existsSync(join(target, ".pi", "APPEND_SYSTEM.md")),
+		"the workflow policy is injected by the policy extension, never copied into the project",
 	);
 });
 
@@ -135,7 +135,9 @@ test("setup-project is idempotent and a rerun keeps only model and thinking from
 	const baseline = JSON.parse(readFileSync(join(target, ".pi", "pi-myself-provisioned.json"), "utf8"));
 	assert.deepEqual(
 		Object.keys(baseline.files).sort(),
-		[...packagedAgentFiles().map((name) => `agents/${name}`), "APPEND_SYSTEM.md"].sort(),
+		packagedAgentFiles()
+			.map((name) => `agents/${name}`)
+			.sort(),
 	);
 	assert.match(runScript(target), /\b0 created, 0 updated, \d+ unchanged\b/, "re-run must be a no-op");
 
@@ -155,41 +157,52 @@ test("setup-project is idempotent and a rerun keeps only model and thinking from
 	assert.ok(!existsSync(`${reviewer}.local`), "tuning a project-owned field is not an edit to back up");
 });
 
-test("setup-project always replaces APPEND_SYSTEM.md, backing up a project-edited copy as .local", () => {
-	const pkg = fakePackage();
+/** What older runs copied into a project: the workflow policy, whose opening line is the stale-copy marker. */
+const OLD_POLICY =
+	"# Workflow\n\nRuntime playbook: which process owns the work, when to delegate, how to complete.\n\n## Layering\n\n- old rules\n";
+const sha = (text: string) => createHash("sha256").update(text).digest("hex");
+
+/** A project an older setup-project provisioned: its APPEND_SYSTEM.md copy and, optionally, the baseline that recorded it. */
+function provisionedBefore(appendSystem: string, baseline?: string): string {
 	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
-	runScript(target, undefined, pkg.script);
-	const append = join(target, ".pi", "APPEND_SYSTEM.md");
+	mkdirSync(join(target, ".pi"), { recursive: true });
+	writeFileSync(join(target, ".pi", "APPEND_SYSTEM.md"), appendSystem);
+	if (baseline !== undefined) {
+		writeFileSync(join(target, ".pi", "pi-myself-provisioned.json"), JSON.stringify({ files: { "APPEND_SYSTEM.md": sha(baseline) } }));
+	}
+	return target;
+}
 
-	// a project edit is not lost: it is backed up beside the replacement
-	writeFileSync(append, `${readFileSync(append, "utf8")}\n# project rule\n`);
-	assert.match(runScript(target, undefined, pkg.script), /updated\s+APPEND_SYSTEM\.md \(project copy saved as APPEND_SYSTEM\.md\.local/);
-	assert.ok(
-		readFileSync(append, "utf8").includes("read-only tasks carry no cap"),
-		"the harness policy copy is replaced with the package's",
-	);
-	assert.ok(readFileSync(`${append}.local`, "utf8").includes("# project rule"), "the project edit survives in the .local backup");
+test("setup-project removes the workflow copy an older run provisioned, backing up only a project edit", () => {
+	// untouched copy: removed outright, nothing to keep
+	const clean = provisionedBefore(OLD_POLICY, OLD_POLICY);
+	const append = join(clean, ".pi", "APPEND_SYSTEM.md");
+	assert.match(runScript(clean), /removed\s+APPEND_SYSTEM\.md \(the workflow policy is now injected by the pi-myself policy extension\)/);
+	assert.ok(!existsSync(append), "a stale copy would suppress the injected policy");
+	assert.ok(!existsSync(`${append}.local`), "an untouched copy holds nothing of the project's");
+	const baseline = JSON.parse(readFileSync(join(clean, ".pi", "pi-myself-provisioned.json"), "utf8"));
+	assert.ok(!("APPEND_SYSTEM.md" in baseline.files), "the baseline stops tracking a file the package no longer ships");
+	assert.doesNotMatch(runScript(clean), /APPEND_SYSTEM/, "a migrated project is not reported again");
 
-	// idempotent while untouched: a matching copy reports unchanged, no backup
-	assert.match(runScript(target, undefined, pkg.script), /\b0 created, 0 updated\b/);
-	assert.ok(
-		!existsSync(`${append}.local`) || readFileSync(`${append}.local`, "utf8").includes("# project rule"),
-		"no fresh backup of an untouched copy",
-	);
+	// edited copy, with or without a baseline to prove it: the edit is kept beside the removal
+	for (const target of [
+		provisionedBefore(`${OLD_POLICY}\n# project rule\n`, OLD_POLICY),
+		provisionedBefore(`${OLD_POLICY}\n# project rule\n`),
+	]) {
+		const edited = join(target, ".pi", "APPEND_SYSTEM.md");
+		assert.match(runScript(target), /removed\s+APPEND_SYSTEM\.md \(.*your copy saved as APPEND_SYSTEM\.md\.local/);
+		assert.ok(!existsSync(edited));
+		assert.ok(readFileSync(`${edited}.local`, "utf8").includes("# project rule"), "move a project rule into AGENTS.md from the backup");
+	}
+});
 
-	// a package upgrade reaches a previously untouched copy without any backup
-	appendFileSync(join(pkg.root, ".pi", "APPEND_SYSTEM.md"), "\n# upstream policy change\n");
-	assert.match(runScript(target, undefined, pkg.script), /updated\s+APPEND_SYSTEM\.md/);
-	assert.ok(readFileSync(append, "utf8").includes("# upstream policy change"), "a policy upgrade replaces an untouched copy");
-	assert.ok(
-		!readFileSync(`${append}.local`, "utf8").includes("# upstream policy change"),
-		"the backup holds the project's own text, not the package's",
-	);
-
-	// a second project edit overwrites the previous backup: one .local, the latest project text
-	writeFileSync(append, `${readFileSync(append, "utf8")}\n# newer project rule\n`);
-	runScript(target, undefined, pkg.script);
-	assert.ok(readFileSync(`${append}.local`, "utf8").includes("# newer project rule"), "the backup is the latest project text");
+test("setup-project leaves a repository's own APPEND_SYSTEM.md alone", () => {
+	// no marker and no baseline entry: the file is the project's, and pi keeps appending it
+	const target = provisionedBefore("Project rule: answer in French.\n");
+	const output = runScript(target);
+	assert.equal(readFileSync(join(target, ".pi", "APPEND_SYSTEM.md"), "utf8"), "Project rule: answer in French.\n");
+	assert.doesNotMatch(output, /APPEND_SYSTEM/);
+	assert.ok(!existsSync(join(target, ".pi", "APPEND_SYSTEM.md.local")));
 });
 
 test("setup-project takes a package update everywhere, backing up what the project changed", () => {

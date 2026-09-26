@@ -43,7 +43,7 @@ For each command that will appear in guidance, run the narrowest safe form and r
 
 ## 4. Write
 
-`AGENTS.md`: compact, evidence-based local deltas only — what the repo ships and its entry points in one paragraph, the validated commands, paths that must not be edited, repo-specific verification and compatibility constraints. Do not copy the harness rules (`.pi/APPEND_SYSTEM.md`), the skill catalog, generic coding advice, or a roadmap into it. Cite source paths for non-obvious claims.
+`AGENTS.md`: compact, evidence-based local deltas only — what the repo ships and its entry points in one paragraph, the validated commands, paths that must not be edited, repo-specific verification and compatibility constraints. Do not copy the harness workflow policy (the `<harness>` section pi-myself injects into the system prompt), the skill catalog, generic coding advice, or a roadmap into it. Cite source paths for non-obvious claims.
 
 `PROJECT.md` (`--map`): the repository map a new session reads first — shipped surface, development support, generated and runtime state (not source of truth), reference material, sensitive areas, and the verification commands. One line per item, path first, no prose tours. Refresh an existing file in place; drop entries whose paths no longer exist.
 

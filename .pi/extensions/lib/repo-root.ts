@@ -26,7 +26,7 @@ export function packageRoot(importMetaUrl: string): string {
 	// A tuple, so the fallback below is a `string` and not `string | undefined`.
 	const candidates = [resolve(here, "..", ".."), resolve(here, "..", "..", "..")] as const;
 	for (const candidate of candidates) {
-		if (existsSync(join(candidate, ".pi", "APPEND_SYSTEM.md")) && existsSync(join(candidate, "package.json"))) return candidate;
+		if (existsSync(join(candidate, ".pi", "policy", "WORKFLOW.md")) && existsSync(join(candidate, "package.json"))) return candidate;
 	}
 	return candidates[0];
 }

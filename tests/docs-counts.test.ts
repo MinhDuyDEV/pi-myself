@@ -9,7 +9,15 @@ import { test } from "node:test";
 // decision record with history ("10 roles → 7") and is deliberately not scanned.
 
 const ROOT = resolve(import.meta.dirname, "..");
-const CURRENT_STATE_DOCS = ["README.md", "AGENTS.md", "PROJECT.md", "CONTEXT.md", ".pi/APPEND_SYSTEM.md", ".pi/agents/README.md"];
+const CURRENT_STATE_DOCS = [
+	"README.md",
+	"AGENTS.md",
+	"PROJECT.md",
+	"CONTEXT.md",
+	".pi/policy/WORKFLOW.md",
+	".pi/policy/CHILD-CONTRACT.md",
+	".pi/agents/README.md",
+];
 
 const WORDS: Record<string, number> = {
 	one: 1,

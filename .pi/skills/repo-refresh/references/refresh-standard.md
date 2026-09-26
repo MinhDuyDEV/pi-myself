@@ -22,7 +22,7 @@ Three tiers, each with one owner (PLAN.md §3 of the harness). Refresh consolida
 | Domain | `domain-modeling` (via `grill-with-docs`) | `CONTEXT.md` (or `CONTEXT-MAP.md` + per-context `CONTEXT.md`), `docs/adr/` |
 | Process configuration | `setup-matt-pocock-skills` | `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, `docs/agents/triage-labels.md`, the `## Agent skills` block in `AGENTS.md` |
 | Work tracking | the configured tracker | `.scratch/<feature>/{spec.md,map.md,issues/}` for the local backend; GitHub or GitLab issues otherwise |
-| Harness runtime | pi-myself | `.pi/agents/`, `.pi/APPEND_SYSTEM.md`, `.pi/settings.json`, `.pi/skills/`, `.pi/prompts/` (provisioned copies are refreshed by `/setup-pi-myself`, not edited) |
+| Harness runtime | pi-myself | `.pi/agents/`, `.pi/settings.json`, `.pi/skills/`, `.pi/prompts/` (provisioned copies are refreshed by `/setup-pi-myself`, not edited; the workflow policy is injected from the package, so an `APPEND_SYSTEM.md` carrying it is a stale copy that `/setup-pi-myself` removes) |
 
 Everything else under `docs/` is a candidate: parallel doctrine, contract, observability, project, and miscellaneous trees whose content belongs to an owner above get merged into it and deleted. Research reports the `research` skill wrote stay where the repo keeps notes unless superseded by an ADR or spec. Durable operational knowledge that belongs to no tracked file goes to memory (`memory_write`), not to a new document.
 

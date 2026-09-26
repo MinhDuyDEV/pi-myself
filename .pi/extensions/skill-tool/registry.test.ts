@@ -222,7 +222,7 @@ test("vendored registry: full promoted set plus local skills", () => {
 			.filter(([, meta]) => meta.bucket === "beta" && meta.modelInvoked)
 			.map(([name]) => name),
 		["pr"],
-		"beta bucket: `pr` is the only model-invoked one — when upstream changes this, update the beta prose in README.md, CONTEXT.md, and .pi/APPEND_SYSTEM.md",
+		"beta bucket: `pr` is the only model-invoked one — when upstream changes this, update the beta prose in README.md, CONTEXT.md, and .pi/policy/WORKFLOW.md",
 	);
 	for (const local of ["memory", "verification-before-completion", "source-driven-development"]) {
 		assert.ok(names.has(local), `missing local skill ${local}`);

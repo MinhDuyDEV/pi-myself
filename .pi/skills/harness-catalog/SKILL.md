@@ -5,7 +5,7 @@ description: Use when a request maps onto no flow already in context, or the use
 
 # Harness Catalog
 
-The vendored skills own the process; the harness is subordinate (see `.pi/APPEND_SYSTEM.md`). What
+The vendored skills own the process; the harness is subordinate (see the workflow policy, the `<harness>` section of the system prompt). What
 matters here is **who can start the work**: most of the main flow is user-invoked, so the model
 cannot launch it — it names the command and the human runs it. This file is the `harness-catalog`
 skill; `pi-mapping.md` beside it holds the host translations for the skills that spawn agents or

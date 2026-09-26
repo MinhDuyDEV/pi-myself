@@ -19,7 +19,7 @@
  *
  * Idempotent, and it never destroys a hook it did not write: a foreign hook is
  * preserved beside it as `<name>.local` (the same convention `setup-project.mjs`
- * uses for an edited APPEND_SYSTEM.md) before being replaced. `--check` writes
+ * uses for an edited role) before being replaced. `--check` writes
  * nothing and exits non-zero when a hook is missing or stale, which is what the
  * test suite runs.
  *

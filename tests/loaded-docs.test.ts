@@ -5,8 +5,8 @@ import { dirname, join, relative, resolve, sep } from "node:path";
 import { test } from "node:test";
 
 // Guidance an agent trusts for the present: AGENTS.md and PROJECT.md, the
-// workflow rules and role bodies (both also copied into every consuming repo),
-// the prompts, and our skills. Three drift guards over what git knows — never
+// workflow policy and child contract (.pi/policy/), the role bodies (copied
+// into every consuming repo), the prompts, and our skills. Three drift guards over what git knows — never
 // what happens to sit in this working tree, so a fresh clone (CI) and a
 // developer checkout with runtime state decide the same way:
 //   1. every relative link and backticked repo path names a tracked file or
@@ -31,7 +31,6 @@ const GUIDANCE = TRACKED.filter(
 	(file) =>
 		file === "AGENTS.md" ||
 		file === "PROJECT.md" ||
-		file === ".pi/APPEND_SYSTEM.md" ||
 		/^\.pi\/(agents|prompts|policy)\/[^/]+\.md$/.test(file) ||
 		/^\.pi\/skills\/.+\.md$/.test(file),
 );
@@ -48,11 +47,17 @@ const PATH_TOKEN = /`([A-Za-z0-9_.@-][A-Za-z0-9_.@/-]*\/[A-Za-z0-9_.@-]+\.(?:md|
 
 /**
  * Bytes of always-in-context text; raising a budget is a decision, not a fix.
- * APPEND_SYSTEM went 12,000 → 12,500 (2026-09-26) for the child contract's
- * `bash` timeout rule: a hung gate costs a blocked child, which is worth more
- * than the ~40 tokens a turn the extra line adds.
+ * The workflow policy (injected into every parent turn) went 12,000 → 12,500
+ * (2026-09-26) for the child contract's `bash` timeout rule, when the contract
+ * still lived there: a hung gate costs a blocked child, which is worth more
+ * than the ~40 tokens a turn the extra line adds. The child contract rides in
+ * every child's role body, so it gets a budget of its own.
  */
-const BYTE_BUDGET: Record<string, number> = { "AGENTS.md": 6_000, ".pi/APPEND_SYSTEM.md": 12_500 };
+const BYTE_BUDGET: Record<string, number> = {
+	"AGENTS.md": 6_000,
+	".pi/policy/WORKFLOW.md": 12_500,
+	".pi/policy/CHILD-CONTRACT.md": 2_500,
+};
 
 const read = (file: string) => readFileSync(join(ROOT, file), "utf8");
 const repoPath = (absolute: string) => relative(ROOT, absolute).split(sep).join("/");
@@ -60,7 +65,7 @@ const repoPath = (absolute: string) => relative(ROOT, absolute).split(sep).join(
 test("the guidance set is what the gates think it is", () => {
 	for (const required of [
 		"AGENTS.md",
-		".pi/APPEND_SYSTEM.md",
+		".pi/policy/WORKFLOW.md",
 		".pi/agents/reviewer.md",
 		".pi/policy/CHILD-CONTRACT.md",
 		".pi/prompts/verify.md",

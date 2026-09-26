@@ -39,7 +39,7 @@ Before round 2 or later, read every earlier report with the same review name. Pa
 
 ## Artifact
 
-Resolve `$ROOT` once per APPEND_SYSTEM (repository root), then let the script own the path, round number, and skeleton:
+Resolve `$ROOT` (the repository root) once, as the workflow policy says, then let the script own the path, round number, and skeleton:
 
 ```bash
 python3 "$ROOT/.pi/skills/ultra-review/scripts/create_ultra_review_report.py" --workspace "$ROOT" --review-name <review-name> --scope "<scope>" --review-brief-sha256 <sha256> --scout-count 10 --directive-count <count>

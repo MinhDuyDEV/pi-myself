@@ -18,14 +18,14 @@ Two prior repos fed this one: `skills/` (vendored upstream clone, relocated to `
 | D1 | Work tracking | **Matt's tracker wins.** Issue tracker via `/skill:setup-matt-pocock-skills` config (`docs/agents/issue-tracker.md`, GitHub / GitLab / local `.scratch/<feature>/issues/`). The pikit `.pi/artifacts/{TODO,PLAN,PROGRESS,DECISIONS}.md` system is **dropped** as canonical work tracking. Keep `.pi/MEMORY.md` (memory layer, different job). |
 | D2 | Upstream distribution | **Path A — vendored**: `vendor/mattpocock-skills/` is the upstream tree living in this repo; `scripts/sync-skills.mjs` re-clones it and hashes the **registered set** into `skills-lock.json` — the 25 promoted skills (plugin.json) plus, since 2026-09-15 (user decision), the beta bucket `skills/in-progress/` (`bucket: beta` in the lock; user-invoked except `pr`, which upstream made model-invoked on 2026-09-23 and the lock records as `modelInvoked: true`). `misc/` and `deprecated/` stay out. Never edit `vendor/mattpocock-skills/**` (including prose patches); pi-side adaptations live in the harness layer only. |
 | D3 | Subagents | **Use pi-task as-is** (`npm:@heyhuynhgiabuu/pi-task`); we own only `pi.skills` role overrides (`.pi/agents/`). Revisit native delegation only if pi ships one. |
-| D4 | Memory | **Use pi-workspace-memory as-is** (`git:github.com/sting8k/pi-workspace-memory`, global; named `pi-memory-md` until 2026-09-15). The harness owns the discipline (`memory` skill, APPEND_SYSTEM rule, parent-only writes), not the storage. `.pi/MEMORY.md` and `memory-nudge` retired 2026-09-14 (ADR 0002). |
+| D4 | Memory | **Use pi-workspace-memory as-is** (`git:github.com/sting8k/pi-workspace-memory`, global; named `pi-memory-md` until 2026-09-15). The harness owns the discipline (`memory` skill, the workflow policy's saving rule, parent-only writes), not the storage. `.pi/MEMORY.md` and `memory-nudge` retired 2026-09-14 (ADR 0002). |
 | D5 | Harness scope | **Only what Matt's skills lack on pi.** A local skill or prompt survives only if it encodes a harness mechanism or a host fact the model cannot infer; textbook knowledge and re-narrated process are dropped (2026-09-14 cleanup: `tps`, `shortcut-continue`, `.pi/cli/`, `/fix`, `api-and-interface-design`, `deprecation-and-migration`, `install-git-hooks`). |
 
 ### Consequences (binding)
 
 - pikit skills that overlap Matt's are **dropped**, not merged alongside: `grilling`, `test-driven-development`, `improve-codebase-architecture`, `planning-and-task-breakdown`, `code-review-and-quality`, `debugging-and-error-recovery`, `documentation-and-adrs`, `cloudflare`.
 - pikit prompts that own a process (`/create`, `/plan`, `/ship`, `/research`, and since 2026-09-14 `/fix`) are **dropped**; Matt's flow is the only process narrative (`/grill-with-docs` → `/to-spec` → `/to-tickets` → `/implement`, detours `/wayfinder`, `/triage`, `/diagnosing-bugs`; router = `ask-matt`). Harness prompts that remain: `/verify`, `/init`, `/setup-pi-myself`.
-- One flow, one vocabulary. APPEND_SYSTEM.md routes to Matt's skill names only.
+- One flow, one vocabulary. The workflow policy (`.pi/policy/WORKFLOW.md`) routes to Matt's skill names only.
 
 ## 3. Three-tier state boundary ✅
 
@@ -52,21 +52,21 @@ pi-myself/
 │       ├── skills/productivity/…   # registered: pi.skills entry 2 (7 skills)
 │       └── .claude-plugin/plugin.json  # source of truth for "promoted"
 ├── .pi/
-│   ├── APPEND_SYSTEM.md    # workflow rules (provisioned into consuming repos by setup-project)
-│   ├── policy/             # CHILD-CONTRACT.md — spliced into every role by sync-agents
+│   ├── policy/             # WORKFLOW.md — injected into the parent by the policy extension;
+│   │                       #   CHILD-CONTRACT.md — spliced into every role by sync-agents
 │   ├── skills/             # OUR layer: memory, verification-before-completion,
 │   │                       #   typescript-coding-standards, security-and-hardening,
 │   │                       #   source-driven-development, test-proof-debt-audit,
 │   │                       #   ultra-review, ultra-review-receive, repo-refresh
-│   ├── extensions/         # skill-tool/, tracker/, dcp/ (recall),
-│   │                       #   continue-after-compaction, smart-zone
+│   ├── extensions/         # policy, skill-tool/, tracker/, dcp/ (recall),
+│   │                       #   continue-after-compaction, smart-zone, provision
 │   ├── agents/             # pi-task roles, three tiers: read = explore, scout;
 │   │                       #   reason = general, designer, ultra-verifier;
 │   │                       #   review = reviewer, ultra-scout (different model family from reason)
 │   └── prompts/            # /verify /init  (/setup-pi-myself is the provision extension's command)
 ├── scripts/
 │   ├── sync-skills.mjs     # vendored-sync + lock (--check for CI)
-│   ├── setup-project.mjs   # provision a consuming repo (roles, APPEND_SYSTEM, settings)
+│   ├── setup-project.mjs   # provision a consuming repo (roles, settings; removes an old APPEND_SYSTEM copy)
 │   ├── sync-agents.mjs     # child contract → every role body (--check in npm run check)
 │   └── run-extension-tests.mjs
 ├── tests/                  # hygiene gates (see §7)
@@ -85,8 +85,8 @@ pi-myself/
 | Tracker ops are freeform prose per run | ✅ **`tracker` extension**: one tool, two backends, covering every field-level operation the skills perform (2026-09-15 audit). Local markdown over `.scratch/`: `list/frontier/show/create-spec/create-ticket/create-map/claim/resolve/out-of-scope/tick/status/block/comment`. GitHub Issues via the `gh` CLI: the same plus `gh-triage`; native sub-issue + dependency edges mirrored by `Part of: #N` / `**Blocked by:** #N` lines, triage roles mapped through `triage-labels.md`, wayfinder types as `wayfinder:<type>` labels, claim = assign @me, resolve = answer comment + close + gist into the map. Pick the backend `docs/agents/issue-tracker.md` configures. GitLab keeps its tracker doc's own workflow. |
 | PHASE-BOUNDARIES.md needs a ~150k smart-zone awareness | ✅ **`smart-zone` extension**: measures the last turn's usage against ~150k; since 2026-09-14 the reading lives in the footer status past 60% and the boundary-decision order from PHASE-BOUNDARIES.md (continue → /clear → /handoff → subagent → /compact) toasts once when the level crosses 85%/100% (pi's own footer already shows raw context %, so the meter only adds the zone and the advice). Advice only — never compacts on its own. `/smartzone` prints the current reading. Thresholds, usage summation, and the env override (`PI_SMART_ZONE_LIMIT`, min 1k, garbage falls back) are unit-smoked. |
 | pi has no permission system | ⏸ pikit's `safety` extension was ported, then removed 2026-09-05 (unused; recover from git history if a permission layer is ever wanted). |
-| Context loss after compaction | ✅ `dcp/recall` + `continue-after-compaction`; APPEND_SYSTEM tells agents to `recall` before guessing. Automatic compaction needs no resume (pi continues an in-run compaction itself; a post-run one follows a finished run); the extension only resumes a run that a manual `/compact` aborted, with a prompt that runs recall → `memory_search` → reconcile → continue. |
-| Harness rules never reach a consuming repo | ✅ **`setup-project.mjs`** (2026-09-14): pi loads task roles, `APPEND_SYSTEM.md`, and project settings only from `<repo>/.pi/` (or the user dir), never from a package — so `/setup-pi-myself` copies the roles and the rules and merges `enableSkillCommands: true` (existing keys win). Tested: provision set, verbatim rules, settings merge, idempotency, drift refresh. |
+| Context loss after compaction | ✅ `dcp/recall` + `continue-after-compaction`; the workflow policy tells agents to `recall` before guessing. Automatic compaction needs no resume (pi continues an in-run compaction itself; a post-run one follows a finished run); the extension only resumes a run that a manual `/compact` aborted, with a prompt that runs recall → `memory_search` → reconcile → continue. |
+| Harness rules never reach a consuming repo | ✅ Roles and settings: **`setup-project.mjs`** (2026-09-14) — pi loads task roles and project settings only from `<repo>/.pi/` (or the user dir), never from a package, so `/setup-pi-myself` copies the roles and enforces `enableSkillCommands: true`. Workflow rules: the **`policy` extension** (2026-09-26, ADR 0003) injects the installed package's `.pi/policy/WORKFLOW.md` as the parent's `<harness>` section before every run — a copied `APPEND_SYSTEM.md` went stale between reruns and never reached a child; `/setup-pi-myself` now removes such a copy. |
 
 ## 6. What we kept / dropped from pikit
 
@@ -153,6 +153,8 @@ pi-myself/
 - **Prompt audit (2026-09-26, user request)**: the three hand-written prompts were re-read against D5 and the rule in `README.md` (a prompt survives only if it does something no skill does). `/remember` did not: its 14 lines restated the `memory` skill's workflow, record-kinds table, boundary section, and promotion rule, so it was **deleted** rather than slimmed — the skill plus APPEND_SYSTEM's in-turn saving rule already carry the discipline, and probing `/init`'s memory step confirmed the extension's record ids and `/memory-refresh` are what the skill documents. `/init` lost its copy of the skill's `First write in a project` (now one pointer), the `Repository Root` line APPEND_SYSTEM already states, and the gate-definition sentence it shared with `/verify`; `/verify` lost the same root line, its restatement of `verification-before-completion`'s evidence rule, and the `code-review`-vs-`reviewer` sentence APPEND_SYSTEM's completion rule owns. Both keep their unique jobs — `/init` (`AGENTS.md`/`PROJECT.md` from evidence, the `## Agent skills` block preserved) and `/verify` (criteria → evidence → gates → record on the ticket through the `tracker` tool) — and every reference was swept in `AGENTS.md`, `PROJECT.md`, `CONTEXT.md`, `README.md`, `PLAN.md`, and APPEND_SYSTEM; `tests/prompts.test.ts` now asserts `/remember` stays dropped.
 
 - **The child layer, made real (2026-09-26, whole-harness audit, user decision)**: pi-task passes a role body as `--append-system-prompt`, and that flag suppresses a discovered `APPEND_SYSTEM.md` — so the "Task child contract" every entry above relied on never reached a child, and `skills:` was never a preload (pi-task keeps loading progressive). The contract now has one source, `.pi/policy/CHILD-CONTRACT.md`, which `scripts/sync-agents.mjs` splices between markers at the end of every role (`npm run agents:check` in `npm run check`); APPEND_SYSTEM keeps a parent-side pointer. It adds what a child lacked: load the skills on the body's `Load first:` line, `memory_search` first (explore gains the read tools), never ask the user (`blocked` with the question), and pi-task's own `Status:` wording. Mechanical backing: `ask_user` denied on every role, `tracker` unreachable from the roles that must not change state, `max_turns` on all seven (wrap-up before the 30-minute hard timeout), `memory` dropped from `skills:`. `general` tests only at seams the prompt names, else `blocked` with proposed seams (tdd's seam agreement is the user's, so the parent's). Gates: the contract block identical to its source, the load line, the denies, `max_turns`; tier models and the review ≠ reason family check are now read from the role files (the pinned copy in the test is gone); the spawn scan matches any sub-agent mention, which surfaced `improve-codebase-architecture` and `implement-spec` (already mapped) and exempts `writing-for-agents` by name.
+
+- **The workflow policy is injected, not copied (2026-09-26, audit, user decision — ADR 0003)**: `.pi/APPEND_SYSTEM.md` moved to `.pi/policy/WORKFLOW.md`, a path pi does not discover, and the new `policy` extension adds it to the session parent's prompt as the `<harness>` section before every run, read from the installed package — so a `pi update` reaches the rules without a rerun, and the repo's own `APPEND_SYSTEM.md` slot is the repo's again. Children are skipped (flag read at load, because the SDK backend sets `PI_TASK_TOOL_DISABLED` in the parent's process); an old provisioned copy suppresses the injection with one notice, and `/setup-pi-myself` removes it (hash baseline or the policy's opening line; an edited copy kept as `.local`; a repo's own file untouched). `packageRoot()` now keys on `.pi/policy/WORKFLOW.md`. The byte budget moved with the file, and the child contract gained its own.
 
 ## 9. Deferred / open ⏸
 

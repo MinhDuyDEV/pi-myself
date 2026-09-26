@@ -1,6 +1,6 @@
 # Agent roster
 
-Seven task roles for the `task` tool. Each file is the role's **prompt** — pi-task passes its body as the child's `--append-system-prompt`, so a body says only what the child needs (purpose, input, rules, output). Routing lives in the `description` field (the parent's catalog) and in `APPEND_SYSTEM.md`, which the child never sees: the flag suppresses a discovered `APPEND_SYSTEM.md`, so a child gets pi's base prompt, `AGENTS.md`, the skills list, and its role body. The shared rules every child follows (scope, no spawning, no questions to the user, evidence, `blocked`, memory, the `Status:` line) therefore ride in each body: `.pi/policy/CHILD-CONTRACT.md` is the one source, and `npm run agents:sync` splices it between the `child-contract` markers at the end of every role (`npm run agents:check` fails on drift). Edit the source, never a block.
+Seven task roles for the `task` tool. Each file is the role's **prompt** — pi-task passes its body as the child's `--append-system-prompt`, so a body says only what the child needs (purpose, input, rules, output). Routing lives in the `description` field (the parent's catalog) and in the workflow policy the `policy` extension injects into the session parent, which the child never sees: the extension skips task children, and the flag also suppresses any discovered `APPEND_SYSTEM.md`, so a child gets pi's base prompt, `AGENTS.md`, the skills list, and its role body. The shared rules every child follows (scope, no spawning, no questions to the user, evidence, `blocked`, memory, the `Status:` line) therefore ride in each body: `.pi/policy/CHILD-CONTRACT.md` is the one source, and `npm run agents:sync` splices it between the `child-contract` markers at the end of every role (`npm run agents:check` fails on drift). Edit the source, never a block.
 
 ## Roster and tiers
 
@@ -13,7 +13,7 @@ Three model tiers, so picking a model is mechanical: **read** roles map or searc
 | `general` | reason | yes | `implement` step execution; `implement-spec`'s implementer (cwd = a worktree the parent made), merger (land a branch), and notes-only exploration |
 | `designer` | reason | no | `codebase-design`'s DESIGN-IT-TWICE (several in parallel, one candidate each) |
 | `ultra-verifier` | reason | yes | `/skill:ultra-review-receive` — `proactive: false`, launched only by that skill |
-| `reviewer` | review | no | the independent review APPEND_SYSTEM requires before merge-ready; either axis of `code-review` when it delegates |
+| `reviewer` | review | no | the independent review the workflow policy requires before merge-ready; either axis of `code-review` when it delegates |
 | `ultra-scout` | review | no | `/skill:ultra-review` (10 identical scouts) — `proactive: false`, launched only by that skill |
 
 Read-tier roles are `readonly: true` except `scout`, whose only write is the one report path a prompt authorises. Review-tier roles are always `readonly: true`. A scout's single-file bound is prose, not machinery: pi-task cannot scope a write to a path, and `readonly: true` would break the report shape, so the bound is stated in the body and pinned by a test.
@@ -42,7 +42,7 @@ An explicit `tools:` line is an allowlist intersected with the parent's own tool
 
 pi-task never creates, merges, or removes worktrees. For parallel mutating work the **parent** runs `git worktree add`, passes the worktree as `cwd`, and later merges (a `general` "land a branch" task) and removes it. Task workspaces are not filesystem isolation by themselves.
 
-**Waiting is not a job.** When a background task settles, pi-task calls `pi.sendMessage` with `triggerTurn: true` ("so an idle parent still gets a turn" — `helpers.js` `completionDeliveryOptions`), which is why this roster's rules in `APPEND_SYSTEM.md` forbid waiting on one. A poll costs a whole turn with the whole context attached, and it competes with the concurrency the skill asked for: while implementers run, the parent does other independent work or ends its reply. Only a *foreground* `task` call blocks by design.
+**Waiting is not a job.** When a background task settles, pi-task calls `pi.sendMessage` with `triggerTurn: true` ("so an idle parent still gets a turn" — `helpers.js` `completionDeliveryOptions`), which is why the workflow policy forbids waiting on one. A poll costs a whole turn with the whole context attached, and it competes with the concurrency the skill asked for: while implementers run, the parent does other independent work or ends its reply. Only a *foreground* `task` call blocks by design.
 
 Two or more `general` implementers on one spec, end to end:
 

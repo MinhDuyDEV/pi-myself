@@ -4,13 +4,13 @@
 
 ## Entry Points
 
-- `package.json` registers `.pi/extensions/`, `.pi/skills/`, `.pi/prompts/`, and the vendored skill trees `vendor/mattpocock-skills/skills/engineering/` + `vendor/mattpocock-skills/skills/productivity/`.
+- `package.json` registers `.pi/extensions/`, `.pi/skills/`, `.pi/prompts/`, and the vendored `engineering`, `productivity`, and `in-progress` trees under `vendor/mattpocock-skills/skills/`.
 - `.pi/extensions/` contains runtime TypeScript extensions. Pi discovers top-level `.ts` files and one-level subdirectories with `index.ts`; keep tests beside their owner.
 - `.pi/skills/<name>/SKILL.md` defines our own model-visible skills; progressive references and executable helpers stay with their owning skill.
 - `vendor/mattpocock-skills/` is the **vendored upstream** `mattpocock/skills` tree. It is read-only by rule: never edit files under it. Upgrade it with `npm run sync:skills` (re-clone + rehash `skills-lock.json`).
 - `.pi/prompts/<name>.md` defines the hand-written user slash commands (`/verify`, `/init`). Skills need no wrapper: pi exposes every skill natively as `/skill:<name>`. `/setup-pi-myself` is a command the `provision` extension registers.
 - `scripts/sync-skills.mjs` is the gate for all vendored-tree changes; `--check` verifies lock integrity and is run in CI and by `npm run sync:check`. `scripts/setup-project.mjs` provisions a consuming repo (run by `/setup-pi-myself`).
-- `.pi/policy/CHILD-CONTRACT.md` is the one source of the rules every task child follows; `npm run agents:sync` splices it into the end of each role, because a child sees only its role body. Edit the source, never a generated block.
+- `.pi/policy/`: `WORKFLOW.md` is the parent's workflow policy, injected by the `policy` extension; `CHILD-CONTRACT.md` holds the rules every task child follows, spliced into the end of each role by `npm run agents:sync` (a child sees only its role body). Edit these sources, never a generated block.
 
 ## Commands
 

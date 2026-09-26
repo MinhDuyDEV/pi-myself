@@ -21,8 +21,9 @@ test("packageRoot resolves a package installed under a path containing spaces", 
 	const root = join(parent, "my package");
 	try {
 		mkdirSync(join(root, ".pi", "extensions", "tracker"), { recursive: true });
+		mkdirSync(join(root, ".pi", "policy"), { recursive: true });
 		writeFileSync(join(root, "package.json"), "{}\n");
-		writeFileSync(join(root, ".pi", "APPEND_SYSTEM.md"), "rules\n");
+		writeFileSync(join(root, ".pi", "policy", "WORKFLOW.md"), "rules\n");
 		const entry = join(root, ".pi", "extensions", "tracker", "index.ts");
 		writeFileSync(entry, "");
 		// `URL.pathname` hands back ".../my%20package/..." and every existsSync

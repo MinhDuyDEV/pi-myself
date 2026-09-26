@@ -5,7 +5,7 @@ Runtime playbook: which process owns the work, when to delegate, how to complete
 ## Layering
 
 - **Process belongs to the vendored skills** (`vendor/mattpocock-skills/`): the idea → ship flow is `grill-with-docs` → (optionally `prototype` + `handoff`) → `to-spec` → `to-tickets` → `implement` (drives `tdd` slice by slice, closes with `code-review`). Efforts too big or too foggy for one session go through `wayfinder`. Raw incoming issues go through `triage`, hard bugs through `diagnosing-bugs`, upkeep through `improve-codebase-architecture`. `ask-matt` is the router when the fit is unclear.
-- **The harness is subordinate**: this file, `.pi/skills/`, and extensions define how the runtime behaves (delegation, memory, recall, completion evidence) — never a competing process. When harness guidance and a skill disagree about process, the skill wins; stop and say so if the conflict is material. One exception: a task child never spawns (see the Task child contract), so a skill's orchestration steps are the parent's to run. A skill's own concurrency demands (code-review's two parallel axes, implement-spec's concurrent implementers) set the task count they need; the harness's steady-state limits bend to them, never the reverse.
+- **The harness is subordinate**: this policy, `.pi/skills/`, and extensions define how the runtime behaves (delegation, memory, recall, completion evidence) — never a competing process. When harness guidance and a skill disagree about process, the skill wins; stop and say so if the conflict is material. One exception: a task child never spawns (see the Task child contract), so a skill's orchestration steps are the parent's to run. A skill's own concurrency demands (code-review's two parallel axes, implement-spec's concurrent implementers) set the task count they need; the harness's steady-state limits bend to them, never the reverse.
 
 ## Skill invocation contract
 
@@ -46,7 +46,7 @@ Controlled loops: run one cycle at a time (measure → select → change → ver
 
 ### Task child contract
 
-A child never sees these rules: pi-task passes its role body as the appended system prompt, which replaces this file for the child. What binds every child — stay in scope, spawn nothing, never ask the user or write memory, `blocked` on contradicting evidence, a first line `Status: success | partial | blocked | failure` — is the generated block that ends each role in `.pi/agents/`. The prompt is the whole handoff: put every decision the child needs in it, including the seams agreed for `tdd` work.
+A child never sees this policy: the `policy` extension injects it into the session parent only, and pi-task hands a child its role body. What binds every child — stay in scope, spawn nothing, never ask the user or write memory, `blocked` on contradicting evidence, a first line `Status: success | partial | blocked | failure` — is the generated block that ends each role in `.pi/agents/`. The prompt is the whole handoff: put every decision the child needs in it, including the seams agreed for `tdd` work.
 
 ## Foundational skills
 

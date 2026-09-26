@@ -19,7 +19,7 @@ _Avoid_: "experimental skill", "unstable"
 Promoted + beta: what `package.json`, `.pi/settings.json`, the `skill` tool, and `skills-lock.json` all agree on.
 
 **Harness layer**:
-Everything pi-myself adds around the vendored tree: `.pi/` (extensions, skills, agents, prompts, settings, APPEND_SYSTEM.md) plus `scripts/` and `tests/`. The harness adapts pi to Matt's skills; it never introduces a second process.
+Everything pi-myself adds around the vendored tree: `.pi/` (extensions, skills, agents, policy, prompts, settings) plus `scripts/` and `tests/`. The harness adapts pi to Matt's skills; it never introduces a second process.
 _Avoid_: "the framework", "runtime config"
 
 **Backend (tracker)**:
@@ -30,9 +30,13 @@ _Avoid_: "mode", "driver"
 A hand-written slash command at `.pi/prompts/<name>.md` (`/verify`, `/init`). Skills are never wrapped: pi exposes each one natively as `/skill:<name>`; `/setup-pi-myself` is an extension command, not a prompt.
 _Avoid_: "wrapper" (the generated wrapper layer was removed 2026-08-30), "alias"
 
+**Workflow policy**:
+The session parent's runtime rules (layering, skill invocation, routing, task roles, completion, memory): `.pi/policy/WORKFLOW.md`, injected by the `policy` extension from the installed package as the `<harness>` system-prompt section before every run (ADR 0003). Never copied into a consuming repo; task children never see it.
+_Avoid_: "APPEND_SYSTEM" (the copied file it replaced; a repo's own `.pi/APPEND_SYSTEM.md` is something else, which pi still appends)
+
 **Child contract**:
-The rules every task child obeys (scope, no spawning, no questions to the user, no memory writes, evidence, `blocked`, the `Status:` report line). One source, `.pi/policy/CHILD-CONTRACT.md`, spliced by `npm run agents:sync` into the end of each role body — the only harness text a child receives, since pi-task's appended role body suppresses `APPEND_SYSTEM.md`.
-_Avoid_: "child rules in APPEND_SYSTEM" (a child never loads it)
+The rules every task child obeys (scope, no spawning, no questions to the user, no memory writes, evidence, `blocked`, the `Status:` report line). One source, `.pi/policy/CHILD-CONTRACT.md`, spliced by `npm run agents:sync` into the end of each role body — the only harness text a child receives, since the **workflow policy** is injected into the parent only.
+_Avoid_: "child rules in the workflow policy" (a child never sees it)
 
 **Memory record**:
 One identity-addressed Markdown file the `pi-workspace-memory` extension keeps under `~/.pi/memory-md/projects/<slug>/records/` — `state.<id>` for a fact still true, `event.<id>` for a finding tied to a moment. The harness tier of distilled knowledge; outside git, per machine.

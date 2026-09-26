@@ -111,7 +111,7 @@ test("current-state prose about the beta bucket's invocation class matches the l
 		"AGENTS.md",
 		"PROJECT.md",
 		"CONTEXT.md",
-		".pi/APPEND_SYSTEM.md",
+		".pi/policy/WORKFLOW.md",
 		".pi/agents/README.md",
 		".pi/skills/harness-catalog/pi-mapping.md",
 	];

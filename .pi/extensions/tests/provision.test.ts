@@ -39,5 +39,5 @@ test("provision registers /setup-pi-myself and never checks the provisioned copi
 	const pi = { on: (event: string) => events.push(event), registerCommand: (name: string) => commands.push(name) };
 	provisionExtension(pi as unknown as ExtensionAPI);
 	assert.deepEqual(commands, ["setup-pi-myself"]);
-	assert.deepEqual(events, [], "agents and APPEND_SYSTEM.md are the project's to edit — no warning hook of any kind");
+	assert.deepEqual(events, [], "rerunning the command is the update path — no session-start check of the provisioned copies");
 });
