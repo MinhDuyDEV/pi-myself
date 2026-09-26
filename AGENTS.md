@@ -14,24 +14,23 @@
 
 ## Commands
 
-- Install: `npm install` (dev types for the extensions live in the root `devDependencies`; a consuming repo's `pi install` pulls none of them).
+- Install: `npm install` (extension dev types live in root `devDependencies`; a consuming repo's `pi install` pulls none).
 - Tests: `npm test` (extensions + skills).
 - Skill/catalog tests: `node --test tests/*.test.ts`.
 - Lint + format: `npm run lint` (Biome, read-only check), `npm run lint:fix` (writes).
-- Root TypeScript: `npm run typecheck`.
-- Extension TypeScript: `npm run extensions:typecheck`.
+- Typecheck: `npm run typecheck` (root), `npm run extensions:typecheck` (extensions).
 - Vendored sync: `npm run sync:skills` (upgrade), `npm run sync:check` (verify).
 - Child contract: `npm run agents:sync` (rewrite the role blocks), `npm run agents:check` (verify).
 - Git guardrail: `npm run hooks:install` (pre-commit staged check; `-- --trailer` also stamps the session id), `npm run hooks:check` (verify).
 - Everything at once: `npm run check` (lint → both typechecks → tests → sync check → agents check), which is what CI runs.
 
-`biome.json` excludes `vendor/` (read-only upstream) and `skills-lock.json` (generated), and turns `noNonNullAssertion` and `noExplicitAny` off for `*.test.ts` only, where fixtures and adapter fakes make them the terse, intentional form. Do not extend that override to source files; source keeps both rules on. `biome.json` takes no comments — Biome silently ignores `files.includes` when one is present, which deselects the `vendor/` exclusion.
+`biome.json` excludes `vendor/` (read-only upstream) and `skills-lock.json` (generated), and turns `noNonNullAssertion` and `noExplicitAny` off for `*.test.ts` only, where fixtures and fakes make them the terse, intentional form. Do not extend that override to source files; source keeps both rules on. `biome.json` takes no comments — Biome silently ignores `files.includes` when one is present, which deselects the `vendor/` exclusion.
 
 ## Boundaries and Safety
 
 - `vendor/mattpocock-skills/` is upstream source of truth for process. Proposals to change it go upstream (a PR to mattpocock/skills) or into the harness layer; never a local patch.
 - Durable distilled project knowledge lives in `pi-workspace-memory` records (the `memory` skill owns its discipline, ADR 0002); domain vocabulary belongs in `CONTEXT.md`, real tradeoffs in `docs/adr/`, work units in the issue tracker.
-- Do not edit generated or runtime state under `node_modules/`, `.pi/node_modules/`, `.pi/git/`, `.pi/npm/`, `.pi/sessions/`, `.pi/task-exits/`, `.pi/artifacts/`, and `.pi/task-session-history.json`.
+- Do not edit generated or runtime state under `node_modules/`, `.pi/node_modules/`, `.pi/git/`, `.pi/npm/`, `.pi/sessions/`, `.pi/task-exits/`, `.pi/artifacts/`, and `.pi/task-session-history.json` (the `guard` extension refuses them).
 - Inspect `git status --short` before editing. Preserve unrelated user changes.
 - Treat `.pi/extensions/dcp/`, `.pi/extensions/skill-tool/`, `.pi/extensions/tracker/`, `.pi/settings.json`, shell hooks, and package lifecycle scripts as sensitive. Add focused tests before behavior changes.
 - Do not remove a skill from `.pi/skills/` without moving its unique guidance first; the vendored trees are governed by upstream, not us.

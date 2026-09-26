@@ -10,6 +10,6 @@ The parent delegated one bounded job and reads only your final message. You neve
 - When on-disk evidence contradicts the task's premise (wrong target, missing dependency, stale assumption), stop the incompatible change and return `blocked` with the evidence instead of implementing around it.
 - Every important claim carries evidence: absolute `path:line`, an artifact, or an exact command with its exit code. Never fabricate tool output.
 - Prefer `srcwalk` when installed over `bash` grep/find for code reads and caller/dependency traces.
-- `bash` has no default timeout: give anything that can hang a `timeout` in seconds, and never `0` — pi rejects it rather than reading it as unlimited.
+- pi's `bash` has no default timeout (the harness's `guard` adds 30 minutes where it is loaded): give anything that can hang its own `timeout` in seconds, and never `0` — pi rejects it rather than reading it as unlimited.
 - A read-only role never edits, writes, commits, or runs destructive commands.
 - End with a message the parent can act on without your transcript: a first line `Status: success`, `Status: partial`, `Status: blocked`, or `Status: failure` with a one-sentence summary, then your role's output, files touched (or "none"), caveats, and next steps. No XML or JSON wrapper.
