@@ -9,6 +9,7 @@ import {
 	hasTicketBodySection,
 	labelValue,
 	loadTriageLabelMap,
+	mapNotesOf,
 	NOT_READY_ROLES,
 	replaceSection,
 	replaceTicketBody,
@@ -989,6 +990,7 @@ export function ghCreateTicketOp(root: string, params: TrackerParams, run: GhRun
 export function ghCreateMapOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	const title = params.title?.trim() || params.feature?.trim() || "";
 	if (!title) throw new TrackerError("create-map requires a title (the effort name)");
+	const notesText = mapNotesOf(params.op, params.notes, params.what);
 	const body = [
 		"## Destination",
 		"",
@@ -997,7 +999,7 @@ export function ghCreateMapOp(root: string, params: TrackerParams, run: GhRun = 
 		"",
 		"## Notes",
 		"",
-		params.what?.trim() || "(domain; skills every session should consult; standing preferences)",
+		notesText || "(domain; skills every session should consult; standing preferences)",
 		"",
 		"## Decisions so far",
 		"",
@@ -1005,7 +1007,7 @@ export function ghCreateMapOp(root: string, params: TrackerParams, run: GhRun = 
 		"",
 		"## Not yet specified",
 		"",
-		params.notes?.trim() || "(in-scope fog you cannot ticket yet)",
+		params.fog?.trim() || "(in-scope fog you cannot ticket yet)",
 		"",
 		"## Out of scope",
 		"",

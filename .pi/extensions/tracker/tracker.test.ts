@@ -175,7 +175,7 @@ test("create-spec publishes .scratch/<feature>/spec.md once; list shows every ti
 test("wayfinder child: Type line + Question body; out-of-scope closes and gists into the map's Out of scope", () => {
 	const root = tempRepo();
 	try {
-		op(root, { op: "create-map", feature: "import", destination: "A working import pipeline.", notes: "encoding handling" });
+		op(root, { op: "create-map", feature: "import", destination: "A working import pipeline.", fog: "encoding handling" });
 		const map0 = readFileSync(join(root, ".scratch", "import", "map.md"), "utf8");
 		assert.match(map0, /## Not yet specified\n\nencoding handling/);
 
@@ -969,6 +969,40 @@ test("a holder whose lock was stolen does not delete the thief's lock", () => {
 		});
 		assert.equal(existsSync(lock), true, "the thief's lock survives the holder's release");
 		assert.equal(readFileSync(lock, "utf8"), "thief");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("create-map: notes fills Notes, fog fills Not yet specified, title names the map (R15)", () => {
+	const root = tempRepo();
+	try {
+		op(root, {
+			op: "create-map",
+			feature: "imp",
+			title: "CSV import",
+			destination: "d",
+			notes: "consult the domain skill",
+			fog: "encoding handling",
+		});
+		const map = readFileSync(join(root, ".scratch", "imp", "map.md"), "utf8");
+		assert.match(map, /^# Map: CSV import\n/);
+		assert.match(map, /## Notes\n\nconsult the domain skill\n/);
+		assert.match(map, /## Not yet specified\n\nencoding handling\n/);
+
+		// `what` still fills Notes when `notes` is absent; no title keeps the feature
+		op(root, { op: "create-map", feature: "old", destination: "d", what: "legacy notes" });
+		const legacy = readFileSync(join(root, ".scratch", "old", "map.md"), "utf8");
+		assert.match(legacy, /^# Map: old\n/);
+		assert.match(legacy, /## Notes\n\nlegacy notes\n/);
+		assert.match(legacy, /## Not yet specified\n\n\(in-scope fog/);
+
+		// the old call shape (what = Notes, notes = fog) would put the fog into Notes
+		assert.throws(
+			() => op(root, { op: "create-map", feature: "both", destination: "d", what: "n", notes: "f" }),
+			/Notes = "notes" \(or "what"\); Not yet specified = "fog"/,
+		);
+		assert.equal(existsSync(join(root, ".scratch", "both")), false, "nothing is written");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

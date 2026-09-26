@@ -37,6 +37,7 @@ import {
 	isFeatureSlug,
 	listFeatures,
 	listTickets,
+	mapNotesOf,
 	outOfScopeTicket,
 	resolveTicket,
 	setTicketField,
@@ -162,7 +163,9 @@ export function runOp(root: string, params: TrackerParams): string {
 		}
 
 		case "create-map": {
-			const file = createMap(root, reqFeature(params), params.destination ?? "", params.what ?? "", params.notes ?? "", "");
+			const feature = reqFeature(params);
+			const notes = mapNotesOf(params.op, params.notes, params.what);
+			const file = createMap(root, feature, params.destination ?? "", notes, params.fog?.trim() ?? "", "", params.title ?? "");
 			return `Map written: ${rel(root, file)}`;
 		}
 

@@ -666,14 +666,38 @@ function ticketBody(
 	).join("\n");
 }
 
-/** Create `.scratch/<effort>/map.md` — the wayfinder map skeleton. */
-export function createMap(repoRoot: string, feature: string, destination: string, notes: string, fog: string, outOfScope: string): string {
+/** The map's Notes text for create-map / gh-create-map: `notes`, or `what`
+ * when `notes` is absent. Both at once is refused: `notes` used to fill "Not
+ * yet specified" while `what` filled Notes, so that old call shape would now
+ * silently put the fog into Notes. */
+export function mapNotesOf(op: string, notes: string | undefined, what: string | undefined): string {
+	const fromNotes = notes?.trim() ?? "";
+	const fromWhat = what?.trim() ?? "";
+	if (fromNotes && fromWhat) {
+		throw new TrackerError(
+			`${op} got both "notes" and "what": give one. The map's sections are Notes = "notes" (or "what"); Not yet specified = "fog"`,
+		);
+	}
+	return fromNotes || fromWhat;
+}
+
+/** Create `.scratch/<effort>/map.md` — the wayfinder map skeleton, headed
+ * `# Map: <title>` (the feature slug when no title is given). */
+export function createMap(
+	repoRoot: string,
+	feature: string,
+	destination: string,
+	notes: string,
+	fog: string,
+	outOfScope: string,
+	title = "",
+): string {
 	createFeature(repoRoot, feature);
 	const file = join(featureDir(repoRoot, feature), "map.md");
 	writeNewFile(
 		file,
 		[
-			`# Map: ${feature}`,
+			`# Map: ${title.trim() || feature}`,
 			"",
 			"Label: wayfinder:map",
 			"",

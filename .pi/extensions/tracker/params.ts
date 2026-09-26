@@ -53,7 +53,10 @@ export interface TrackerParams {
 	criteria?: string[];
 	index?: number;
 	destination?: string;
+	/** Map Notes (create-map); `what` is accepted when this is absent. */
 	notes?: string;
+	/** Map "Not yet specified" fog (create-map). */
+	fog?: string;
 	/** Map section a `note` appends to (default `Notes`). */
 	section?: string;
 }
@@ -68,11 +71,16 @@ export const trackerSchema = Type.Object({
 	),
 	feature: Optional(Type.String({ description: "Feature/effort slug under .scratch/ (local ops)." })),
 	ticket: Optional(Type.String({ description: "Ticket id (1 or 01), file slug, or exact title; GitHub: the issue number." })),
-	title: Optional(Type.String({ description: "Title (create-spec, create-ticket, create-map, edit)." })),
+	title: Optional(
+		Type.String({
+			description:
+				"Title (create-spec, create-ticket, edit); create-map: the effort name, the map's heading `Map: <title>` (local default: the feature slug).",
+		}),
+	),
 	what: Optional(
 		Type.String({
 			description:
-				"Body text: spec body (create-spec), what-to-build or the wayfinder question (create-ticket), replacement body (edit), map Notes (create-map), comment body (comment), the line to append (note).",
+				"Body text: spec body (create-spec), what-to-build or the wayfinder question (create-ticket), replacement body (edit), map Notes (create-map, only when 'notes' is absent; giving both is an error), comment body (comment), the line to append (note).",
 		}),
 	),
 	answer: Optional(Type.String({ description: "Resolution answer (resolve) or the reason (out-of-scope)." })),
@@ -106,7 +114,10 @@ export const trackerSchema = Type.Object({
 		}),
 	),
 	destination: Optional(Type.String({ description: "Map destination (create-map)." })),
-	notes: Optional(Type.String({ description: "Map 'Not yet specified' fog at charting time (create-map)." })),
+	notes: Optional(
+		Type.String({ description: "Map 'Notes' section at charting time (create-map); 'what' is accepted instead, never both." }),
+	),
+	fog: Optional(Type.String({ description: "Map 'Not yet specified' fog at charting time (create-map)." })),
 	section: Optional(
 		Type.String({ description: "Map section a note appends to (default 'Notes'; e.g. 'Not yet specified', 'Out of scope')." }),
 	),

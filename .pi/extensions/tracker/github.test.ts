@@ -1396,3 +1396,21 @@ test("a body-named parent is used without asking GitHub for a native parent (R11
 		"no extra call when the body names the parent",
 	);
 });
+
+test("gh-create-map: notes fills Notes, fog fills Not yet specified, and notes with what is refused (R15)", () => {
+	const gh = fakeGh([], { labels: ["wayfinder:map"] });
+	ghCreateMapOp("/tmp", { op: "gh-create-map", title: "Importer", notes: "consult the domain skill", fog: "encoding handling" }, gh.run);
+	const body = gh.edits.find((e) => e.args[1] === "create")!.input ?? "";
+	assert.match(body, /## Notes\n\nconsult the domain skill\n/);
+	assert.match(body, /## Not yet specified\n\nencoding handling\n/);
+
+	ghCreateMapOp("/tmp", { op: "gh-create-map", title: "Legacy", what: "legacy notes" }, gh.run);
+	assert.match(gh.edits.filter((e) => e.args[1] === "create").at(-1)!.input ?? "", /## Notes\n\nlegacy notes\n/);
+
+	const before = gh.edits.length;
+	assert.throws(
+		() => ghCreateMapOp("/tmp", { op: "gh-create-map", title: "Old shape", what: "n", notes: "f" }, gh.run),
+		/Notes = "notes" \(or "what"\); Not yet specified = "fog"/,
+	);
+	assert.equal(gh.edits.length, before, "nothing is created");
+});
