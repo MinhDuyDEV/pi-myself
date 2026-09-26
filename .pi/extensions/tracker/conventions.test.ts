@@ -13,7 +13,7 @@ import { TRACKER_OPS, type TrackerOp } from "./params.js";
 // the operations they document and fails when one is neither wired into
 // TRACKER_OPS nor recorded below as deliberately left to prose. Without it, a
 // sync that adds a tracker convention diverges silently — the op set was last
-// audited by hand (PLAN.md §5, extension pass 2026-09-15) and nothing has
+// audited by hand (docs/history.md, "Extension pass" 2026-09-15) and nothing has
 // watched it since.
 
 const ROOT = resolve(import.meta.dirname, "..", "..", "..");
@@ -53,7 +53,7 @@ const COVERAGE: Coverage[] = [
 			"apply / remove labels": { ops: ["gh-status"] },
 			close: { ops: ["gh-resolve", "gh-out-of-scope"] },
 			// The PR surface is a triage entry point, not a tracker field op:
-			// PLAN.md §5/§130 record it as left to prose. If upstream turns PRs
+			// PLAN.md §5 (tracker row) records it as left to prose. If upstream turns PRs
 			// into a request surface this entry is the prompt to wire it.
 			"read a pr": { ops: [], proseOnly: "PR triage reads go through plain `gh pr view`; recorded as left to prose in PLAN.md §5" },
 			"list external prs for triage": { ops: [], proseOnly: "same PR surface; PLAN.md §5" },
