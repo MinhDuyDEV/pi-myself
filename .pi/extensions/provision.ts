@@ -9,12 +9,14 @@ import { packageRoot, resolveRepoRoot } from "./lib/repo-root.js";
  * where it lives), copying what pi only loads from the project's own `.pi/`
  * (task roles, APPEND_SYSTEM.md, the enableSkillCommands setting).
  *
- * No session-start check: the copies belong to the project, which edits them
- * to fit, so a difference from the package is nothing to warn about.
- * Rerunning the command after an upgrade refreshes the task roles the project
- * never touched and keeps the rest (setup-project's baseline).
- * APPEND_SYSTEM.md is the exception: harness policy, always replaced, with
- * the project's edited copy backed up as APPEND_SYSTEM.md.local.
+ * No session-start check: rerunning the command IS the update path, and the
+ * script owns the outcome. It refreshes the task roles from the package —
+ * keeping only each role's `model` and `thinking`, which are the project's
+ * cost/latency choice — always replaces APPEND_SYSTEM.md (harness policy), and
+ * enforces `enableSkillCommands` in settings.json, backing up an edited copy as
+ * .local first. A copy the project changed outside those two role fields is
+ * refreshed too, after its own .local backup, so a harness fix never waits
+ * behind a stale copy.
  */
 
 export default function provisionExtension(pi: ExtensionAPI): void {
@@ -22,7 +24,7 @@ export default function provisionExtension(pi: ExtensionAPI): void {
 
 	pi.registerCommand("setup-pi-myself", {
 		description:
-			"Provision this repository for pi-myself: task roles, APPEND_SYSTEM.md (harness policy — always replaced, an edited copy backed up as .local), enableSkillCommands (idempotent; keeps project edits to task roles)",
+			"Provision or update this repository for pi-myself: refresh the task roles (keeping each role's model and thinking), replace APPEND_SYSTEM.md (an edited copy backed up as .local), enforce enableSkillCommands (previous settings.json kept as .local; a project-added role is never touched)",
 		async handler(_args, ctx) {
 			const root = resolveRepoRoot(ctx.cwd);
 			const script = join(pkg, "scripts", "setup-project.mjs");

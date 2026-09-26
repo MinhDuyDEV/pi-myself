@@ -71,19 +71,32 @@ test("setup-project provisions exactly the packaged agent files plus APPEND_SYST
 	);
 });
 
-test("setup-project adds enableSkillCommands without touching keys the project already sets", () => {
+test("setup-project enforces the settings key it manages and leaves every other key alone", () => {
 	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
 	mkdirSync(join(target, ".pi"), { recursive: true });
-	writeFileSync(join(target, ".pi", "settings.json"), JSON.stringify({ theme: "dark", enableSkillCommands: false }));
-	runScript(target);
-	const merged = JSON.parse(readFileSync(join(target, ".pi", "settings.json"), "utf8"));
-	assert.equal(merged.theme, "dark", "unrelated keys survive");
-	assert.equal(merged.enableSkillCommands, false, "an explicit project value wins over the harness default");
+	const settingsPath = join(target, ".pi", "settings.json");
+	writeFileSync(settingsPath, JSON.stringify({ theme: "dark", enableSkillCommands: false }));
+	const first = runScript(target);
+	const merged = JSON.parse(readFileSync(settingsPath, "utf8"));
+	assert.equal(merged.theme, "dark", "a key the harness does not manage survives");
+	assert.equal(merged.enableSkillCommands, true, "the harness-managed key is enforced, not merged");
+	assert.match(first, /settings\.json \(enableSkillCommands: false → true; previous file saved as settings\.json\.local\)/);
+	assert.equal(
+		JSON.parse(readFileSync(`${settingsPath}.local`, "utf8")).enableSkillCommands,
+		false,
+		"the corrected value is kept in the backup",
+	);
+
+	// settled: the correction is reported once, and no further backup is written
+	writeFileSync(`${settingsPath}.local`, "sentinel");
+	assert.match(runScript(target), /\b0 created, 0 updated, \d+ unchanged\b/);
+	assert.equal(readFileSync(`${settingsPath}.local`, "utf8"), "sentinel", "an untouched settings file is never re-backed-up");
 
 	const fresh = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
 	runScript(fresh);
 	const created = JSON.parse(readFileSync(join(fresh, ".pi", "settings.json"), "utf8"));
 	assert.equal(created.enableSkillCommands, true, "a fresh project gets /skill: commands enabled");
+	assert.ok(!existsSync(join(fresh, ".pi", "settings.json.local")), "adding a missing key is not a correction");
 });
 
 test("setup-project reports the pi-workspace-memory slug and warns when that slug already has records", () => {
@@ -116,7 +129,7 @@ test("setup-project reports the pi-workspace-memory slug and warns when that slu
 	assert.match(runScript(target, home), /\/new-memory\/projects\/my-app /, "the current key wins over the legacy key");
 });
 
-test("setup-project is idempotent and never overwrites or restores a task role the project edited or deleted", () => {
+test("setup-project is idempotent and a rerun keeps only model and thinking from the project's copy", () => {
 	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
 	runScript(target);
 	const baseline = JSON.parse(readFileSync(join(target, ".pi", "pi-myself-provisioned.json"), "utf8"));
@@ -124,13 +137,22 @@ test("setup-project is idempotent and never overwrites or restores a task role t
 		Object.keys(baseline.files).sort(),
 		[...packagedAgentFiles().map((name) => `agents/${name}`), "APPEND_SYSTEM.md"].sort(),
 	);
-	assert.match(runScript(target), /\b0 created, 0 updated, 0 kept\b/, "re-run must be a no-op");
+	assert.match(runScript(target), /\b0 created, 0 updated, \d+ unchanged\b/, "re-run must be a no-op");
 
-	const edited = join(target, ".pi", "agents", "reviewer.md");
-	writeFileSync(edited, `${readFileSync(edited, "utf8")}\nproject rule\n`);
-	const rerun = runScript(target);
-	assert.match(rerun, /\b0 created, 0 updated, 1 kept\b/);
-	assert.ok(readFileSync(edited, "utf8").includes("project rule"), "a project edit survives");
+	// the two fields a project tunes survive a rerun; the merge reproduces the
+	// file exactly, so tuning them is not an "edit" that needs a backup
+	const reviewer = join(target, ".pi", "agents", "reviewer.md");
+	writeFileSync(
+		reviewer,
+		readFileSync(reviewer, "utf8")
+			.replace(/^model: .*$/m, "model: local/reviewer")
+			.replace(/^thinking: .*$/m, "thinking: low"),
+	);
+	assert.match(runScript(target), /\b0 created, 0 updated, \d+ unchanged\b/);
+	const kept = readFileSync(reviewer, "utf8");
+	assert.match(kept, /^model: local\/reviewer$/m, "the project's model survives");
+	assert.match(kept, /^thinking: low$/m, "the project's thinking survives");
+	assert.ok(!existsSync(`${reviewer}.local`), "tuning a project-owned field is not an edit to back up");
 });
 
 test("setup-project always replaces APPEND_SYSTEM.md, backing up a project-edited copy as .local", () => {
@@ -170,13 +192,17 @@ test("setup-project always replaces APPEND_SYSTEM.md, backing up a project-edite
 	assert.ok(readFileSync(`${append}.local`, "utf8").includes("# newer project rule"), "the backup is the latest project text");
 });
 
-test("setup-project takes a package update into untouched copies and names the kept ones", () => {
+test("setup-project takes a package update everywhere, backing up what the project changed", () => {
 	const pkg = fakePackage();
 	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
 	runScript(target, undefined, pkg.script);
 	const agents = join(target, ".pi", "agents");
+
+	// a body edit is no longer an exemption: it is refreshed after a backup, and
+	// a deleted role comes back, because the roster and the body are the harness's
 	writeFileSync(join(agents, "reviewer.md"), `${readFileSync(join(agents, "reviewer.md"), "utf8")}\nproject rule\n`);
 	rmSync(join(agents, "designer.md"));
+	writeFileSync(join(agents, "my-role.md"), "---\ndescription: a role this project added\n---\nbody\n");
 
 	for (const name of ["general.md", "reviewer.md", "designer.md"])
 		appendFileSync(join(pkg.root, ".pi", "agents", name), "\nupstream change\n");
@@ -185,26 +211,29 @@ test("setup-project takes a package update into untouched copies and names the k
 
 	assert.match(upgraded, /updated\s+agents\/general\.md/);
 	assert.ok(readFileSync(join(agents, "general.md"), "utf8").includes("upstream change"), "an untouched copy takes the update");
-	assert.match(upgraded, /kept\s+agents\/reviewer\.md \(edited in this project and changed in the package/);
-	const reviewer = readFileSync(join(agents, "reviewer.md"), "utf8");
-	assert.ok(reviewer.includes("project rule") && !reviewer.includes("upstream change"), "an edited copy is left as the project wrote it");
-	assert.match(upgraded, /kept\s+agents\/designer\.md \(removed in this project/);
-	assert.ok(!existsSync(join(agents, "designer.md")), "a deleted copy is not brought back");
+	assert.match(upgraded, /updated\s+agents\/reviewer\.md \(your copy saved as reviewer\.md\.local\)/);
+	assert.ok(readFileSync(join(agents, "reviewer.md"), "utf8").includes("upstream change"), "a body edit is refreshed too");
+	assert.ok(readFileSync(`${join(agents, "reviewer.md")}.local`, "utf8").includes("project rule"), "and the edit is kept beside it");
+	assert.match(upgraded, /created\s+agents\/designer\.md \(was deleted in this project/);
+	assert.ok(existsSync(join(agents, "designer.md")), "a deleted role is restored");
 	assert.match(upgraded, /created\s+agents\/new-role\.md/);
+	assert.ok(existsSync(join(agents, "my-role.md")), "a role the project added is not the harness's to delete");
 
 	const settled = runScript(target, undefined, pkg.script);
 	assert.match(settled, /\b0 created, 0 updated\b/);
-	assert.doesNotMatch(settled, /^kept/m, "a kept copy is reported once per package change, not on every run");
+	assert.doesNotMatch(settled, /^updated/m, "a refreshed copy is reported once, not on every run");
 });
 
-test("setup-project keeps a differing copy that predates the baseline", () => {
+test("setup-project refreshes a differing copy when there is no baseline to compare against", () => {
 	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
 	runScript(target);
 	rmSync(join(target, ".pi", "pi-myself-provisioned.json"));
 	const probe = join(target, ".pi", "agents", "reviewer.md");
 	writeFileSync(probe, `${readFileSync(probe, "utf8")}\nproject rule\n`);
 
-	assert.match(runScript(target), /kept\s+agents\/reviewer\.md \(differs from the package and predates the baseline/);
-	assert.ok(readFileSync(probe, "utf8").includes("project rule"));
+	assert.match(runScript(target), /updated\s+agents\/reviewer\.md/);
+	assert.ok(readFileSync(probe, "utf8").includes("Do not modify files."), "the package's body is back");
+	assert.ok(!readFileSync(probe, "utf8").includes("project rule"), "an update is an update: the wrapper text is gone");
+	assert.ok(!existsSync(`${probe}.local`), "with no baseline an edit cannot be told from an old version, so nothing is backed up");
 	assert.ok(existsSync(join(target, ".pi", "pi-myself-provisioned.json")), "the run records a baseline");
 });
