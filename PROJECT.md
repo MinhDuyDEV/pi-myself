@@ -9,7 +9,7 @@
 - `.pi/extensions/tracker/conventions.test.ts` — the gate tying the tracker's op set to the vendored tracker templates: a documented operation that is neither wired nor recorded fails the suite.
 - `.pi/settings.json` — dogfood defaults (skill commands, compaction reserves, retry).
 - `.pi/skills/` — our own skills: `memory` (pi-workspace-memory workflow), `harness-catalog` (the situation-to-command map over every registered skill, plus its `pi-mapping.md` host translations), `commit-guardrails` (the git-hook installer at `install-git-hooks.mjs`), `verification-before-completion`, `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, `test-proof-debt-audit`, `ultra-review`, `ultra-review-receive`, `repo-refresh`. A skill's own helper scripts live inside its directory, the way `ultra-review/scripts/` already did, because that is what a consuming repo receives.
-- `.pi/prompts/` — hand-written slash commands: `/verify`, `/init`, `/remember`.
+- `.pi/prompts/` — hand-written slash commands: `/verify`, `/init`.
 - `.pi/extensions/provision.ts` — `/setup-pi-myself` command only (no session-start check: the provisioned copies are the project's to edit); `.pi/extensions/lib/` holds shared helpers (repo root, package root, pi's agent dir) and is deliberately not an extension.
 - `.pi/APPEND_SYSTEM.md` — the workflow rules; provisioned into consuming repos by `scripts/setup-project.mjs` because pi loads it only from a project's own `.pi/`.
 - `docs/agents/` — the per-repo skill configuration (`setup-matt-pocock-skills` writes it) and `docs/adr/` the decisions; the harness's own host translation ships inside the `harness-catalog` skill instead, so a consuming repo gets it with the package.

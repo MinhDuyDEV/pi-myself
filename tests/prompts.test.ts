@@ -64,3 +64,11 @@ test("no generated wrappers remain: user-invoked skills run via pi's native /ski
 	const offenders = readdirSync(PROMPTS).filter((file) => readFileSync(join(PROMPTS, file), "utf8").includes("AUTO-GENERATED"));
 	assert.deepEqual(offenders, [], "AUTO-GENERATED prompt wrappers are gone — pi's /skill:<name> is the single invocation surface");
 });
+
+test("/remember stays dropped: the memory skill owns the review discipline", () => {
+	assert.equal(
+		existsSync(join(PROMPTS, "remember.md")),
+		false,
+		"remember.md re-narrated the memory skill's steps (README: a prompt earns its place only when no skill does the job); use the memory skill instead",
+	);
+});

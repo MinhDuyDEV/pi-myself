@@ -38,7 +38,7 @@ pi loads task roles, `APPEND_SYSTEM.md`, and project settings only from a reposi
 | Session recall | `recall` searches persisted session JSONL (including compaction summaries) before agents guess about lost context |
 | Compaction continuity | Resumes a task that a manual `/compact` interrupted (recall → memory_search → reconcile → continue); automatic compaction never triggers a resume. APPEND_SYSTEM phase-boundary rules mirror `PHASE-BOUNDARIES.md` |
 | Smart-zone meter | Measures context against ~150k after every turn; the reading sits in the footer past 60% and the PHASE-BOUNDARIES.md decision order toasts once at 85%/100% (`/smartzone`) |
-| Memory | The `memory` skill and `/remember` drive `pi-workspace-memory` records (`state` facts, `event` findings), kept strictly apart from `CONTEXT.md` (domain) and the tracker (work units) — see `PLAN.md` §3 and ADR 0002 |
+| Memory | The `memory` skill drives `pi-workspace-memory` records (`state` facts, `event` findings), kept strictly apart from `CONTEXT.md` (domain) and the tracker (work units) — see `PLAN.md` §3 and ADR 0002 |
 | Project provisioning | `provision` extension: `/setup-pi-myself` copies what pi only loads from a repo's own `.pi/` (task roles, `APPEND_SYSTEM.md`, `enableSkillCommands`); a rerun is an update — every role is rewritten from the package with only `model` and `thinking` carried over, `APPEND_SYSTEM.md` is replaced, and anything the project changed outside those two fields is refreshed after a `<name>.local` backup |
 
 ## The process core

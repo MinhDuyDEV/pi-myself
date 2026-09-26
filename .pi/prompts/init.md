@@ -5,8 +5,6 @@ argument-hint: "[--map]"
 
 # Init: $ARGUMENTS
 
-Resolve the repository root first: `ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"`. If that fails and no project files exist here, stop.
-
 Two durable files make a future session understand this repository without re-exploring it:
 
 | File | Answers | Written by |
@@ -41,7 +39,7 @@ Ask for a thorough pass on an unfamiliar or multi-subsystem repo, a medium pass 
 
 ## 3. Validate commands
 
-Gates are the commands the repo declares in `AGENTS.md`, its manifest, build configuration, and CI — never a convention the ecosystem often has. For each command that will appear in guidance, run the narrowest safe form and record the exact command, exit code, and meaningful output; mark what could not be run `UNVERIFIED` with the reason, and an expected-but-absent category `NOT DECLARED`, never `PASS`.
+For each command that will appear in guidance, run the narrowest safe form and record the exact command, exit code, and meaningful output; mark what could not be run `UNVERIFIED` with the reason, and an expected-but-absent category `NOT DECLARED`, never `PASS`. Gates are what the repo declares (`AGENTS.md`, its manifest, build configuration, CI) — never a convention the ecosystem often has.
 
 ## 4. Write
 
@@ -51,11 +49,7 @@ Gates are the commands the repo declares in `AGENTS.md`, its manifest, build con
 
 ## 5. Seed memory (once per project)
 
-Only when the memory tools exist and `memory_search` (no query) shows either no records or the placeholder text "Customize this fact":
-
-1. Ask the user once, in one message: who they are for this project (role, what they own), the language they want replies in, and how they want decisions and reports handled.
-2. Write exactly two records with `memory_write`, overwriting the placeholders: `@state.identity` and `@state.preferences`, structured (`summary`, `facts`), nothing sensitive.
-3. Run `/memory-refresh` so this session sees them.
+Only when the memory tools exist and `memory_search` (no query) shows either no records or the placeholder text "Customize this fact": follow the `memory` skill's "First write in a project" — ask the user once, in one message, who they are for this project, the language they want replies in, and how they want decisions and reports handled; then replace the two placeholder records with real facts and run `/memory-refresh`.
 
 Repository facts stay in `AGENTS.md` and `PROJECT.md`; memory holds only what is not in a tracked file. Host or environment facts discovered during the pass are proposed in the report, not written.
 

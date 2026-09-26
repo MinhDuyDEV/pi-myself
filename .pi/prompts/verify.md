@@ -5,7 +5,7 @@ argument-hint: "<ticket> [--gates-only]"
 
 # Verify: $ARGUMENTS
 
-Resolve the repository root first: `ROOT="$(git rev-parse --show-toplevel 2>/dev/null || echo "$PWD")"`. `docs/agents/issue-tracker.md` names the backend; if it is missing, stop and tell the user to run `/skill:setup-matt-pocock-skills`. Local backend → the `tracker` ops without prefix (`feature` + `ticket`); GitHub backend → the `gh-*` ops (`ticket` = issue number). Never hand-edit ticket files or shell out to `gh` for what the tool does.
+`docs/agents/issue-tracker.md` names the backend; if it is missing, stop and tell the user to run `/skill:setup-matt-pocock-skills`. Local backend → the `tracker` ops without prefix (`feature` + `ticket`); GitHub backend → the `gh-*` ops (`ticket` = issue number). Never hand-edit ticket files or shell out to `gh` for what the tool does.
 
 `--gates-only` runs step 2 alone and reports; it never records, ticks, or completes.
 
@@ -15,7 +15,7 @@ Resolve the repository root first: `ROOT="$(git rev-parse --show-toplevel 2>/dev
 
 ## 2. Gates
 
-Gates are the commands the repo declares in `AGENTS.md`, its manifest, build configuration, and CI — run the narrowest relevant ones first, record each exact command, exit code, and meaningful output. An expected-but-absent category is `NOT DECLARED`, never `PASS`. A failing required gate stops the verification: report it.
+Run the narrowest relevant declared gate first, and record each exact command, exit code, and meaningful output. An expected-but-absent category is `NOT DECLARED`, never `PASS` — gates are what the repo declares (`AGENTS.md`, manifest, build configuration, CI), not what the ecosystem usually has. A failing required gate stops the verification: report it.
 
 ## 3. Criteria → evidence
 
@@ -31,7 +31,7 @@ For each acceptance criterion cite code, artifact, or command output:
 
 ## 4. Independent review
 
-`READY TO SHIP` requires a clean review that is not the author's: launch one read-only `reviewer` task with the diff scope, the spec, and the acceptance criteria. Any unresolved Blocker or Major finding keeps the result `NEEDS WORK`. `code-review`'s two-axis report (standards, spec) complements this task and never replaces it: its axes are scoped to conformance, this task owns correctness, security, and regressions. Cite an existing `code-review` report instead of re-running those axes.
+`READY TO SHIP` requires a clean review that is not the author's: launch one read-only `reviewer` task with the diff scope, the spec, and the acceptance criteria. Any unresolved Blocker or Major finding keeps the result `NEEDS WORK`. `code-review`'s two-axis report (standards, spec) is conformance only and never replaces the reviewer task; cite an existing report instead of re-running those axes.
 
 ## 5. Record
 
