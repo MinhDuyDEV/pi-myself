@@ -766,6 +766,13 @@ function renderComment(comment: GhComment): string {
  * missing triage role on one as "never triaged". */
 const WAYFINDER_LABEL_PREFIX = /^wayfinder:/;
 
+/** The distinct canonical state roles an issue's labels carry, in either
+ * spelling (canonical or this repo's mapped label), in triage-role order. Two
+ * spellings of one role count once; two or more roles is a conflict. */
+function stateRolesOf(roles: Map<string, string>, labels: string[]): string[] {
+	return [...roles.entries()].filter(([role, local]) => labels.includes(role) || labels.includes(local)).map(([role]) => role);
+}
+
 /** Comments are read per issue, and only for the `needs-info` bucket, from the
  * paginated REST endpoint. `gh issue list --json comments` silently returns at
  * most the first 100 comments, which made "did the reporter reply since the last
@@ -794,9 +801,11 @@ function issueComments(root: string, number: number, run: GhRun): GhComment[] | 
 	}
 }
 
-/** gh-triage: the triage skill's attention queue, oldest first — (1) never
- * triaged (no state role), (2) `needs-triage`, (3) `needs-info` where the
- * reporter has replied since the last `## Triage Notes` comment. */
+/** gh-triage: the triage skill's attention queue, oldest first — (0) issues
+ * with conflicting state roles (flagged for the maintainer, not repeated
+ * below), (1) never triaged (no state role), (2) `needs-triage`, (3)
+ * `needs-info` where the reporter has replied since the last `## Triage Notes`
+ * comment. */
 export function ghTriageOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	void params;
 	const roles = loadTriageLabelMap(root);
@@ -824,9 +833,14 @@ export function ghTriageOp(root: string, params: TrackerParams, run: GhRun = ghR
 			return true;
 		})
 		.sort((a, b) => Date.parse(a.createdAt || "0") - Date.parse(b.createdAt || "0"));
-	const untriaged = issues.filter((issue) => !issue.labels.some((label) => roleLabels.has(label)));
-	const needsTriage = issues.filter((issue) => issue.labels.includes(roleLabel(root, "needs-triage")));
-	const candidates = issues.filter((issue) => issue.labels.includes(roleLabel(root, "needs-info")));
+	// triage/SKILL.md: "If state roles conflict, flag it and ask the maintainer
+	// before doing anything else" — so a conflict gets its own first bucket and
+	// is kept out of the others (and out of the comment lookups).
+	const conflicting = issues.filter((issue) => stateRolesOf(roles, issue.labels).length > 1);
+	const queue = issues.filter((issue) => !conflicting.includes(issue));
+	const untriaged = queue.filter((issue) => !issue.labels.some((label) => roleLabels.has(label)));
+	const needsTriage = queue.filter((issue) => issue.labels.includes(roleLabel(root, "needs-triage")));
+	const candidates = queue.filter((issue) => issue.labels.includes(roleLabel(root, "needs-info")));
 	const notes: string[] = [];
 	const looked = candidates.slice(0, MAX_TRIAGE_COMMENT_LOOKUPS);
 	if (candidates.length > looked.length) {
@@ -868,6 +882,11 @@ export function ghTriageOp(root: string, params: TrackerParams, run: GhRun = ghR
 		"",
 	];
 	return [
+		`## Conflicting state roles — ask the maintainer before anything else (${conflicting.length})`,
+		...(conflicting.length
+			? conflicting.map((issue) => `- ${issueLine(issue)} · roles: ${stateRolesOf(roles, issue.labels).join(", ")}`)
+			: ["(none)"]),
+		"",
 		...bucket("Never triaged — no state role", untriaged),
 		...bucket("needs-triage", needsTriage),
 		...bucket("needs-info — reporter replied since the last Triage Notes", needsInfo),
@@ -1249,6 +1268,16 @@ function applyRole(
 	else if ((CATEGORY_ROLES as readonly string[]).includes(status)) family = new Set<string>(CATEGORY_ROLES);
 	else family = new Set<string>();
 	const remove = issue.labels.filter((name) => family.has(name) && name !== label);
+	// The maintainer's decision still applies, but a conflict it resolves (or
+	// leaves) is named rather than stripped silently (triage/SKILL.md).
+	const conflict = stateRolesOf(roles, issue.labels);
+	if (conflict.length > 1) {
+		notes.push(
+			canonical !== undefined
+				? `#${number} carried conflicting state roles (${conflict.join(", ")}); they were replaced by ${label}`
+				: `#${number} carries conflicting state roles (${conflict.join(", ")}); adding ${label} left them in place — ask the maintainer which one holds`,
+		);
+	}
 	const args = ["issue", "edit", number];
 	for (const name of remove) args.push("--remove-label", name);
 	if (!issue.labels.includes(label)) args.push("--add-label", label);

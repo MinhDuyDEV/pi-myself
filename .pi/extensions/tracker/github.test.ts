@@ -1438,3 +1438,76 @@ test("gh-show keeps structured comments older than the newest 30, in order, and 
 		"chronological order",
 	);
 });
+
+test("gh-triage flags conflicting state roles first and does not repeat them in later buckets (R18)", () => {
+	const root = mkdtempSync(join(tmpdir(), "tracker-conflict-"));
+	try {
+		mkdirSync(join(root, "docs", "agents"), { recursive: true });
+		writeFileSync(
+			join(root, "docs", "agents", "triage-labels.md"),
+			"| Label in mattpocock/skills | Label in our tracker | Meaning |\n| --- | --- | --- |\n| `needs-triage` | `triage/new` | x |\n",
+		);
+		const apiCalls: string[] = [];
+		const gh = fakeGh(
+			[
+				{ number: 1, title: "Two states", state: "OPEN", body: "a", labels: ["triage/new", "ready-for-agent"] },
+				// two spellings of one role are not a conflict
+				{ number: 2, title: "Same role twice", state: "OPEN", body: "b", labels: ["needs-triage", "triage/new"] },
+				{
+					number: 3,
+					title: "Waiting and rejected",
+					state: "OPEN",
+					body: "c",
+					author: "rep",
+					labels: ["needs-info", "wontfix", "bug"],
+					comments: [{ author: "rep", body: "reply" }],
+				},
+			],
+			{ beforeRun: (args) => args[0] === "api" && apiCalls.push(args.join(" ")) },
+		);
+		const out = ghTriageOp(root, { op: "gh-triage" }, gh.run);
+		assert.match(
+			out,
+			/^## Conflicting state roles — ask the maintainer before anything else \(2\)\n- #1 — Two states.* · roles: needs-triage, ready-for-agent\n- #3 — Waiting and rejected.* · roles: needs-info, wontfix\n/,
+		);
+		assert.match(out, /## needs-triage \(1\)\n- #2 — Same role twice/);
+		assert.match(out, /## needs-info — reporter replied since the last Triage Notes \(0\)/);
+		assert.equal(
+			apiCalls.some((call) => call.includes("/comments")),
+			false,
+			"a conflicting issue needs no comment lookup",
+		);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("gh-status and gh-resolve wontfix name a state-role conflict they replace (R18)", () => {
+	const gh = fakeGh([
+		{ number: 5, title: "T", state: "OPEN", body: "", labels: ["needs-triage", "ready-for-agent", "bug"] },
+		{ number: 6, title: "U", state: "OPEN", body: "", labels: ["needs-info", "ready-for-human"] },
+		{ number: 7, title: "Clean", state: "OPEN", body: "", labels: ["needs-triage"] },
+	]);
+	const out = ghStatusOp("/tmp", { op: "gh-status", ticket: "5", status: "ready-for-human" }, gh.run);
+	assert.match(out, /#5 carried conflicting state roles \(needs-triage, ready-for-agent\); they were replaced by ready-for-human/);
+	assert.deepEqual(gh.edits.at(-1)!.args.slice(3), [
+		"--remove-label",
+		"needs-triage",
+		"--remove-label",
+		"ready-for-agent",
+		"--add-label",
+		"ready-for-human",
+	]);
+
+	const resolved = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "6", answer: "no", status: "wontfix" }, gh.run);
+	assert.match(resolved, /#6 carried conflicting state roles \(needs-info, ready-for-human\); they were replaced by wontfix/);
+
+	assert.doesNotMatch(ghStatusOp("/tmp", { op: "gh-status", ticket: "7", status: "ready-for-agent" }, gh.run), /conflicting/);
+
+	// a category change leaves the state roles alone, and says the conflict remains
+	const category = fakeGh([{ number: 8, title: "V", state: "OPEN", body: "", labels: ["needs-triage", "wontfix"] }]);
+	assert.match(
+		ghStatusOp("/tmp", { op: "gh-status", ticket: "8", status: "bug" }, category.run),
+		/#8 carries conflicting state roles \(needs-triage, wontfix\); adding bug left them in place/,
+	);
+});
