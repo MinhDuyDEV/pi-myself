@@ -1,13 +1,10 @@
 {
 	"enableSkillCommands": true,
 	"skills": [
-		".pi/skills/",
 		"../vendor/mattpocock-skills/skills/engineering",
 		"../vendor/mattpocock-skills/skills/productivity",
 		"../vendor/mattpocock-skills/skills/in-progress"
 	],
-	"prompts": [".pi/prompts/"],
-	"extensions": [".pi/extensions/"],
 	"compaction": {
 		"enabled": true,
 		"reserveTokens": 16384,

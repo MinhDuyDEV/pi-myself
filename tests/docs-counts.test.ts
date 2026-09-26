@@ -64,7 +64,7 @@ function actualCounts() {
 test("current-state docs carry no stale roster, skill, or extension counts", () => {
 	const actual = actualCounts();
 	const phrase =
-		/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:harness\s+|task\s+)?(roles?|promoted skills?|beta skills?|registered skills?|local skills?|extensions?)\b/gi;
+		/\b(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:(?!(?:of|the|a|an|in|and|or|to|for|with|by|from)\b)[a-z-]+\s+){0,2}?(roles?|promoted skills?|beta skills?|registered skills?|local skills?|extensions?)\b/gi;
 	const offenders: string[] = [];
 	for (const doc of CURRENT_STATE_DOCS) {
 		const text = readFileSync(join(ROOT, doc), "utf8");

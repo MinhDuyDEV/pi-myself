@@ -336,6 +336,71 @@ test("every vendored skill that tells an agent to spawn one is mapped for pi", (
 	);
 });
 
+/**
+ * Host tokens a vendored skill can use that pi lacks or names differently. A
+ * skill that uses one is covered only when the mapping's host table has a row
+ * for it — the spawn scan above never saw `/clear`, `CLAUDE.md` shadowing, or a
+ * script that reads stdin, which is how those went unmapped.
+ */
+const HOST_TOKENS: Array<{ token: string; used: (file: string, text: string) => boolean; row: RegExp }> = [
+	{ token: "/clear", used: (_file, text) => /(^|[\s`(])\/clear\b/.test(text), row: /^\| `\/clear` \|/m },
+	{ token: "/handoff", used: (_file, text) => /(^|[\s`(])\/handoff\b/.test(text), row: /^\| `\/handoff` \|/m },
+	{ token: "CLAUDE.md", used: (_file, text) => text.includes("CLAUDE.md"), row: /^\| `CLAUDE\.md` \|/m },
+	{ token: "claude --bg", used: (_file, text) => text.includes("claude --bg"), row: /^\| `claude --bg` \|/m },
+	{
+		token: "a script reading stdin",
+		used: (file, text) => file.endsWith(".sh") && /^[^#\n]*\bread\s+-?[a-z]/m.test(text),
+		row: /^\| a script that reads stdin/m,
+	},
+];
+
+function vendoredFiles(dir: string): string[] {
+	return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+		const path = join(dir, entry.name);
+		if (entry.isDirectory()) return vendoredFiles(path);
+		return /\.(md|sh)$/.test(entry.name) ? [path] : [];
+	});
+}
+
+test("every host token a vendored skill uses has a row in the pi mapping", () => {
+	const mapping = readFileSync(MAPPING, "utf8");
+	const offenders: string[] = [];
+	for (const { token, used, row } of HOST_TOKENS) {
+		const users = ["engineering", "productivity", "in-progress"]
+			.flatMap((bucket) => vendoredFiles(join(VENDOR, bucket)))
+			.filter((file) => used(file, readFileSync(file, "utf8")));
+		if (users.length > 0 && !row.test(mapping)) offenders.push(`${token} (used by ${users[0]}) has no row`);
+	}
+	assert.deepEqual(offenders, [], "pi-mapping.md's host table must translate every pinned token the vendored trees use");
+});
+
+test("the catalog's actor column matches each skill's invocation class", () => {
+	// A model-invoked skill labelled "human" gets handed to the user instead of
+	// loaded (domain-modeling did); a user-invoked one labelled "model" is a
+	// call the skill tool refuses.
+	const catalog = readFileSync(join(ROOT, ".pi", "skills", "harness-catalog", "SKILL.md"), "utf8");
+	const lock = JSON.parse(readFileSync(join(ROOT, "skills-lock.json"), "utf8")) as { skills: Record<string, { modelInvoked: boolean }> };
+	const modelInvoked = new Map<string, boolean>(Object.entries(lock.skills).map(([name, meta]) => [name, meta.modelInvoked]));
+	for (const entry of readdirSync(join(ROOT, ".pi", "skills"), { withFileTypes: true })) {
+		const file = join(ROOT, ".pi", "skills", entry.name, "SKILL.md");
+		if (entry.isDirectory() && existsSync(file)) {
+			modelInvoked.set(entry.name, !/^disable-model-invocation:\s*true\s*$/m.test(readFileSync(file, "utf8")));
+		}
+	}
+	const offenders: string[] = [];
+	for (const row of catalog.matchAll(/^\|[^|\n]*\| (human|model) \|([^\n]*)\|$/gm)) {
+		const [, actor, command = ""] = row;
+		for (const name of command.matchAll(/`(?:\/skill:)?([a-z0-9-]+)`/g)) {
+			const skill = name[1] ?? "";
+			const invoked = modelInvoked.get(skill);
+			if (invoked === undefined) continue; // a tool, role, or command, not a skill
+			if (actor === "human" && invoked) offenders.push(`${skill} is model-invoked but its row says human`);
+			if (actor === "model" && !invoked) offenders.push(`${skill} is user-invoked but its row says model`);
+		}
+	}
+	assert.deepEqual(offenders, []);
+});
+
 test("the catalog routes every discoverable skill", () => {
 	// A registered skill with no catalog row is a skill nobody invokes: this is
 	// how eight skills stayed invisible until the catalog existed.

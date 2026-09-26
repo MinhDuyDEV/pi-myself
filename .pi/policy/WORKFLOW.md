@@ -60,7 +60,7 @@ Non-trivial = behavior-changing code, >1 file, >2 repair loops, or research need
 
 Trust repo reality: disk → project memory (`memory_search`) → delegated exploration → docs/web. Use `recall` before guessing about compacted context; verify recalled claims on disk. Web: use the host's installed web-research tools — one search tool and one URL reader, whatever package provides them — rather than their names; prefer official docs, specific queries, and cite the primary source.
 
-At phase boundaries, decide in order: continue (if this phase is a primary source for the next) → start new → handoff (new harness/directory/colleague) → subagent → compact. Never compact mid-phase; see `ask-matt/PHASE-BOUNDARIES.md`.
+At phase boundaries, decide in order: continue (if this phase is a primary source for the next) → start new → handoff (new harness/directory/colleague) → subagent → compact. Never compact mid-phase.
 
 ## Memory & domain docs
 

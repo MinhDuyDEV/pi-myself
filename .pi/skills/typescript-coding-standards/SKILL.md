@@ -1,16 +1,16 @@
 ---
 name: typescript-coding-standards
-description: Use when writing, refactoring, or reviewing TypeScript code that needs strong domain modeling, typed errors, schema parsing at boundaries, or safe narrowing of unknown input.
+description: Use when writing, refactoring, or reviewing how TypeScript types and errors are written — branded domain types, discriminated unions, typed errors or Result returns, narrowing unknown — not for which inputs are untrusted (security-and-hardening) or module shape (codebase-design).
 ---
 
 # TypeScript Coding Standards
 
-Module shape, seams, and adapters are `codebase-design`'s vocabulary; the test loop is `tdd`'s. This skill covers only how types and errors are written.
+Module shape, seams, and adapters are `codebase-design`'s vocabulary; the test loop is `tdd`'s; which inputs are untrusted is `security-and-hardening`'s boundary matrix. This skill covers only how types and errors are written. The samples show shape, not formatting: the repo's formatter wins.
 
 ## Iron Laws
 
 <EXTREMELY-IMPORTANT>
-- **No `any`.** Branded primitives, schema boundaries, `unknown` + narrow.
+- **No `any` in production code.** Branded primitives, schema boundaries, `unknown` + narrow. Tests follow the repo's own rule (this harness relaxes it in `*.test.ts`).
 - **Errors as data.** Typed domain errors or a `Result`-style return, in whatever shape the project already uses; no untyped throws for recoverable failures.
 - **Pure core, effects at edges.** Business logic takes inputs, returns values.
 - **Types describe the domain.** `UserId` not `string`.
@@ -33,7 +33,7 @@ type RequestState<T> =
 
 ## Schema Boundaries
 
-Validate untrusted input at the edge; inside, trust the types. `req.body`, `JSON.parse`, `process.env`, query strings, queue payloads, and rows read back from a database never reach the core undecoded.
+The TypeScript shape of `security-and-hardening`'s boundary rule: decode at the edge with a schema whose output is the domain type, so the core never holds `unknown` or `any`; inside, trust the types.
 
 ```ts
 const input = UserSchema.parse(req.body) // `User`, not `unknown`

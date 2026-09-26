@@ -68,12 +68,12 @@ name a mechanism pi lacks — read it from this skill's own directory.
 | Situation | Actor | Command or role |
 | --- | --- | --- |
 | Per-repo skill configuration | human | `/skill:setup-matt-pocock-skills` |
-| Install harness roles and policy | human | `/setup-pi-myself` |
+| Install or update the harness's task roles | human | `/setup-pi-myself` |
 | Install a git guardrail | human | `/skill:commit-guardrails` |
 | TypeScript deep-module boundaries | human | `/skill:setup-ts-deep-modules` |
 | Steps only a human can perform | model | `wizard` |
 | Design a recurring workflow loop | human | `/skill:loop-me` |
-| Project vocabulary and glossary | human | `/skill:domain-modeling` |
+| Project vocabulary and glossary | model | `domain-modeling` |
 | Retrospective over past sessions | human | `/skill:retro` |
 
 ## Writing and teaching

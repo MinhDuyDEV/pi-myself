@@ -21,9 +21,9 @@ Apply before any "done", "fixed", "passing", "works", or "ready to merge" claim;
 | Bug is fixed | Regression fails without the fix, passes with it |
 | Shipped | All above plus commit or PR link |
 
-Prose and code review are inspection, not verification. If the check fails, fix it or report the work as blocked; if no check ran, name the exact intended command and say why.
+Prose and code review are inspection, not verification. If the check fails, fix it or report the work as blocked; if no check ran, report the claim `unverified`, name the exact intended command, and say why.
 
-A required check that ran but whose evidence could not be collected (output lost, evaluator unavailable, deadline hit) is **unobserved**: not `blocked` (the check could not run at all) and never a pass, so the result stays `partial`. A check that both passes and fails on the same revision is flaky: name the suspected nondeterminism instead of rerunning until green; it counts as unobserved.
+A required check that ran but whose evidence could not be collected (output lost, evaluator unavailable, deadline hit) is **unobserved**: not `unverified` (the check could not run at all) and never a pass, so the result stays `partial`. A check that both passes and fails on the same revision is flaky: name the suspected nondeterminism instead of rerunning until green; it counts as unobserved.
 
 ## Bar Check
 

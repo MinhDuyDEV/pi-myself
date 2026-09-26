@@ -1,11 +1,12 @@
 # The pi mapping: host mechanisms the vendored skills name
 
-`vendor/mattpocock-skills/` is written for a generic agent host. A few registered skills name a
-host mechanism pi does not have one-to-one; this file is the mapping for every one of them, and
-everything else in the registered trees runs as written. The workflow policy carries only the
-pointer, because it is read in every turn and this file is needed only while working one of these
-skills. `tests/agents.test.ts` scans the vendored trees for the spawn phrasing below and fails when
-a skill that uses it has no mapping here.
+`vendor/mattpocock-skills/` is written for a generic agent host. This file maps every host
+mechanism a registered skill names that pi lacks or names differently: follow a skill as written
+except where a row or section here translates it. The workflow policy carries only the pointer,
+because it is read in every turn and this file is needed only while working one of these skills.
+`tests/agents.test.ts` fails when a vendored skill mentions a sub-agent or background agent without
+a section here, or uses a pinned host token (`/clear`, `/handoff`, `CLAUDE.md`, `claude --bg`, a
+script that reads stdin) without a row in the table below.
 
 ## Invocation classes decide who can start the work
 
@@ -16,17 +17,27 @@ command for the human is the handoff. The `harness-catalog` skill holds the situ
 table. In the `in-progress` (beta) bucket, `pr` is the one model-invoked skill; the rest are
 user-invoked.
 
-## Not gaps
+The skills often write a command bare. A **model-invoked** skill written as a slash command
+(`/tdd`, `/code-review` inside `implement`, `implement-spec`, `loop-me`) means "call the `skill`
+tool with that name" — never hand it to the human. A **user-invoked** one typed bare by the human
+(`/grill-with-docs`) is rewritten to `/skill:grill-with-docs` by the harness's `host-commands`
+extension when no command or prompt owns the name; `/skill:<name>` always works.
 
-Checked against pi's own loader and CLI, so nobody "fixes" these twice:
+## Host commands and files
 
 | The skill names | On pi |
 | --- | --- |
-| `CLAUDE.md` | pi discovers `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD` — the file it names is read either way |
+| `/clear` | `/new` starts a fresh session (the old one stays resumable with `/resume`); the harness also registers `/clear` as the same thing |
+| `/handoff` | the `handoff` skill: `/skill:handoff` |
+| `CLAUDE.md` | pi loads **one** context file per directory, the first of `AGENTS.override.md`, `AGENTS.md`, `AGENTS.MD`, `CLAUDE.md`, `CLAUDE.MD`. Where `AGENTS.md` exists, a block written to `CLAUDE.md` is never read: put it in `AGENTS.md`, and mirror it into `CLAUDE.md` only if Claude Code also works the repo (`setup-matt-pocock-skills`, `setup-ts-deep-modules`) |
+| the global `AGENTS.md` (`retro`) | `<agent-dir>/AGENTS.md` — `~/.pi/agent/AGENTS.md` unless `PI_CODING_AGENT_DIR` moves the agent dir |
+| `claude --bg` | a new top-level pi session; see `claude-handoff` below |
+| a script that reads stdin (`diagnosing-bugs`' HITL loop, `wizard`) | pi's `bash` tool runs commands with stdin closed, so the first `read` ends the script. The agent writes the script and checks it with `bash -n`; the human runs it in their own terminal or a HerdR/tmux pane and pastes the output back |
 | `/compact` | pi's own `/compact`; the phase-boundary decision order is restated in the workflow policy |
-| MCP servers | pi loads MCP from its own configuration |
-| A background agent | a background `task`; pi-task spawns the child as a separate pi process |
-| A sub-agent / the Task tool | `task` with one of the roles in `.pi/agents/` |
+| MCP servers | pi has no MCP client; only an adapter extension adds one (`retro` names MCP as a review question only) |
+| a background agent | a background `task`; pi-task spawns the child as a separate pi process |
+| a sub-agent / the Task tool | `task` with one of the roles in `.pi/agents/` |
+| a throwaway branch | plain git; nothing to translate |
 | `.claude-plugin`, `agents/openai.yaml` | upstream packaging for other hosts, not harness surface |
 
 ## `ask-matt`
@@ -34,8 +45,29 @@ Checked against pi's own loader and CLI, so nobody "fixes" these twice:
 The router's entries are pointers, not work, so it needs no per-skill translation beyond this file.
 Two of its branches name a host mechanism: "delegate reading legwork to a background agent" for
 `/research` is the `scout` role, and "send it to a subagent" at a phase boundary is a `task` with one
-of the roles here. Its handoff branch (a fresh host session) is a new session, or `claude-handoff`'s
-background `general` task.
+of the roles here. Its fresh-session branch is `/new` (after `/skill:handoff` when the next phase
+needs a summary).
+
+## `setup-matt-pocock-skills`
+
+Its `CLAUDE.md` edit follows the table row above. The `tracker` tool covers the local and GitHub
+backends only: for GitLab or any other tracker, run the CLI recipes `docs/agents/issue-tracker.md`
+records directly.
+
+## `tdd`
+
+`tdd` confirms the seams with the user before any test. A task child cannot ask, so the parent
+agrees the seams (the spec's testing decisions, or with the user) and names them in the `general`
+prompt; a child given none returns `blocked` with the seams it proposes.
+
+## `triage`
+
+- Won't-fix is `gh-resolve` with `status:"wontfix"` (comment, close, exactly one state role). The
+  tracker's `out-of-scope` / `gh-out-of-scope` op is wayfinder's rule-out and has nothing to do with
+  triage's `.out-of-scope/` knowledge base, which triage writes as files.
+- The tracker refuses pull requests. When `docs/agents/issue-tracker.md` enables PRs as a request
+  surface, run its `gh pr` recipes directly: the one exception to "tracker work goes through the
+  tool".
 
 ## `implement-spec`
 
@@ -86,8 +118,8 @@ Environment facts are found by dispatching a sub-agent, never by asking the user
 ## `retro`
 
 "Session logs on this machine" are the `recall` tool: `scope:'project'` for this repository's
-earlier sessions, then `scope:'all'` when the pattern is not local. Two rules the skill states in
-its own terms:
+earlier sessions, then `scope:'all'` when the pattern is not local. Its "global AGENTS.md" is the
+agent-dir file in the table above. Two rules the skill states in its own terms:
 
 - A pattern is recurring only across **two or more distinct sessions**. Retries, forks, and
   repeated turns inside one session count once.
@@ -98,5 +130,8 @@ answered for this harness by the `commit-guardrails` skill.
 
 ## `claude-handoff`
 
-`claude --bg` has no pi equivalent. Run the same handoff summary as a background `general` task
-instead, and tell the user its task id.
+`claude --bg` starts an independent top-level session. On pi that is a new top-level session, not a
+task: write the handoff summary to a file (for example `$TMPDIR/handoff-<name>.md`) and have the
+human start `pi --name "<name>" @<file>` in a new terminal or HerdR pane. A background `general`
+task fits only a bounded continuation — a child cannot delegate, run `code-review` or
+`implement-spec`, or write memory, and its result returns to this session.

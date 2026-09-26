@@ -76,12 +76,18 @@ test("every local skill directory is discoverable by pi", () => {
 });
 
 test("local skill descriptions are routing-shaped and impersonal", () => {
+	// Routing shape binds model-invoked skills only: their descriptions ride in
+	// every turn and decide when the model loads them. A user-invoked skill's
+	// description is read by the human picking a command, where a summary serves
+	// better (the vendored writing-for-agents guidance says so).
 	const offenders: string[] = [];
 	for (const skill of skills) {
 		const description = frontmatterField(skill.frontmatter, "description") ?? ""; // empties are reported by the discoverability test
+		const userInvoked = frontmatterField(skill.frontmatter, "disable-model-invocation") === "true";
+		if (/\b(I|we|I'|I'll|we're|we've|we'll)\b/i.test(description)) offenders.push(`.pi/skills/${skill.dir}: description uses first person`);
+		if (userInvoked) continue;
 		if (!ALLOWED_PREFIXES.some((p) => description.startsWith(p)))
 			offenders.push(`.pi/skills/${skill.dir}: description must start with a routing prefix (Use when… / ALWAYS…)`);
-		if (/\b(I|we|I'|I'll|we're|we've|we'll)\b/i.test(description)) offenders.push(`.pi/skills/${skill.dir}: description uses first person`);
 		// A description routes; it does not summarise the procedure as "step, step, step" after a colon.
 		if (/:\s*[^.;—]*,[^.;—]*,[^.;—]*,/.test(description))
 			offenders.push(`.pi/skills/${skill.dir}: description summarises a multi-step process as a colon-list`);
@@ -90,11 +96,17 @@ test("local skill descriptions are routing-shaped and impersonal", () => {
 });
 
 test("the local set stays harness: nothing shadows the vendored process skills", () => {
+	// pi keeps the first skill it finds under a name (docs/skills.md), so a local
+	// skill named like a vendored one makes routing a matter of load order. The
+	// lock is the live list of vendored names; the constant keeps the retired
+	// pikit names that must not come back.
+	const lock = JSON.parse(readFileSync(join(ROOT, "skills-lock.json"), "utf8")) as { skills: Record<string, unknown> };
+	const vendored = new Set([...Object.keys(lock.skills), ...SHADOWED_BY_UPSTREAM]);
 	for (const skill of skills) {
 		assert.equal(
-			SHADOWED_BY_UPSTREAM.includes(skill.dir),
+			vendored.has(skill.dir),
 			false,
-			`.pi/skills/${skill.dir} duplicates a vendored skill — drop it, the vendored one wins`,
+			`.pi/skills/${skill.dir} duplicates a vendored skill — drop it; pi keeps whichever it finds first`,
 		);
 	}
 });

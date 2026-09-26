@@ -1,12 +1,12 @@
 ---
 name: source-driven-development
-description: Use when unfamiliar libraries, dependency internals, external APIs, framework behavior, migrations, or current ecosystem guidance require official documentation, version-matched source, read the tests, and cited evidence.
+description: Use when code is about to rely on external behavior — an unfamiliar library, dependency internals, an external API, framework behavior, a migration — and needs version-matched evidence (official docs, source, tests) first; decides what counts as evidence, while the research loop and its report are the research skill's.
 ---
 
 # Source-Driven Development
 
 <HARD-GATE>
-Do not guess external behavior. Cite authoritative evidence for non-trivial API decisions or label the claim unverified. When internals determine the answer, read the source before forming an opinion. A request to skip manifests, lockfiles, official docs, source, or tests does not override this gate: inspect the exact local version and consumers first, then stop if authoritative evidence is unavailable.
+Do not guess external behavior. Cite authoritative evidence for non-trivial API decisions or label the claim unverified. When internals determine the answer, read the source before forming an opinion. When the user asks to skip manifests, lockfiles, official docs, source, or tests, state the risk of guessing and ask before proceeding; otherwise inspect the exact local version and consumers first, and stop if authoritative evidence is unavailable.
 </HARD-GATE>
 
 Use this for unfamiliar or version-sensitive APIs, unexpected dependency behavior, package evaluation, migration research, and guidance that may have changed. Prefer local code search for purely project-owned behavior. The investigation loop itself (question → retrieve → conclude, and where a report lands) is the `research` skill's; this skill decides what counts as evidence.

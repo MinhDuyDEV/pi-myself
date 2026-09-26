@@ -83,6 +83,22 @@ test("package.json, .pi/settings.json, and the skill tool register the same vend
 	}
 });
 
+test("every resource path in .pi/settings.json resolves, from .pi/ as pi resolves it", () => {
+	// pi resolves project-settings paths from the project's .pi/ directory
+	// (docs/settings.md "Resources"), so ".pi/skills/" there means .pi/.pi/skills/
+	// — a dead entry that only looks like configuration.
+	const settings = JSON.parse(readFileSync(join(ROOT, ".pi", "settings.json"), "utf8")) as Record<string, unknown>;
+	const offenders: string[] = [];
+	for (const key of ["extensions", "skills", "prompts", "themes"]) {
+		const entries = settings[key];
+		if (!Array.isArray(entries)) continue;
+		for (const entry of entries) {
+			if (typeof entry === "string" && !existsSync(resolve(ROOT, ".pi", entry))) offenders.push(`${key}: ${entry}`);
+		}
+	}
+	assert.deepEqual(offenders, []);
+});
+
 test("a skill that sets disable-model-invocation sets it to exactly true", () => {
 	// The old assertion (userInvoked implies the flag) was tautological: this
 	// module derives userInvoked from the flag. What can actually go wrong is a
