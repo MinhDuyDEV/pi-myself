@@ -275,20 +275,12 @@ function replaceVendoredTree(source) {
 		throw new Error(`could not stage the new tree beside ${tree} (${error.message}); the vendored tree was left as it was`);
 	}
 	const previous = join(work, "previous");
-	const hadTree = existsSync(CLONE);
 	try {
-		if (hadTree) renameSync(CLONE, previous);
+		if (existsSync(CLONE)) renameSync(CLONE, previous);
 		renameSync(join(work, "new"), CLONE);
 	} catch (error) {
-		if (hadTree && existsSync(previous) && !existsSync(CLONE)) {
-			try {
-				renameSync(previous, CLONE);
-			} catch {
-				throw new Error(
-					`could not swap in the new tree (${error.message}), nor move the previous one back: it is at ${rel(ROOT, previous)} — move it to ${tree}, or run git checkout -- ${tree}`,
-				);
-			}
-		}
+		// throws, keeping the work folder, when the previous tree cannot go back
+		if (existsSync(previous)) movePreviousTreeBack(previous, `could not swap in the new tree (${error.message})`);
 		rmSync(work, { recursive: true, force: true });
 		throw new Error(`could not swap in the new tree (${error.message}); the vendored tree was left as it was`);
 	}
@@ -297,6 +289,21 @@ function replaceVendoredTree(source) {
 	} catch (error) {
 		// the new tree is in place; only the cleanup is left
 		console.error(`sync-skills: the previous tree could not be deleted (${error.message}); delete ${rel(ROOT, work)} by hand`);
+	}
+}
+
+/** After a failed swap moved the tree aside to `previous`: move it back, or
+ * throw naming where it is. Deleting the work folder at that point would delete
+ * the only copy, so a tree folder that reappeared meanwhile (another writer) is
+ * never overwritten or cleaned up around: the previous tree stays put. */
+function movePreviousTreeBack(previous, failure) {
+	const tree = rel(ROOT, CLONE);
+	const stranded = `the previous tree is at ${rel(ROOT, previous)}: move it to ${tree}, or run git checkout -- ${tree}`;
+	if (existsSync(CLONE)) throw new Error(`${failure}, and ${tree} was recreated meanwhile; ${stranded}`);
+	try {
+		renameSync(previous, CLONE);
+	} catch (error) {
+		throw new Error(`${failure}, nor could the previous tree be moved back (${error.message}); ${stranded}`);
 	}
 }
 

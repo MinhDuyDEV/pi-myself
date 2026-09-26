@@ -212,24 +212,39 @@ test("a sync that fails before its new tree is complete leaves the vendored tree
 	assert.equal(sync(root, "--check").status, 0, "the tree still matches its lock");
 });
 
-test("a swap that fails after the old tree was moved aside moves it back", () => {
-	const upstream = fakeUpstream();
-	const root = fakeCheckout();
-	const lockBefore = readFileSync(join(root, "skills-lock.json"), "utf8");
-	// the second rename is the new tree going into place, after the old one moved aside
-	const preload = join(root, "fail-second-rename.mjs");
+/** A `--import` preload that runs `onCall(n, from, to)` before the script's nth
+ * `renameSync`. The swap's renames, in order: 1 moves the old tree aside, 2
+ * moves the new tree into place, 3 (after a failed 2) moves the old tree back. */
+function renameFaults(root: string, onCall: string): string {
+	const preload = join(root, "rename-faults.mjs");
 	writeFileSync(
 		preload,
 		[
 			'import fs from "node:fs";',
 			'import { syncBuiltinESMExports } from "node:module";',
 			"const rename = fs.renameSync;",
+			`const onCall = ${onCall};`,
 			"let calls = 0;",
-			'fs.renameSync = (from, to) => { calls += 1; if (calls === 2) throw new Error("injected rename failure"); return rename(from, to); };',
+			"fs.renameSync = (from, to) => { calls += 1; onCall(calls, from, to); return rename(from, to); };",
 			"syncBuiltinESMExports();",
 			"",
 		].join("\n"),
 	);
+	return preload;
+}
+
+/** The previous tree's folder a failure message names, e.g. `vendor/.sync-skills-x/previous`. */
+function namedPrevious(root: string, output: string): string {
+	const path = /(vendor\/\.sync-skills-[^/\s]+\/previous)/.exec(output)?.[1];
+	assert.ok(path, `the message names where the previous tree is:\n${output}`);
+	return join(root, path);
+}
+
+test("a swap that fails after the old tree was moved aside moves it back", () => {
+	const upstream = fakeUpstream();
+	const root = fakeCheckout();
+	const lockBefore = readFileSync(join(root, "skills-lock.json"), "utf8");
+	const preload = renameFaults(root, '(n) => { if (n === 2) throw new Error("injected rename failure"); }');
 	const result = syncFrom(root, upstream.dir, ["--import", preload]);
 	assert.equal(result.status, 1, result.output);
 	assert.match(result.output, /could not swap in the new tree \(injected rename failure\); the vendored tree was left as it was/);
@@ -237,6 +252,34 @@ test("a swap that fails after the old tree was moved aside moves it back", () =>
 	assert.deepEqual(readdirSync(join(root, "vendor")), ["mattpocock-skills"], "the work folder is cleaned up");
 	assert.equal(readFileSync(join(root, "skills-lock.json"), "utf8"), lockBefore, "the lock is not rewritten");
 	assert.equal(sync(root, "--check").status, 0, "the tree still matches its lock");
+});
+
+test("a failed swap never deletes the previous tree it could not move back", () => {
+	// another writer recreates the tree's folder between the two renames: the
+	// previous tree cannot go back, and deleting the work folder would delete it
+	const upstream = fakeUpstream();
+	const taken = fakeCheckout();
+	const recreated = syncFrom(taken, upstream.dir, [
+		"--import",
+		renameFaults(taken, '(n, from, to) => { if (n === 2) { fs.mkdirSync(to); throw new Error("injected rename failure"); } }'),
+	]);
+	assert.equal(recreated.status, 1, recreated.output);
+	assert.doesNotMatch(recreated.output, /left as it was/, "the tree's folder is not what it was");
+	assert.match(recreated.output, /could not swap in the new tree \(injected rename failure\)/);
+	const kept = namedPrevious(taken, recreated.output);
+	assert.equal(existsSync(join(kept, "skills", "engineering", "ask-matt", "PHASE-BOUNDARIES.md")), true, "the previous tree is kept");
+
+	// the move back fails too: both errors are named, and the previous tree is kept
+	const stuck = fakeCheckout();
+	const twice = syncFrom(stuck, upstream.dir, [
+		"--import",
+		renameFaults(stuck, '(n) => { if (n >= 2) throw new Error("injected rename failure " + n); }'),
+	]);
+	assert.equal(twice.status, 1, twice.output);
+	assert.match(twice.output, /injected rename failure 2/, "the swap's error");
+	assert.match(twice.output, /injected rename failure 3/, "the move back's error");
+	const stranded = namedPrevious(stuck, twice.output);
+	assert.equal(existsSync(join(stranded, "skills", "engineering", "ask-matt", "PHASE-BOUNDARIES.md")), true);
 });
 
 test("the committed lock lists exactly the files git tracks under the vendored tree", () => {
