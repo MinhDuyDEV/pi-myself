@@ -4,7 +4,7 @@ model: opencode-go/deepseek-v4-flash
 thinking: max
 proactive: false
 disallowed_tools: memory_write, memory_delete
-tools: read, bash, write, edit
+tools: read, bash, write, edit, srcwalk
 ---
 
 # Ultra Verifier

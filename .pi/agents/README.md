@@ -34,7 +34,7 @@ pi-task parses frontmatter line by line: one-line `description`, comma-separated
 
 `skills:` is a **preload**, not a wish list: every listed skill rides in every run of that role. A skill a role needs in one shape only — the merge shape's `resolving-merge-conflicts` — is named in the body and loaded on demand with the skill tool instead. Every role also carries `disallowed_tools: memory_write, memory_delete`, which makes the child contract's "only the parent writes memory" rule mechanical rather than advisory.
 
-An explicit `tools:` line is an allowlist intersected with the parent's own tool names, so naming a tool a machine lacks costs nothing (it is dropped); it is also the only way a pi-runtime child gets the code-navigation tool `srcwalk`. These roles are pi-runtime only: the Claude translator rejects the pi-only names they rely on.
+An explicit `tools:` line is an allowlist intersected with the parent's own tool names, so naming a tool a machine lacks costs nothing (it is dropped). A role *without* one inherits the parent's whole registry — `pi.getAllTools()` is every registered tool, not the active set — which is how `general`, `scout`, `reviewer`, and `designer` get `srcwalk` without naming it; an explicit list is therefore the only place a role can lose a tool, and every list that reads code names `srcwalk`. These roles are pi-runtime only: the Claude translator rejects the pi-only names they rely on.
 
 ## Worktrees
 
