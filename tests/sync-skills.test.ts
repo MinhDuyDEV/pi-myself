@@ -77,6 +77,18 @@ test("sync-skills --relock records the tree without a clone, and refuses when a 
 	assert.match(refusedTree.output, /changed.*PHASE-BOUNDARIES\.md/);
 	assert.equal(readFileSync(join(edited, "skills-lock.json"), "utf8"), editedLock, "a refused relock writes nothing");
 
+	// a tree section missing its digest was edited by hand: relock must not treat
+	// it as a pre-digest lock and record a digest over whatever the tree holds now
+	const handEdited = fakeCheckout();
+	const partial = JSON.parse(readFileSync(join(handEdited, "skills-lock.json"), "utf8"));
+	delete partial.vendorTree.digest;
+	writeFileSync(join(handEdited, "skills-lock.json"), `${JSON.stringify(partial, null, "\t")}\n`);
+	const partialLock = readFileSync(join(handEdited, "skills-lock.json"), "utf8");
+	const refusedPartial = sync(handEdited, "--relock");
+	assert.equal(refusedPartial.status, 1, refusedPartial.output);
+	assert.match(refusedPartial.output, /vendorTree section is incomplete/);
+	assert.equal(readFileSync(join(handEdited, "skills-lock.json"), "utf8"), partialLock);
+
 	// what relock is for: a lock written before the digest existed gets one
 	const fresh = fakeCheckout();
 	const old = JSON.parse(readFileSync(join(fresh, "skills-lock.json"), "utf8"));

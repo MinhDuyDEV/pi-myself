@@ -42,8 +42,8 @@
  * change anything, 0 when the project is current.
  */
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { basename, join, resolve } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(fileURLToPath(new URL("./", import.meta.url)), "..");
@@ -77,8 +77,9 @@ const fsWrite = {
 	mkdir(path) {
 		if (!CHECK) mkdirSync(path, { recursive: true });
 	},
-	/** Never through a symlink: a link at `path` (an earlier backup of a linked
-	 * role, say) is removed, not followed, so a file outside the repo is never written. */
+	/** Never through a link at the file's own path: a link at `path` (an earlier
+	 * backup of a linked role, say) is removed, not followed. A linked `.pi/` or
+	 * `.pi/agents/` folder is written into, and step 0 says so. */
 	write(path, text) {
 		pendingWrites++;
 		if (CHECK) return;
@@ -252,6 +253,18 @@ const counts = { created: 0, updated: 0, removed: 0, kept: 0, unchanged: 0 };
 function record([outcome, note], label) {
 	counts[outcome]++;
 	if (outcome !== "unchanged" || note) console.log(`${LINE_PREFIX}${outcome.padEnd(8)} ${label}${note ? ` (${note})` : ""}`);
+}
+
+// 0. a linked .pi/ or .pi/agents/ folder is the project's chosen location (roles
+// shared across repositories, say): it is written into, but never silently.
+for (const folder of [targetPi, join(targetPi, "agents")]) {
+	if (!existsSync(folder)) continue;
+	const real = realpathSync.native(folder);
+	const root = realpathSync.native(targetRoot);
+	const rel = relative(root, real);
+	if (rel.startsWith("..") || isAbsolute(rel)) {
+		console.log(`note: ${relative(targetRoot, folder)} resolves to ${real}, outside this repository; provisioning writes there`);
+	}
 }
 
 // 1. task roles — the package owns every line except the project's own choices

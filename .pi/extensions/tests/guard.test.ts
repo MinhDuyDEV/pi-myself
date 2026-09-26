@@ -203,4 +203,9 @@ test("a mixed-case spelling of a protected path is refused on a case-insensitive
 	]) {
 		assert.equal((await write(CHECKOUT, path))?.block, true, `${path} must be refused`);
 	}
+	// a folder that does not exist yet keeps the typed case through realpath, yet it
+	// is the same folder pi-task creates later: segments compare case-insensitively
+	const repo = tempRepo();
+	assert.equal((await write(repo, ".pi/Task-Exits/a.json"))?.block, true, "a missing runtime folder in another case is refused");
+	assert.equal((await write(repo, ".pi/Task-Exitsx/a.json"))?.block, undefined, "segment boundaries still hold");
 });

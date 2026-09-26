@@ -37,7 +37,7 @@
  * Usage: node install-git-hooks.mjs [--root DIR] [--command CMD] [--trailer] [--check]
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 /** Any hook carrying this token is ours to overwrite; one without it is the project's. */
@@ -120,11 +120,21 @@ function hooksDirFor(root) {
 				`core.hooksPath points inside the work tree (${real}); those hooks are the repository's own files, so add the check to them by hand instead`,
 			);
 		}
+		const cause = hooksPathSetting(root) === undefined ? "a symlinked .git/hooks" : "core.hooksPath";
 		throw new Error(
-			`core.hooksPath points outside this repository's git directory (${real}); hooks there are shared with other repositories or the whole machine, so add the check there by hand, or unset core.hooksPath for this repository`,
+			`the hooks folder git uses (${real}, via ${cause}) is outside this repository's git directory; hooks there are shared with other repositories or the whole machine, so add the check there by hand, or point this repository back at its own .git/hooks`,
 		);
 	}
 	return hooksDir;
+}
+
+/** The core.hooksPath git sees for `root` (any config level), or undefined when unset. */
+function hooksPathSetting(root) {
+	try {
+		return git(root, "config", "--get", "core.hooksPath") || undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /** The real path of the deepest existing ancestor, with the missing tail re-attached (macOS /var → /private/var). */
@@ -150,6 +160,20 @@ function desiredHooks(command, trailer) {
 	const hooks = [["pre-commit", preCommit(command)]];
 	if (trailer) hooks.push(["prepare-commit-msg", PREPARE_COMMIT_MSG]);
 	return hooks;
+}
+
+/**
+ * One rule for both passes (the refusal check and the install): "missing";
+ * "ours" (a regular file carrying the marker, refreshed in place); "ours-linked"
+ * (a link to a pi-myself hook: replaced by a regular file, never moved to
+ * `.local`, where the chain would call itself); or "foreign" (anything else,
+ * moved to `.local` and run first).
+ */
+function classify(current) {
+	if (!current.exists) return "missing";
+	const marked = current.text?.includes(MARKER) ?? false;
+	if (current.link) return marked ? "ours-linked" : "foreign";
+	return marked ? "ours" : "foreign";
 }
 
 /** `{ exists, link, text }` for a hook path; a dangling link exists as a link with no text. */
@@ -179,11 +203,9 @@ function main() {
 	// Refuse before writing anything: a foreign hook moves to `<name>.local`, so a
 	// second foreign hook would overwrite the first one kept there.
 	if (!options.check) {
-		for (const [name, content] of desiredHooks(command, options.trailer)) {
+		for (const [name] of desiredHooks(command, options.trailer)) {
 			const path = join(hooksDir, name);
-			const current = inspect(path);
-			const foreign = current.exists && (current.link || !current.text?.includes(MARKER)) && current.text !== content;
-			if (foreign && inspect(`${path}.local`).exists) {
+			if (classify(inspect(path)) === "foreign" && inspect(`${path}.local`).exists) {
 				throw new Error(
 					`${name}.local already holds a hook pi-myself kept earlier, and ${name} is another hook it did not write; merge the two by hand (or move one away), then rerun`,
 				);
@@ -194,25 +216,30 @@ function main() {
 	for (const [name, content] of desiredHooks(command, options.trailer)) {
 		const path = join(hooksDir, name);
 		const current = inspect(path);
-		if (!current.link && current.text === content) {
+		const kind = classify(current);
+		if (kind === "ours" && current.text === content) {
 			actions.push(`${options.check ? "ok       " : "unchanged"} ${name}`);
 			continue;
 		}
-		const foreign = current.exists && (current.link || !current.text?.includes(MARKER));
 		if (options.check) {
 			stale = true;
-			actions.push(`stale    ${name}${foreign ? " (a hook pi-myself did not write is in its place)" : ""}`);
+			const why =
+				kind === "foreign" ? " (a hook pi-myself did not write is in its place)" : kind === "ours-linked" ? " (a link, not a file)" : "";
+			actions.push(`stale    ${name}${why}`);
 			continue;
 		}
 		mkdirSync(hooksDir, { recursive: true });
-		if (foreign) {
+		if (kind === "foreign") {
 			// move, never copy or write through: a link stays a link, a script keeps its mode
 			renameSync(path, `${path}.local`);
 			actions.push(`kept     ${name}.local (a hook pi-myself did not write; the new ${name} runs it first)`);
+		} else if (kind === "ours-linked") {
+			// the link's target is a pi-myself hook: drop the link, never write through it
+			rmSync(path);
 		}
 		writeFileSync(path, content);
 		chmodSync(path, 0o755);
-		actions.push(`${current.exists && !foreign ? "updated " : "created "} ${name}`);
+		actions.push(`${kind === "ours" || kind === "ours-linked" ? "updated " : "created "} ${name}`);
 	}
 
 	for (const line of actions) console.log(line);

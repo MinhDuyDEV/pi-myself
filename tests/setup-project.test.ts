@@ -429,6 +429,19 @@ test("a symlinked role is replaced by a file and the link kept as .local; the sh
 	assert.match(again, /updated\s+agents\/reviewer\.md \(your copy saved as reviewer\.md\.local\)/);
 });
 
+test("a symlinked .pi/agents folder is written into, and the run says it lies outside the repository", () => {
+	// A folder link is the project's chosen location (roles shared across repos,
+	// say): provisioning writes there, but never silently.
+	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	const shared = mkdtempSync(join(tmpdir(), "pi-myself-shared-agents-"));
+	mkdirSync(join(target, ".pi"), { recursive: true });
+	symlinkSync(shared, join(target, ".pi", "agents"));
+	const output = runScript(target);
+	assert.match(output, /note: \.pi\/agents resolves to .*pi-myself-shared-agents-.* outside this repository/);
+	assert.ok(existsSync(join(shared, "reviewer.md")), "the roles land in the linked folder");
+	assert.ok(lstatSync(join(target, ".pi", "agents")).isSymbolicLink(), "the folder link itself is left alone");
+});
+
 test("migrating a stale APPEND_SYSTEM.md never overwrites an earlier backup", () => {
 	// An older version's first run saved the repo's own APPEND_SYSTEM.md as .local;
 	// the edited stale copy must land beside it, not on top of it.

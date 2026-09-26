@@ -261,14 +261,21 @@ if (CHECK || RELOCK) {
 		// Once the lock digests the tree, any vendored change is drift: blessing
 		// it here would re-open, one command away, the gap the digest closed.
 		// Relock exists only to add the digest to a lock written before it.
-		if (lock.vendorTree?.digest) drift.push(...treeDrift(lock.vendorTree, computed.vendorTree));
+		// Only a lock with no tree section at all predates the digest; a section
+		// missing its digest or file list was edited by hand.
+		if (lock.vendorTree !== undefined && !(lock.vendorTree?.digest && lock.vendorTree?.files)) {
+			die(
+				"relock refused, nothing written: skills-lock.json's vendorTree section is incomplete (edited by hand?). Restore the lock from git, or run `npm run sync:skills`.",
+			);
+		}
+		if (lock.vendorTree !== undefined) drift.push(...treeDrift(lock.vendorTree, computed.vendorTree));
 		if (drift.length > 0) {
 			for (const line of drift) console.error(`  ${line}`);
 			die(
 				`relock refused, nothing written: the vendored tree differs from the lock in ${drift.length} item(s), and a relock never blesses a change. Restore the files (git checkout -- ${rel(ROOT, CLONE)}), or run \`npm run sync:skills\` to re-vendor upstream.`,
 			);
 		}
-		if (lock.vendorTree?.digest) {
+		if (lock.vendorTree !== undefined) {
 			console.log("sync-skills: the lock already digests the tree and nothing drifted; relock wrote nothing.");
 			process.exit(0);
 		}

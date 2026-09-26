@@ -103,8 +103,14 @@ function segmentsUnder(root: string, target: string): string[] | undefined {
 	return rel.split(sep);
 }
 
+/** macOS and Windows disks fold case by default: `VENDOR` and `vendor` are one folder there, including one
+ * that does not exist yet (realpath keeps a missing tail's typed case). A case-sensitive volume on those
+ * systems only makes the guard refuse a differently cased look-alike, never miss the real path. */
+const FOLDS_CASE = process.platform === "darwin" || process.platform === "win32";
+const sameSegment = (a: string | undefined, b: string): boolean => (FOLDS_CASE ? a?.toLowerCase() === b.toLowerCase() : a === b);
+
 function startsWithSegments(segments: readonly string[], prefix: readonly string[]): boolean {
-	return prefix.length <= segments.length && prefix.every((segment, i) => segments[i] === segment);
+	return prefix.length <= segments.length && prefix.every((segment, i) => sameSegment(segments[i], segment));
 }
 
 function findProtected(targets: readonly string[], roots: readonly string[], rules: readonly ProtectedPath[]): ProtectedPath | undefined {

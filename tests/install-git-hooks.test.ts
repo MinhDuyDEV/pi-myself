@@ -1,6 +1,17 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	chmodSync,
+	existsSync,
+	lstatSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	rmSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -147,7 +158,7 @@ test("refuses a core.hooksPath outside the repository's git directory: those hoo
 	const env = { ...GIT_ENV, GIT_CONFIG_GLOBAL: globalConfig };
 	const viaGlobal = spawnSync(process.execPath, [SCRIPT, "--root", root, "--command", "true"], { encoding: "utf8", env });
 	assert.equal(viaGlobal.status, 1, viaGlobal.stdout);
-	assert.match(viaGlobal.stderr, /core\.hooksPath points outside this repository's git directory/);
+	assert.match(viaGlobal.stderr, /outside this repository's git directory/);
 	assert.equal(readFileSync(join(shared, "pre-commit"), "utf8"), "#!/bin/sh\nexit 0\n", "the shared hook is untouched");
 	assert.equal(existsSync(join(shared, "pre-commit.local")), false);
 
@@ -171,6 +182,40 @@ test("a second foreign hook never overwrites the first one kept as .local", () =
 	assert.match(result.stderr, /pre-commit\.local already holds/);
 	assert.match(hook(root, "pre-commit.local"), /echo first/, "the first project hook is kept");
 	assert.match(hook(root, "pre-commit"), /echo second/, "and the second is left where it is");
+});
+
+test("a symlinked .git/hooks leading out of the repository is refused without blaming core.hooksPath", () => {
+	const shared = mkdtempSync(join(tmpdir(), "pi-myself-linked-hooks-"));
+	const root = makeRoot();
+	rmSync(join(root, ".git", "hooks"), { recursive: true, force: true });
+	symlinkSync(shared, join(root, ".git", "hooks"));
+	const result = run(root, "--command", "true");
+	assert.equal(result.status, 1);
+	assert.match(result.stderr, /outside this repository's git directory/);
+	assert.doesNotMatch(result.stderr, /core\.hooksPath points/, "core.hooksPath is not set here");
+	assert.deepEqual(readdirSync(shared), []);
+});
+
+test("a hook that links to a pi-myself hook is replaced by a file, never moved to .local (which would call itself)", () => {
+	// The pre-check and the install used different rules for such a link: the
+	// pre-check let it through, the install then moved it onto the kept .local.
+	const root = makeRoot();
+	writeFileSync(hookPath(root, "pre-commit"), "#!/bin/sh\nexit 0\n");
+	chmodSync(hookPath(root, "pre-commit"), 0o755);
+	assert.equal(run(root, "--command", "true").status, 0, "the project hook is kept as pre-commit.local");
+	const installed = hook(root, "pre-commit");
+	const elsewhere = join(mkdtempSync(join(tmpdir(), "pi-myself-hook-copy-")), "pre-commit");
+	writeFileSync(elsewhere, installed);
+	chmodSync(elsewhere, 0o755);
+	rmSync(hookPath(root, "pre-commit"));
+	symlinkSync(elsewhere, hookPath(root, "pre-commit"));
+
+	const result = run(root, "--command", "true");
+	assert.equal(result.status, 0, result.stderr);
+	assert.equal(hook(root, "pre-commit.local"), "#!/bin/sh\nexit 0\n", "the project hook kept earlier is untouched");
+	assert.ok(!lstatSync(hookPath(root, "pre-commit")).isSymbolicLink(), "the hook is a regular file again");
+	assert.equal(readFileSync(elsewhere, "utf8"), installed, "the link's target is never written");
+	assert.equal(commit(root), 0, "the chain runs once, not into itself");
 });
 
 test("refuses outside a git work tree instead of inventing .git/hooks", () => {
