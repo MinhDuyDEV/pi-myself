@@ -142,7 +142,8 @@ test("refuses core.hooksPath inside the work tree: those hooks are the repositor
 	git(root, "config", "core.hooksPath", ".husky");
 	const result = run(root, "--command", "true");
 	assert.equal(result.status, 1);
-	assert.match(result.stderr, /core\.hooksPath points inside the work tree/);
+	assert.match(result.stderr, /inside the work tree/);
+	assert.match(result.stderr, /via core\.hooksPath/);
 	assert.equal(readFileSync(join(root, ".husky", "pre-commit"), "utf8"), "npm test\n");
 	assert.equal(existsSync(join(root, ".husky", "pre-commit.local")), false);
 });
@@ -194,6 +195,18 @@ test("a symlinked .git/hooks leading out of the repository is refused without bl
 	assert.match(result.stderr, /outside this repository's git directory/);
 	assert.doesNotMatch(result.stderr, /core\.hooksPath points/, "core.hooksPath is not set here");
 	assert.deepEqual(readdirSync(shared), []);
+});
+
+test("a symlinked .git/hooks leading into the work tree is refused without blaming core.hooksPath", () => {
+	const root = makeRoot();
+	mkdirSync(join(root, ".githooks"));
+	rmSync(join(root, ".git", "hooks"), { recursive: true, force: true });
+	symlinkSync(join("..", ".githooks"), join(root, ".git", "hooks"));
+	const result = run(root, "--command", "true");
+	assert.equal(result.status, 1);
+	assert.match(result.stderr, /inside the work tree/);
+	assert.match(result.stderr, /via a symlinked \.git\/hooks/);
+	assert.deepEqual(readdirSync(join(root, ".githooks")), []);
 });
 
 test("a hook that links to a pi-myself hook is replaced by a file, never moved to .local (which would call itself)", () => {

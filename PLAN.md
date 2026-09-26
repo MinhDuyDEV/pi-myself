@@ -101,11 +101,12 @@ Dated entries, oldest first: `docs/history.md`.
 
 ## 9. Deferred / open
 
-- Tracker (low severity): parent map found only via `Part of`/`## Parent` (R11); `create-map` puts `notes` under "Not yet specified", `what` under Notes, and the local op ignores `title` (R15); `gh-show` keeps 30 newest comments (R17); `gh-status` silently strips a second state role (R18); a failed sub-issue link falls back to number order (R19); `gh-list` is open-only (R21). Unverified: `gh-block` re-posts links; a failed `gh repo view` makes own `owner/repo#N` refs foreign.
+- Tracker: parent map only via `Part of`/`## Parent` (R11); `create-map` swaps `notes`/`what`, ignores local `title` (R15); `gh-show` keeps 30 comments (R17); `gh-status` drops a second state role silently (R18); a failed sub-issue link falls back to number order (R19); `gh-list` is open-only (R21). Unverified: `gh-block` re-posts links; a failed `gh repo view` makes own `owner/repo#N` refs foreign.
 - `scripts/sync-skills.mjs` deletes the vendored tree before copying the clone, unstaged (S16); verifying a fix needs a live re-clone.
-- The GitHub write path has fake-runner tests only (a live run needs a `delete_repo` token).
+- The GitHub write path is tested against a fake `gh` only (live needs `delete_repo`).
 - GitHub body edits lack `If-Match`; serialise map edits in one session.
-- `gh-frontier`/`gh-triage` fail past ~40,000 issues; `gh-triage` reads 40 `needs-info` threads per call; `gh-comment` may target a PR.
-- `recall`: cache budget counts source bytes; LRU order untested; files over 40 MB skipped; `expand` indices can shift if a task starts or another process writes an older session (headings show each entry's time).
+- `gh-frontier`/`gh-triage` fail past ~40,000 issues; `gh-triage` reads 40 `needs-info` threads a call; `gh-comment` may hit a PR.
+- `recall`: cache budget counts source bytes; LRU order untested; files over 40 MB skipped; `expand` indices can shift if a task starts or another process writes an older session (headings show entry times).
 - `skill-tool` ignores per-directory ignore files pi honours.
+- pi-task's SDK fallback loads no extensions in a child (no guard, `skill` tool, tracker; its role body is the whole prompt). `guard` misses shell writes.
 - `.scratch/` recall provenance; themes; a cross-project memory tier; `pi-review-loop`, `pi-pretty`, `pi-diff`.

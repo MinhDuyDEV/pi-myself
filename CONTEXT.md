@@ -35,11 +35,11 @@ The session parent's runtime rules (layering, skill invocation, routing, task ro
 _Avoid_: "APPEND_SYSTEM" (the copied file it replaced; a repo's own `.pi/APPEND_SYSTEM.md` is something else, which pi still appends)
 
 **Child contract**:
-The rules every task child obeys (scope, no spawning, no questions to the user, no memory writes, evidence, `blocked`, the `Status:` report line). One source, `.pi/policy/CHILD-CONTRACT.md`, spliced by `npm run agents:sync` into the end of each role body. Beside its role body a child gets only pi's base prompt, `AGENTS.md`, and the skills list: the **workflow policy** is injected into the parent only (ADR 0004).
+The rules every task child obeys (scope, no spawning, no questions to the user, no memory writes, evidence, `blocked`, the `Status:` report line). One source, `.pi/policy/CHILD-CONTRACT.md`, spliced by `npm run agents:sync` into the end of each role body. The **workflow policy** never reaches a child (ADR 0004); what else it sees depends on pi-task's backend — on HerdR or tmux, pi's base prompt, `AGENTS.md`, the skills list, and what loaded extensions add; on the SDK fallback, its role body replaces pi's base prompt and no extensions load.
 _Avoid_: "child rules in the workflow policy" (a child never sees it)
 
 **Model tier**:
-One of three groups of task roles that run one model: **read** (`explore`, `scout`), **reason** (`general`, `designer`, `ultra-verifier`), **review** (`reviewer`, `ultra-scout`). The **review family** (the review tier's model vendor) must differ from the **reason family**, so a judge does not share its author's blind spots (ADR 0006).
+One of three groups of task roles that run one model: **read** (`explore`, `scout`), **reason** (`general`, `designer`, `ultra-verifier`), **review** (`reviewer`, `ultra-scout`). The **review family** (the leading letters of the review tier's model name, `kimi` in `opencode-go/kimi-k3`) must differ from the **reason family**, so a judge does not share its author's blind spots (ADR 0006).
 _Avoid_: "tier" alone (see Flagged ambiguities)
 
 **Stack companion**:
@@ -53,7 +53,7 @@ _Avoid_: "textbook skill"
 `/setup-pi-myself --check`: a read-only report on a repo's harness setup, one `ok`/`warn` line per check, each warning with its fix.
 
 **Host token**:
-A command, file, or mechanism a vendored skill names that pi lacks or names differently (`/clear`, `/handoff`, `CLAUDE.md`, `claude --bg`, a script that reads stdin). Each needs a row in `pi-mapping.md`'s host table; `tests/agents.test.ts` fails on one without it.
+A command, file, or mechanism a vendored skill names that pi lacks or names differently (`/clear`, `/handoff`, `CLAUDE.md`, `claude --bg`, a script that reads stdin). Each needs a row in `pi-mapping.md`'s host table; `tests/agents.test.ts` fails on a pinned one without it.
 
 **Memory record**:
 One identity-addressed Markdown file the `pi-workspace-memory` extension keeps under `<localPath>/projects/<slug>/records/` (`localPath` defaults to `~/.pi/memory-md`) — `state.<id>` for a fact still true, `event.<id>` for a finding tied to a moment. The harness tier of distilled knowledge; outside git, per machine.

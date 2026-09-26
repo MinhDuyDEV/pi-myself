@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { pathToFileURL } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import guardExtension, { createGuardExtension } from "../guard.js";
+import guardExtension, { createGuardExtension, FOLDS_CASE } from "../guard.js";
 
 // Two rules prose kept missing get mechanical backing: never write into the
 // vendored upstream tree, its lock, or generated runtime state; and never run
@@ -203,8 +203,16 @@ test("a mixed-case spelling of a protected path is refused on a case-insensitive
 	]) {
 		assert.equal((await write(CHECKOUT, path))?.block, true, `${path} must be refused`);
 	}
-	// a folder that does not exist yet keeps the typed case through realpath, yet it
-	// is the same folder pi-task creates later: segments compare case-insensitively
+});
+
+test("on macOS and Windows a missing runtime folder spelled in another case is refused too", async (t) => {
+	// realpath keeps a missing tail's typed case, yet it is the same folder pi-task
+	// creates later there: the guard compares segments case-insensitively (FOLDS_CASE).
+	if (!FOLDS_CASE) {
+		t.skip("case folding is platform-gated: macOS and Windows only");
+		return;
+	}
+	const { write } = load(guardExtension);
 	const repo = tempRepo();
 	assert.equal((await write(repo, ".pi/Task-Exits/a.json"))?.block, true, "a missing runtime folder in another case is refused");
 	assert.equal((await write(repo, ".pi/Task-Exitsx/a.json"))?.block, undefined, "segment boundaries still hold");

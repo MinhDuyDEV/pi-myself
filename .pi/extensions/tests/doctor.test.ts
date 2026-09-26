@@ -69,6 +69,17 @@ test("a healthy project gets one ok per check and no warning", () => {
 	);
 });
 
+test("a note from a current --check (a linked .pi/agents outside the repo) reaches the roles finding", () => {
+	const note = "note: .pi/agents resolves to /shared/roles, outside this repository; a run writes there";
+	const spawn: DoctorInputs["spawn"] = (command, args) =>
+		command === "git"
+			? done(`${args.slice(1).join("\n")}\n`)
+			: done(`${note}\nsetup-project --check: 0 created, 0 updated, 7 unchanged in /repo/.pi — dry run, nothing written; current\n`);
+	const roles = finding(runDoctor(inputs({ spawn })), "roles");
+	assert.equal(roles.status, "ok");
+	assert.match(roles.detail, /resolves to \/shared\/roles, outside this repository/);
+});
+
 test("an untrusted project is a warning: pi loads none of its .pi/ resources", () => {
 	// Without trust pi skips the project's .pi/ settings, extensions, and
 	// APPEND_SYSTEM.md, and a task that declares skills does not resolve.

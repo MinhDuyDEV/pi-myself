@@ -115,12 +115,12 @@ function hooksDirFor(root) {
 	// the work tree is tracked (husky), and one elsewhere is shared — a global
 	// core.hooksPath runs in every repository on the machine.
 	if (!inside(gitDir, real)) {
+		const cause = hooksPathSetting(root) === undefined ? "a symlinked .git/hooks" : "core.hooksPath";
 		if (inside(topLevel, real)) {
 			throw new Error(
-				`core.hooksPath points inside the work tree (${real}); those hooks are the repository's own files, so add the check to them by hand instead`,
+				`the hooks folder git uses (${real}, via ${cause}) is inside the work tree; those hooks are the repository's own files, so add the check to them by hand instead`,
 			);
 		}
-		const cause = hooksPathSetting(root) === undefined ? "a symlinked .git/hooks" : "core.hooksPath";
 		throw new Error(
 			`the hooks folder git uses (${real}, via ${cause}) is outside this repository's git directory; hooks there are shared with other repositories or the whole machine, so add the check there by hand, or point this repository back at its own .git/hooks`,
 		);

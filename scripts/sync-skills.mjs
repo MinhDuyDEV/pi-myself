@@ -152,8 +152,11 @@ function firstPaths(paths) {
 /** Drift lines between the locked tree digest and the tree on disk. */
 function treeDrift(locked, computed) {
 	const root = rel(ROOT, CLONE);
-	if (!locked?.files || !locked.digest)
-		return ["vendorTree: the lock has no whole-tree digest (run node scripts/sync-skills.mjs --relock)"];
+	if (locked === undefined) return ["vendorTree: the lock has no whole-tree digest (run node scripts/sync-skills.mjs --relock)"];
+	if (!locked.files || !locked.digest)
+		return [
+			"vendorTree: the lock's tree section is incomplete (edited by hand?); restore skills-lock.json from git or run npm run sync:skills",
+		];
 	if (locked.digest === computed.digest && locked.fileCount === computed.fileCount) return [];
 	const changed = [];
 	const missing = [];

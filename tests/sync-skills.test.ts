@@ -88,6 +88,11 @@ test("sync-skills --relock records the tree without a clone, and refuses when a 
 	assert.equal(refusedPartial.status, 1, refusedPartial.output);
 	assert.match(refusedPartial.output, /vendorTree section is incomplete/);
 	assert.equal(readFileSync(join(handEdited, "skills-lock.json"), "utf8"), partialLock);
+	// and --check must not send that lock to the relock that refuses it
+	const checkedPartial = sync(handEdited, "--check");
+	assert.equal(checkedPartial.status, 1);
+	assert.match(checkedPartial.output, /restore skills-lock\.json from git/);
+	assert.doesNotMatch(checkedPartial.output, /--relock/);
 
 	// what relock is for: a lock written before the digest existed gets one
 	const fresh = fakeCheckout();

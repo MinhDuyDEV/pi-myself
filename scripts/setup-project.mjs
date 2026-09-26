@@ -263,7 +263,9 @@ for (const folder of [targetPi, join(targetPi, "agents")]) {
 	const root = realpathSync.native(targetRoot);
 	const rel = relative(root, real);
 	if (rel.startsWith("..") || isAbsolute(rel)) {
-		console.log(`note: ${relative(targetRoot, folder)} resolves to ${real}, outside this repository; provisioning writes there`);
+		console.log(
+			`note: ${relative(targetRoot, folder)} resolves to ${real}, outside this repository; ${CHECK ? "a run writes" : "provisioning writes"} there`,
+		);
 	}
 }
 

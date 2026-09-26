@@ -115,7 +115,10 @@ function checkRoles(inputs: DoctorInputs): DoctorFinding {
 	const script = join(inputs.packageRoot, "scripts", "setup-project.mjs");
 	const result = inputs.spawn(inputs.nodePath, [script, inputs.repoRoot, "--check"], inputs.repoRoot);
 	const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
-	if (!result.error && result.status === 0) return { status: "ok", check: "roles", detail: "the task roles match the package" };
+	if (!result.error && result.status === 0) {
+		const notes = output.split("\n").filter((line) => line.startsWith("note: "));
+		return { status: "ok", check: "roles", detail: ["the task roles match the package", ...notes].join("\n") };
+	}
 	if (!result.error && result.status === 1 && /^setup-project --check: /m.test(output)) {
 		return { status: "warn", check: "roles", detail: `stale against the package:\n${output}`, fix: "run /setup-pi-myself" };
 	}
