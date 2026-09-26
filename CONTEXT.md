@@ -58,7 +58,7 @@ A canonical state-machine label applied to an issue during triage (`needs-triage
 In the local backend a state role lives on the `Status:` line and a category role (`bug`/`enhancement`) on its own `Category:` line, so a state change never clobbers the category; the file keeps the canonical role and the mapped spelling is accepted as input.
 
 **Frontier**:
-The takeable edge of the tracker: issues that are open, unclaimed (no assignee), not a map, and whose every `**Blocked by:**` reference is closed. First by number wins.
+The takeable edge of the tracker: issues that are open, unclaimed (no assignee, no `Status: claimed`), not a map, not held back by a triage state role (`needs-triage`, `needs-info`, `ready-for-human`), and whose every `**Blocked by:**` reference is closed. First by number wins.
 
 **Smart zone**:
 The ~150k-token window within which the model still reasons sharply (ask-matt's PHASE-BOUNDARIES.md). The `smart-zone` meter shows the reading in the footer past 60%, toasts the decision order once when crossing 85%/100%, and never compacts on its own.

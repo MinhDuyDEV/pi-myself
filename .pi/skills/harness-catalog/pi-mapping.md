@@ -76,7 +76,7 @@ prompt; a child given none returns `blocked` with the seams it proposes.
 | implementer subagent | a `general` task per ticket, with `cwd` set to a worktree the **parent** created via `git worktree add` — pi-task never creates or removes worktrees |
 | merger subagent | a `general` task in the shape the prompt names: land the branch |
 | exploration subagent | a `general` task, notes-only shape |
-| frontier query | `tracker` op `gh-frontier` with `parent` = the spec's issue number; `frontier` for the local `.scratch/` backend |
+| frontier query | `tracker` op `gh-frontier` with `parent` = the spec's issue number; `frontier` for the local `.scratch/` backend. Both hold back `needs-triage`, `needs-info`, and `ready-for-human` tickets |
 | worktree per implementer | the WIP cap's isolated-checkout exception, stated once in the workflow policy under `## Task roles` |
 
 ## `wayfinder`
