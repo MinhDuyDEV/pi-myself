@@ -220,7 +220,10 @@ function fakeGh(
 		const [, sub, numberOrFlag] = args;
 		if (sub === "list") {
 			const label = args.includes("--label") ? args[args.indexOf("--label") + 1] : undefined;
-			return JSON.stringify(issues.filter((i) => i.state === "OPEN" && (!label || (i.labels ?? []).includes(label))).map(listShape));
+			// gh's `--state` is open|closed|all (default open); a merged PR is not an issue
+			const state = args.includes("--state") ? args[args.indexOf("--state") + 1] : "open";
+			const inState = (i: FakeIssue) => (state === "all" ? true : state === "closed" ? i.state === "CLOSED" : i.state === "OPEN");
+			return JSON.stringify(issues.filter((i) => inState(i) && (!label || (i.labels ?? []).includes(label))).map(listShape));
 		}
 		if (sub === "view") {
 			const issue = issues.find((i) => i.number === Number(numberOrFlag));
@@ -1624,4 +1627,37 @@ test("gh-frontier parent= reads the map's task list for children and order (R19)
 	const unread = ghFrontierOp("/tmp", { op: "gh-frontier", parent: "1" }, run);
 	assert.match(unread, /first in map order wins/);
 	assert.match(unread, /#1's native sub-issue list could not be read; these follow its task list, then issue number/);
+});
+
+test("gh-list lists closed issues, or all, when asked (R21)", () => {
+	const calls: string[][] = [];
+	const gh = fakeGh(
+		[
+			{ number: 1, title: "Live", state: "OPEN", body: "", labels: ["wontfix"] },
+			{ number: 2, title: "Rejected", state: "CLOSED", body: "", labels: ["wontfix"] },
+			{ number: 3, title: "Done", state: "CLOSED", body: "" },
+		],
+		{ beforeRun: (args) => args[0] === "issue" && args[1] === "list" && calls.push(args) },
+	);
+	const closed = ghListOp("/tmp", { op: "gh-list", state: "closed" }, gh.run);
+	assert.deepEqual(calls.at(-1)!.slice(2, 4), ["--state", "closed"]);
+	assert.match(closed, /^## GitHub issues \(2 closed\)\n- #2 — Rejected \[wontfix\] · closed\n- #3 — Done · closed$/);
+
+	assert.match(ghListOp("/tmp", { op: "gh-list", state: "closed", status: "wontfix" }, gh.run), /\(1 closed, label wontfix\)/);
+	assert.equal(ghListOp("/tmp", { op: "gh-list", state: "closed", status: "needs-info" }, gh.run), "No closed issues labelled needs-info.");
+
+	const all = ghListOp("/tmp", { op: "gh-list", state: "all", status: "wontfix" }, gh.run);
+	assert.deepEqual(calls.at(-1)!.slice(2, 4), ["--state", "all"]);
+	assert.match(all, /\(2 open or closed, label wontfix\)/);
+	assert.match(all, /^- #1 — Live \[wontfix\]$/m, "an open issue's line is unchanged");
+	assert.match(all, /^- #2 — Rejected \[wontfix\] · closed$/m);
+
+	// the default stays open
+	ghListOp("/tmp", { op: "gh-list" }, gh.run);
+	assert.deepEqual(calls.at(-1)!.slice(2, 4), ["--state", "open"]);
+
+	// op functions can be called without schema validation
+	const before = calls.length;
+	assert.throws(() => ghListOp("/tmp", { op: "gh-list", state: "merged" } as never, gh.run), /state must be "open", "closed" or "all"/);
+	assert.equal(calls.length, before, "no gh call on an invalid state");
 });

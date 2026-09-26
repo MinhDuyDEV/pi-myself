@@ -59,7 +59,13 @@ export interface TrackerParams {
 	fog?: string;
 	/** Map section a `note` appends to (default `Notes`). */
 	section?: string;
+	/** gh-list only: GitHub's open/closed issue state (default `open`). */
+	state?: GhListState;
 }
+
+/** GitHub's issue states gh-list can list (`gh issue list --state`). */
+export const GH_LIST_STATES = ["open", "closed", "all"] as const;
+export type GhListState = (typeof GH_LIST_STATES)[number];
 
 /** Wayfinder ticket types (issue-tracker-local.md / -github.md: `Type:` line or `wayfinder:<type>` label). */
 export const WAYFINDER_TYPES = ["research", "prototype", "grilling", "task"] as const;
@@ -120,5 +126,14 @@ export const trackerSchema = Type.Object({
 	fog: Optional(Type.String({ description: "Map 'Not yet specified' fog at charting time (create-map)." })),
 	section: Optional(
 		Type.String({ description: "Map section a note appends to (default 'Notes'; e.g. 'Not yet specified', 'Out of scope')." }),
+	),
+	state: Optional(
+		Type.Union(
+			GH_LIST_STATES.map((state) => Type.Literal(state)),
+			{
+				description:
+					"gh-list only: GitHub's open/closed issue state to list (default 'open'; 'all' for both). Not a triage role — that is 'status'.",
+			},
+		),
 	),
 });

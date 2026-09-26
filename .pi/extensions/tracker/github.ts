@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import type { TrackerParams } from "./params.js";
+import { GH_LIST_STATES, type TrackerParams } from "./params.js";
 import {
 	appendUnderHeading,
 	assertSection,
@@ -487,22 +487,29 @@ function numberFromUrl(url: string): string {
 /** `gh issue list` pages internally but stops at `--limit` without saying so. */
 const LIST_LIMIT = 1000;
 
-/** gh-list: open issues, optionally filtered by label (`status`). */
+/** gh-list: issues in one GitHub state (`state`: open by default, closed, or
+ * all), optionally filtered by label (`status`). */
 export function ghListOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
+	// op functions can be called without the tool schema's validation
+	const state = params.state ?? "open";
+	if (!(GH_LIST_STATES as readonly string[]).includes(state)) {
+		throw new TrackerError(`gh-list state must be "open", "closed" or "all" (got ${JSON.stringify(state)})`);
+	}
 	// the canonical triage role is mapped to this repo's label vocabulary, the
 	// same way gh-status maps it; passing the raw role silently returns nothing
 	// on a repo whose labels differ from the canonical names.
 	const requested = params.status?.trim();
 	const label = requested ? mapRole(root, requested) : undefined;
-	const args = ["issue", "list", "--state", "open", "--limit", String(LIST_LIMIT), "--json", VIEW_FIELDS];
+	const args = ["issue", "list", "--state", state, "--limit", String(LIST_LIMIT), "--json", VIEW_FIELDS];
 	if (label) args.push("--label", label);
-	const open = parseList(run(root, args));
-	if (open.length === 0) return label ? `No open issues labelled ${label}.` : "No open issues in this GitHub repo.";
+	const issues = parseList(run(root, args));
+	const stateName = state === "all" ? "open or closed" : state;
+	if (issues.length === 0) return label ? `No ${stateName} issues labelled ${label}.` : `No ${stateName} issues in this GitHub repo.`;
 	return [
-		`## GitHub issues (${open.length} open${label ? `, label ${label}` : ""})`,
-		...open.map((issue) => `- ${issueLine(issue)}`),
+		`## GitHub issues (${issues.length} ${stateName}${label ? `, label ${label}` : ""})`,
+		...issues.map((issue) => `- ${issueLine(issue)}${issue.state === "OPEN" ? "" : " · closed"}`),
 		// the endpoint caps silently: report a floor as a floor, not as a total
-		...(open.length >= LIST_LIMIT ? ["", `_(stopped at the ${LIST_LIMIT}-issue limit; filter with status)_`] : []),
+		...(issues.length >= LIST_LIMIT ? ["", `_(stopped at the ${LIST_LIMIT}-issue limit; filter with status)_`] : []),
 	].join("\n");
 }
 
