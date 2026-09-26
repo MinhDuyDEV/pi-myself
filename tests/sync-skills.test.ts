@@ -1,6 +1,19 @@
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { appendFileSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import {
+	appendFileSync,
+	chmodSync,
+	copyFileSync,
+	cpSync,
+	existsSync,
+	mkdirSync,
+	mkdtempSync,
+	readdirSync,
+	readFileSync,
+	readlinkSync,
+	symlinkSync,
+	writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
@@ -105,6 +118,125 @@ test("sync-skills --relock records the tree without a clone, and refuses when a 
 	assert.equal(lock.upstream.head, JSON.parse(lockBefore).upstream.head, "relock keeps the recorded upstream head");
 	assert.equal(lock.vendorTree.digest, JSON.parse(lockBefore).vendorTree.digest, "the added digest is the tree's");
 	assert.equal(sync(fresh, "--check").status, 0, "the relocked tree checks clean");
+});
+
+const GIT_ENV = {
+	...process.env,
+	GIT_AUTHOR_NAME: "t",
+	GIT_AUTHOR_EMAIL: "t@example.com",
+	GIT_COMMITTER_NAME: "t",
+	GIT_COMMITTER_EMAIL: "t@example.com",
+	GIT_CONFIG_NOSYSTEM: "1",
+	HOME: tmpdir(),
+};
+
+/** A local stand-in for mattpocock/skills: `main` holds one promoted skill and a
+ * relative AGENTS.md -> CLAUDE.md link, while the repository's default branch
+ * (its HEAD) is `next`, so a clone that does not ask for `main` vendors the
+ * wrong tree. */
+function fakeUpstream(): { dir: string; main: string } {
+	const dir = mkdtempSync(join(tmpdir(), "pi-myself-upstream-"));
+	const git = (...args: string[]) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", env: GIT_ENV }).trim();
+	const skill = join(dir, "skills", "engineering", "demo", "SKILL.md");
+	git("init", "--quiet", "--initial-branch", "main");
+	mkdirSync(join(dir, ".claude-plugin"));
+	writeFileSync(join(dir, ".claude-plugin", "plugin.json"), `${JSON.stringify({ skills: ["./skills/engineering/demo"] })}\n`);
+	mkdirSync(join(dir, "skills", "engineering", "demo"), { recursive: true });
+	writeFileSync(skill, "---\nname: demo\ndescription: The main branch's skill.\n---\n");
+	writeFileSync(join(dir, "CLAUDE.md"), "guidance\n");
+	symlinkSync("CLAUDE.md", join(dir, "AGENTS.md"));
+	git("add", "-A");
+	git("commit", "--quiet", "-m", "main");
+	const main = git("rev-parse", "HEAD");
+	git("checkout", "--quiet", "-b", "next");
+	writeFileSync(skill, "---\nname: demo\ndescription: The next branch's skill.\n---\n");
+	git("commit", "--quiet", "-am", "next");
+	return { dir, main };
+}
+
+/** A real sync (clone included) whose https remote git itself rewrites to the
+ * local fake: the script runs unchanged and no test reaches the network. */
+function syncFrom(root: string, upstream: string, nodeArgs: string[] = []): { status: number | null; output: string } {
+	const env = {
+		...GIT_ENV,
+		GIT_ALLOW_PROTOCOL: "file",
+		GIT_CONFIG_COUNT: "1",
+		GIT_CONFIG_KEY_0: `url.file://${upstream}.insteadOf`,
+		GIT_CONFIG_VALUE_0: "https://github.com/mattpocock/skills.git",
+	};
+	const result = spawnSync(process.execPath, [...nodeArgs, join(root, "scripts", "sync-skills.mjs")], { encoding: "utf8", env });
+	return { status: result.status, output: `${result.stdout}${result.stderr}` };
+}
+
+test("sync-skills vendors upstream's main branch whole: the lock's ref is what was cloned, and nothing is left beside the tree", () => {
+	const upstream = fakeUpstream();
+	const root = fakeCheckout();
+	const result = syncFrom(root, upstream.dir);
+	assert.equal(result.status, 0, result.output);
+	const vendor = join(root, VENDOR_REL);
+	assert.match(
+		readFileSync(join(vendor, "skills", "engineering", "demo", "SKILL.md"), "utf8"),
+		/main branch's skill/,
+		"the lock records ref main, so main is what gets vendored — not the default branch",
+	);
+	const lock = JSON.parse(readFileSync(join(root, "skills-lock.json"), "utf8"));
+	assert.equal(lock.upstream.ref, "main");
+	assert.equal(lock.upstream.head, upstream.main, "the recorded head is main's commit");
+	assert.equal(existsSync(join(vendor, ".git")), false, "the clone's .git is not vendored");
+	assert.equal(readlinkSync(join(vendor, "AGENTS.md")), "CLAUDE.md", "a relative link stays relative");
+	assert.equal(existsSync(join(vendor, "skills", "engineering", "tdd")), false, "the old tree is replaced, not merged into");
+	assert.deepEqual(readdirSync(join(root, "vendor")), ["mattpocock-skills"], "no staging or previous tree is left behind");
+	const checked = sync(root, "--check");
+	assert.equal(checked.status, 0, `the new lock checks clean:\n${checked.output}`);
+});
+
+test("a sync that fails before its new tree is complete leaves the vendored tree exactly as it was", {
+	skip: process.getuid?.() === 0 ? "root ignores directory permissions" : false,
+}, () => {
+	const upstream = fakeUpstream();
+	const root = fakeCheckout();
+	const lockBefore = readFileSync(join(root, "skills-lock.json"), "utf8");
+	// a read-only vendor/ is a deterministic failure while the new tree is being
+	// written: nothing beside the vendored tree can be created or removed
+	chmodSync(join(root, "vendor"), 0o555);
+	let result: { status: number | null; output: string };
+	try {
+		result = syncFrom(root, upstream.dir);
+	} finally {
+		chmodSync(join(root, "vendor"), 0o755);
+	}
+	assert.equal(result.status, 1, result.output);
+	assert.match(result.output, /left as it was/, "the failure says the tree was not touched");
+	assert.equal(existsSync(join(root, PHASE_BOUNDARIES)), true, "the vendored files are still there");
+	assert.equal(readFileSync(join(root, "skills-lock.json"), "utf8"), lockBefore, "the lock is not rewritten");
+	assert.equal(sync(root, "--check").status, 0, "the tree still matches its lock");
+});
+
+test("a swap that fails after the old tree was moved aside moves it back", () => {
+	const upstream = fakeUpstream();
+	const root = fakeCheckout();
+	const lockBefore = readFileSync(join(root, "skills-lock.json"), "utf8");
+	// the second rename is the new tree going into place, after the old one moved aside
+	const preload = join(root, "fail-second-rename.mjs");
+	writeFileSync(
+		preload,
+		[
+			'import fs from "node:fs";',
+			'import { syncBuiltinESMExports } from "node:module";',
+			"const rename = fs.renameSync;",
+			"let calls = 0;",
+			'fs.renameSync = (from, to) => { calls += 1; if (calls === 2) throw new Error("injected rename failure"); return rename(from, to); };',
+			"syncBuiltinESMExports();",
+			"",
+		].join("\n"),
+	);
+	const result = syncFrom(root, upstream.dir, ["--import", preload]);
+	assert.equal(result.status, 1, result.output);
+	assert.match(result.output, /could not swap in the new tree \(injected rename failure\); the vendored tree was left as it was/);
+	assert.equal(existsSync(join(root, PHASE_BOUNDARIES)), true, "the previous tree is back in place");
+	assert.deepEqual(readdirSync(join(root, "vendor")), ["mattpocock-skills"], "the work folder is cleaned up");
+	assert.equal(readFileSync(join(root, "skills-lock.json"), "utf8"), lockBefore, "the lock is not rewritten");
+	assert.equal(sync(root, "--check").status, 0, "the tree still matches its lock");
 });
 
 test("the committed lock lists exactly the files git tracks under the vendored tree", () => {

@@ -3,8 +3,12 @@
  * sync-skills.mjs — the gate for the vendored mattpocock/skills tree.
  *
  * Sync mode (default):
- *   1. Shallow-clone the upstream default branch into a temp dir.
- *   2. Replace the vendored tree (`vendor/mattpocock-skills/`) with it, minus .git.
+ *   1. Shallow-clone upstream's `main` (the ref the lock records) into a temp dir.
+ *   2. Replace the vendored tree (`vendor/mattpocock-skills/`) with it, minus
+ *      .git: the copy is staged beside the tree and swapped in by rename, so a
+ *      sync that fails or is interrupted never leaves half a tree. An
+ *      interrupted run may leave a `vendor/.sync-skills-*` folder behind; once
+ *      `--check` is clean it can be deleted.
  *   3. Hash every registered SKILL.md into skills-lock.json: the promoted set
  *      (listed in .claude-plugin/plugin.json) plus the beta set (every skill
  *      under skills/in-progress/).
@@ -38,7 +42,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -222,8 +226,6 @@ function writeLock(lockValue) {
 
 // ── upstream plumbing ────────────────────────────────────────────────────────
 
-// ── upstream plumbing ────────────────────────────────────────────────────────
-
 const UPSTREAM_URL = "https://github.com/mattpocock/skills.git";
 
 function git(args, cwd, label) {
@@ -237,18 +239,64 @@ function git(args, cwd, label) {
 function syncUpstream() {
 	const temp = mkdtempSync(join(tmpdir(), "sync-skills-"));
 	try {
-		git(["clone", "--quiet", "--depth", "1", UPSTREAM_URL, "upstream"], temp, "clone");
+		// `--branch`: the lock records UPSTREAM_REF, so that is what is cloned;
+		// a bare clone takes whatever upstream's default branch is at the time.
+		git(["clone", "--quiet", "--depth", "1", "--branch", UPSTREAM_REF, UPSTREAM_URL, "upstream"], temp, "clone");
 		const cloneDir = join(temp, "upstream");
 		const head = git(["rev-parse", "HEAD"], cloneDir, "rev-parse");
-		rmSync(CLONE, { recursive: true, force: true });
-		// verbatimSymlinks: upstream's AGENTS.md -> CLAUDE.md is a relative link;
-		// the default (false) rewrites it to an absolute path inside the temp
-		// clone, which dangles the moment the temp dir is removed.
-		cpSync(cloneDir, CLONE, { recursive: true, verbatimSymlinks: true });
-		rmSync(join(CLONE, ".git"), { recursive: true, force: true });
+		replaceVendoredTree(cloneDir);
 		return head;
 	} finally {
 		rmSync(temp, { recursive: true, force: true });
+	}
+}
+
+/** Replace the vendored tree with `source` minus its .git, never leaving half a
+ * tree. Deleting first and copying after meant a failed or interrupted copy
+ * left an empty or partial tree. The copy is staged in a work folder beside the
+ * tree (the same filesystem, so each rename is one atomic step); only a complete
+ * copy is swapped in, and the old tree is moved aside first and deleted last.
+ * Throws, with the state of the tree in the message, when it cannot finish. */
+function replaceVendoredTree(source) {
+	const tree = rel(ROOT, CLONE);
+	let work;
+	try {
+		work = mkdtempSync(join(dirname(CLONE), ".sync-skills-"));
+		// verbatimSymlinks: upstream's AGENTS.md -> CLAUDE.md is a relative link;
+		// the default (false) rewrites it to an absolute path inside the temp
+		// clone, which dangles the moment the temp dir is removed.
+		cpSync(source, join(work, "new"), {
+			recursive: true,
+			verbatimSymlinks: true,
+			filter: (path) => path !== join(source, ".git"),
+		});
+	} catch (error) {
+		if (work) rmSync(work, { recursive: true, force: true });
+		throw new Error(`could not stage the new tree beside ${tree} (${error.message}); the vendored tree was left as it was`);
+	}
+	const previous = join(work, "previous");
+	const hadTree = existsSync(CLONE);
+	try {
+		if (hadTree) renameSync(CLONE, previous);
+		renameSync(join(work, "new"), CLONE);
+	} catch (error) {
+		if (hadTree && existsSync(previous) && !existsSync(CLONE)) {
+			try {
+				renameSync(previous, CLONE);
+			} catch {
+				throw new Error(
+					`could not swap in the new tree (${error.message}), nor move the previous one back: it is at ${rel(ROOT, previous)} — move it to ${tree}, or run git checkout -- ${tree}`,
+				);
+			}
+		}
+		rmSync(work, { recursive: true, force: true });
+		throw new Error(`could not swap in the new tree (${error.message}); the vendored tree was left as it was`);
+	}
+	try {
+		rmSync(work, { recursive: true, force: true });
+	} catch (error) {
+		// the new tree is in place; only the cleanup is left
+		console.error(`sync-skills: the previous tree could not be deleted (${error.message}); delete ${rel(ROOT, work)} by hand`);
 	}
 }
 
@@ -303,7 +351,12 @@ if (CHECK || RELOCK) {
 	}
 } else {
 	console.log("sync-skills: cloning upstream…");
-	const head = syncUpstream();
+	let head;
+	try {
+		head = syncUpstream();
+	} catch (error) {
+		die(error.message);
+	}
 	const lockValue = buildLock(head);
 	writeLock(lockValue);
 
