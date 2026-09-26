@@ -40,6 +40,8 @@ An explicit `tools:` line is an allowlist intersected with the parent's own tool
 
 pi-task never creates, merges, or removes worktrees. For parallel mutating work the **parent** runs `git worktree add`, passes the worktree as `cwd`, and later merges (a `general` "land a branch" task) and removes it. Task workspaces are not filesystem isolation by themselves.
 
+**Waiting is not a job.** When a background task settles, pi-task calls `pi.sendMessage` with `triggerTurn: true` ("so an idle parent still gets a turn" — `helpers.js` `completionDeliveryOptions`), which is why this roster's rules in `APPEND_SYSTEM.md` forbid waiting on one. A poll costs a whole turn with the whole context attached, and it competes with the concurrency the skill asked for: while implementers run, the parent does other independent work or ends its reply. Only a *foreground* `task` call blocks by design.
+
 Two or more `general` implementers on one spec, end to end:
 
 1. `git worktree add ../<repo>-t<n> -b ticket-<n>` once per takeable ticket, then launch every `general` task in one message, each with its own `cwd` and that ticket's pointer.
