@@ -1233,6 +1233,25 @@ test("expand returns the entry the search showed after the active session grew",
 	}
 });
 
+test("a search and its expand both show each entry's time, so a shifted index is visible", async () => {
+	// Numbering is stable against the live session growing, but not against a task
+	// starting or another pi process writing an older session between the calls;
+	// the entry's own timestamp lets the reader see which entry it actually got.
+	const dir = mkdtempSync(join(tmpdir(), "dcp-expand-provenance-"));
+	const live = join(dir, "live.jsonl");
+	try {
+		writeFileSync(live, `${userLine("needle with a time", "l1", "2026-09-01T00:00:02.000Z")}\n`);
+		const options = { sessionFile: live };
+		const search = await searchDcpRecall({ ...options, query: "needle" });
+		expect(search.rendered).toContain("2026-09-01T00:00:02.000Z");
+		const hit = search.entries[0]!;
+		const expanded = await searchDcpRecall({ ...options, expand: [hit.index] });
+		expect(expanded.rendered).toContain(`#${hit.index} [jsonl:user] · 2026-09-01T00:00:02.000Z`);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("a custom_message the model saw (a task-complete report) is searchable; extension state is not", async () => {
 	await withSession(
 		[

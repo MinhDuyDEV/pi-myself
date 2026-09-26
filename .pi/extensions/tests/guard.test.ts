@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, test } from "node:test";
@@ -184,5 +184,23 @@ test("a ~/ path is expanded before matching", async () => {
 	} finally {
 		if (savedHome === undefined) delete process.env.HOME;
 		else process.env.HOME = savedHome;
+	}
+});
+
+test("a mixed-case spelling of a protected path is refused on a case-insensitive disk", async (t) => {
+	// macOS resolves `VENDOR/...` to the real `vendor/...`; Node's realpathSync keeps
+	// the typed case, realpathSync.native returns the on-disk one.
+	if (!existsSync(join(CHECKOUT, "PACKAGE.JSON"))) {
+		t.skip("case-sensitive filesystem: a mixed-case path is a different path");
+		return;
+	}
+	const { write } = load(guardExtension);
+	for (const path of [
+		"VENDOR/mattpocock-skills/PROBE.md",
+		"vendor/MattPocock-Skills/PROBE.md",
+		"Skills-Lock.json",
+		".PI/sessions/a.jsonl",
+	]) {
+		assert.equal((await write(CHECKOUT, path))?.block, true, `${path} must be refused`);
 	}
 });

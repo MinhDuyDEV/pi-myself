@@ -85,7 +85,9 @@ function canonical(path: string): string {
 	let current = path;
 	for (;;) {
 		try {
-			return join(realpathSync(current), ...tail.reverse());
+			// .native returns the on-disk case: on a case-insensitive disk (macOS),
+			// `VENDOR/...` is the real `vendor/...`, and the plain realpath keeps the typed case.
+			return join(realpathSync.native(current), ...tail.reverse());
 		} catch {
 			const parent = dirname(current);
 			if (parent === current) return path;

@@ -45,7 +45,17 @@ test("a bare skill command is rewritten to pi's /skill:<name>, keeping the rest 
 	const { input } = load(COMMANDS);
 	assert.deepEqual(await input("/to-spec"), { action: "transform", text: "/skill:to-spec" });
 	assert.deepEqual(await input("/wayfinder map the auth rewrite"), { action: "transform", text: "/skill:wayfinder map the auth rewrite" });
-	assert.deepEqual(await input("/to-spec\nwith a second line"), { action: "transform", text: "/skill:to-spec\nwith a second line" });
+	// pi's _expandSkillCommand takes the skill name up to the FIRST SPACE and trims the
+	// arguments, so a newline right after the name must become "name " + newline, or
+	// "/skill:to-spec\nplan" is read as a skill named "to-spec\nplan" and never expands.
+	const multiline = await input("/to-spec\nwith a second line");
+	assert.deepEqual(multiline, { action: "transform", text: "/skill:to-spec \nwith a second line" });
+	for (const text of ["/to-spec\nwith a second line", "/to-spec\n\nplan:\n- a", "/to-spec\tx", "/to-spec"]) {
+		const out = (await input(text)) as { text: string };
+		const space = out.text.indexOf(" ");
+		const name = space === -1 ? out.text.slice("/skill:".length) : out.text.slice("/skill:".length, space);
+		assert.equal(name, "to-spec", `pi would read the skill name from ${JSON.stringify(out.text)} as ${JSON.stringify(name)}`);
+	}
 });
 
 test("input that is not a bare registered skill is left alone", async () => {

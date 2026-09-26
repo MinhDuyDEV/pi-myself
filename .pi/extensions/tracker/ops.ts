@@ -107,7 +107,11 @@ function assertConfiguredBackend(root: string, op: string): void {
 		);
 	}
 	if (backend.kind === "local" && github) {
-		throw new TrackerError(`${BACKEND_DOC} configures ${backend.name}, so the GitHub op "${op}" is refused: use "${op.slice(3)}" instead`);
+		const twin = op.slice(3);
+		const instead = (TRACKER_OPS as readonly string[]).includes(twin)
+			? `use "${twin}" instead`
+			: `the local backend has no "${twin}" op — use "list" with a "status" filter (for example needs-triage)`;
+		throw new TrackerError(`${BACKEND_DOC} configures ${backend.name}, so the GitHub op "${op}" is refused: ${instead}`);
 	}
 	if (backend.kind === "other") {
 		throw new TrackerError(

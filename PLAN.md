@@ -106,6 +106,6 @@ Dated entries, oldest first: `docs/history.md`.
 - The GitHub write path has fake-runner tests only (a live run needs a `delete_repo` token).
 - GitHub body edits lack `If-Match`; serialise map edits in one session.
 - `gh-frontier`/`gh-triage` fail past ~40,000 issues; `gh-triage` reads 40 `needs-info` threads per call; `gh-comment` may target a PR.
-- `recall`: cache budget counts source bytes; LRU order untested; files over 40 MB skipped; `expand` indices can shift if another process writes an older session.
+- `recall`: cache budget counts source bytes; LRU order untested; files over 40 MB skipped; `expand` indices can shift if a task starts or another process writes an older session (headings show each entry's time).
 - `skill-tool` ignores per-directory ignore files pi honours.
-- `.scratch/` recall provenance; themes on request; no cross-project memory tier; `pi-review-loop`, `pi-pretty`, `pi-diff` not wired.
+- `.scratch/` recall provenance; themes; a cross-project memory tier; `pi-review-loop`, `pi-pretty`, `pi-diff`.

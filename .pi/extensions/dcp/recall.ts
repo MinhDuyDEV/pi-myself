@@ -253,9 +253,11 @@ export async function searchDcpRecall(options: RecallOptions): Promise<RecallRes
 		skipped: built.skipped,
 		aborted: built.aborted,
 	};
-	// Indices must survive between a search and its expand, while pi keeps
-	// appending to the active session: its entries are numbered last, after the
-	// other sessions and the task provenance, so its growth shifts nothing shown.
+	// Between a search and its expand pi appends to the active session, so its
+	// entries are numbered last, after the other sessions and the task provenance:
+	// its growth shifts nothing shown. Not covered: a task starting (task history
+	// grows) or another pi process writing an older session in between; each
+	// heading carries the entry's time so such a shift is visible.
 	const activeFile = sessionFiles.activeFile;
 	const others = built.entries.filter((entry) => entry.path !== activeFile);
 	const active = built.entries.filter((entry) => entry.path === activeFile);

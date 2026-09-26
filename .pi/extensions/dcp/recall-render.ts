@@ -69,9 +69,9 @@ export function renderSearch(
 	for (const entry of entries) {
 		const snippet = oneLine(entry.text, normalizedQuery ? 300 : 180);
 		if (normalizedQuery) {
-			lines.push("", `#${entry.index} ${entry.title}`, snippet);
+			lines.push("", `${heading(entry)}`, snippet);
 		} else {
-			lines.push(`#${entry.index} ${entry.title} — ${snippet}`);
+			lines.push(`${heading(entry)} — ${snippet}`);
 		}
 	}
 	lines.push("", "Expand with recall using expand:<index>.");
@@ -80,7 +80,16 @@ export function renderSearch(
 
 export function renderExpanded(entries: RecallEntry[]): string {
 	if (entries.length === 0) return "No matching recall indices.";
-	return entries.map((entry) => [`#${entry.index} ${entry.title}`, entry.text].join("\n")).join("\n\n---\n\n");
+	return entries.map((entry) => [heading(entry), entry.text].join("\n")).join("\n\n---\n\n");
+}
+
+/** `#N [kind] · <ISO time>`: the entry's own time appears in the search and in its
+ * expand, so an index that shifted between the two calls (a task started, another
+ * pi process wrote an older session) is visible instead of silently wrong. */
+function heading(entry: RecallEntry): string {
+	const time =
+		typeof entry.timestamp === "number" && Number.isFinite(entry.timestamp) ? ` · ${new Date(entry.timestamp).toISOString()}` : "";
+	return `#${entry.index} ${entry.title}${time}`;
 }
 
 export function shouldIncludeJsonlEntry(value: unknown): boolean {

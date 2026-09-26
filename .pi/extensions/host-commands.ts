@@ -37,6 +37,11 @@ export default function hostCommands(pi: ExtensionAPI): void {
 			else if (command.source !== "skill" && command.name === name) return { action: "continue" };
 		}
 		if (!isSkill) return { action: "continue" };
-		return { action: "transform", text: `/skill:${name}${event.text.slice(name.length + 1)}` };
+		// pi's _expandSkillCommand reads the name up to the FIRST SPACE and trims the
+		// arguments: a newline or tab right after the name needs a space before it, or
+		// "/skill:tdd\nplan" is looked up as a skill named "tdd\nplan" and never expands.
+		const rest = event.text.slice(name.length + 1);
+		const separator = rest === "" || rest.startsWith(" ") ? "" : " ";
+		return { action: "transform", text: `/skill:${name}${separator}${rest}` };
 	});
 }

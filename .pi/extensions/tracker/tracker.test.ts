@@ -806,6 +806,11 @@ test("a repo configured for GitHub refuses the local ops, naming the gh-* op; /f
 
 		writeFileSync(doc, "# Issue tracker: Local Markdown\n\nIssues live in .scratch/.\n");
 		assert.throws(() => op(root, { op: "gh-list" }), /configures Local Markdown.*use "list"/);
+		// gh-triage has no local twin: the hint must name an op that exists
+		assert.throws(
+			() => op(root, { op: "gh-triage" }),
+			(error: Error) => /"list" with a "status" filter/.test(error.message) && !/use "triage"/.test(error.message),
+		);
 		op(root, { op: "create-ticket", feature: "local", title: "T", what: "x" });
 
 		writeFileSync(doc, "# Issue tracker: GitLab\n\nIssues live on GitLab.\n");
