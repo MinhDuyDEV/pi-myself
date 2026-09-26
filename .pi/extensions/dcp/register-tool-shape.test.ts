@@ -60,19 +60,4 @@ describe("DCP registerTool shape", () => {
 		);
 		expect(payload.name).toBe("recall");
 	});
-
-	test("legacy multi-arg form would omit name (regression guard)", () => {
-		// Documents the failure mode: registerTool(string) → tool.name undefined
-		const tool = "recall" as unknown as { name?: string };
-
-		const payload = JSON.parse(
-			JSON.stringify({
-				type: "function",
-				name: (tool as { name?: string }).name,
-				strict: false,
-			}),
-		);
-		expect(payload).toEqual({ type: "function", strict: false });
-		expect(payload.name).toBeUndefined();
-	});
 });

@@ -1,7 +1,8 @@
 import { type Dirent, readdirSync, readFileSync, statSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
+import { parseFrontmatter as parsePiFrontmatter } from "@earendil-works/pi-coding-agent";
 
-/** One discovered skill, as a `skill` tool enum option plus loader. */
+/** One discovered skill, as a `skill` tool option plus loader. */
 export interface SkillEntry {
 	name: string;
 	description: string;
@@ -19,9 +20,9 @@ export interface Registry {
 	userInvoked: SkillEntry[];
 	/** Names found more than once; the first source (in root order) wins. */
 	duplicates: string[];
-	/** Non-fatal problems: a file that could not be read, or a skill skipped
-	 * because pi would not load it either. Surfaced so a malformed skill is not
-	 * simply invisible. */
+	/** Non-fatal problems: a file that could not be read, a skill skipped
+	 * because pi would not load it either, or a name pi warns about but loads.
+	 * Surfaced so a malformed skill is not simply invisible. */
 	diagnostics: string[];
 }
 
@@ -36,72 +37,23 @@ export interface SkillFrontmatter {
  * ignore files); a cap keeps a pathological tree from walking forever. */
 const MAX_DEPTH = 8;
 
-/** Parse the invocation-relevant frontmatter fields.
- *
- * Mirrors pi's `parseFrontmatter` in everything that decides whether a skill
- * loads at all:
- * - CRLF/CR is normalized and a leading BOM stripped. A CRLF checkout used to
- *   drop EVERY skill here, because the opening `---\n` never matched.
- * - The block ends at the first `\n---`, and the content must start with `---`.
- * - `>-` / `|` block scalars are folded/literal, not returned as the marker.
- * - `disable-model-invocation` counts only as the boolean true, which is what
- *   pi's YAML parser resolves (`True` included; `yes` is a string in YAML 1.2).
- *
- * Divergence, deliberate: this is a flat field reader, not a YAML parser, so
- * nested mappings, anchors, and flow collections are not interpreted. */
+/** Parse the invocation-relevant frontmatter fields with pi's own YAML
+ * frontmatter parser, and apply the rules pi's skill loader applies
+ * (`core/skills.js`): `name` and `description` count only as strings, and
+ * `disable-model-invocation` only as the YAML boolean `true`. Throws on
+ * malformed YAML, as pi's parser does; the caller turns that into a skip.
+ * A hand-rolled reader here disagreed with pi on comments, quoted booleans,
+ * and descriptions pi's YAML rejects. */
 export function parseFrontmatter(content: string): SkillFrontmatter {
-	const normalized = content.replace(/\r\n?/g, "\n").replace(/^\uFEFF/, "");
-	if (!normalized.startsWith("---\n")) return { userInvoked: false };
-	const end = normalized.indexOf("\n---", 4);
-	if (end === -1) return { userInvoked: false };
-	const block = normalized.slice(4, end);
-	return {
-		name: field(block, "name"),
-		description: field(block, "description"),
-		userInvoked: (field(block, "disable-model-invocation") ?? "").toLowerCase() === "true",
-	};
-}
-
-function field(block: string, name: string): string | undefined {
-	const lines = block.split("\n");
-	const prefix = `${name}:`;
-	for (let index = 0; index < lines.length; index++) {
-		const line = lines[index] ?? "";
-		// a top-level key: column 0, exact name, colon
-		if (!line.startsWith(prefix)) continue;
-		const inline = line.slice(prefix.length).trim();
-		if (/^[|>][+-]?$/.test(inline)) return readBlockScalar(lines, index + 1, inline.startsWith("|"));
-		return unquote(inline);
-	}
-	return undefined;
-}
-
-/** Fold (`>`) or keep (`|`) the more-indented lines under a block scalar. */
-function readBlockScalar(lines: string[], start: number, literal: boolean): string {
-	const collected: string[] = [];
-	for (let index = start; index < lines.length; index++) {
-		const line = lines[index] ?? "";
-		if (line.trim() === "") {
-			collected.push("");
-			continue;
-		}
-		if (!/^\s/.test(line)) break; // a new top-level key ends the scalar
-		collected.push(line.replace(/^\s+/, ""));
-	}
-	while (collected.length > 0 && collected[collected.length - 1] === "") collected.pop();
-	if (literal) return collected.join("\n");
-	return collected.join(" ").replace(/\s+/g, " ").trim();
-}
-
-function unquote(value: string): string {
-	if (value.length >= 2 && ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'")))) {
-		return value.slice(1, -1).replace(/\\(["'\\])/g, "$1");
-	}
-	return value;
+	const { frontmatter } = parsePiFrontmatter<Record<string, unknown>>(content);
+	const parsed: SkillFrontmatter = { userInvoked: frontmatter["disable-model-invocation"] === true };
+	if (typeof frontmatter.name === "string") parsed.name = frontmatter.name;
+	if (typeof frontmatter.description === "string") parsed.description = frontmatter.description;
+	return parsed;
 }
 
 /** Walk every root (project-local first, vendored after) for skill files.
- * Mirrors pi's loader so the tool's enum matches what pi itself lists:
+ * Mirrors pi's loader so the tool's skill set matches what pi itself lists:
  * - a directory holding `SKILL.md` is a skill root and is NOT descended into;
  * - hidden entries and `node_modules` are skipped;
  * - a loose `.md` file counts only directly inside a root that was passed in.
@@ -121,19 +73,27 @@ export function buildRegistry(roots: string[], read: (path: string) => string = 
 			diagnostics.push(`${file}: could not be read (${error instanceof Error ? error.message : String(error)})`);
 			return;
 		}
-		const frontmatter = parseFrontmatter(content);
+		let frontmatter: SkillFrontmatter;
+		try {
+			frontmatter = parseFrontmatter(content);
+		} catch (error) {
+			// pi skips a file whose frontmatter does not parse; only a declared SKILL.md warns
+			if (declared)
+				diagnostics.push(`${file}: frontmatter does not parse (${error instanceof Error ? error.message : String(error)}); skipped`);
+			return;
+		}
 		const directory = dirname(file);
-		// pi falls back to the containing directory's name and requires a description
-		const name = frontmatter.name ?? basename(directory);
+		// pi falls back to the containing directory's name (an empty name too) and requires a description
+		const name = frontmatter.name || basename(directory);
 		const description = frontmatter.description?.trim() ?? "";
 		if (!description) {
 			// pi loads nothing without a description; only a declared SKILL.md warns
 			if (declared) diagnostics.push(`${file}: no description — pi does not load a skill without one`);
 			return;
 		}
+		// pi warns about a bad name but still loads the skill
 		if (!/^[a-z0-9][a-z0-9-]*$/.test(name)) {
-			diagnostics.push(`${file}: name ${JSON.stringify(name)} violates pi's skill-name rules; skipped`);
-			return;
+			diagnostics.push(`${file}: name ${JSON.stringify(name)} violates pi's skill-name rules; loaded anyway, as pi does`);
 		}
 		const existing = seen.get(name);
 		if (existing !== undefined) {

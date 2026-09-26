@@ -58,8 +58,9 @@ interface RecallOptions {
 	/** Override the newest-first session file cap of the scope. */
 	fileCap?: number | undefined;
 	/** Consulted before each chunk read and before each file, so an interrupted
-	 * call stops instead of finishing a scan nobody is waiting for. The tool
-	 * passes the call's `AbortSignal` flag; injectable so a test can stop at a
+	 * call stops instead of finishing a scan nobody is waiting for. The scan
+	 * yields to the event loop between files, which is what lets the tool's
+	 * `AbortSignal` flip while it runs; injectable so a test can stop at a
 	 * deterministic point. */
 	shouldStop?: (() => boolean) | undefined;
 }
@@ -139,22 +140,30 @@ export function registerRecallTool(pi: ExtensionAPI): void {
 			const scope = params.scope ?? "active";
 			const sessionFile = ctx.sessionManager.getSessionFile() ?? undefined;
 			const manager = ctx.sessionManager;
-			const result = searchDcpRecall({
+			const result = await searchDcpRecall({
 				sessionFile,
 				cwd: ctx.cwd,
 				projectSessionDir: manager.getSessionDir?.() ?? (sessionFile ? dirname(sessionFile) : undefined),
 				projectRoots: scope === "project" ? projectRootSpellings(ctx.cwd) : undefined,
 				lineageEntryIds: scope === "active" ? activeLineageIds(manager) : undefined,
-				// scope:"all" on a busy machine walks hundreds of session files
-				// synchronously; honouring the call's signal means an interrupt (or a
-				// superseded cell) stops the scan instead of running it to the end.
+				// scope:"all" on a busy machine walks hundreds of session files; the scan
+				// yields between files, so an interrupt (or a superseded cell) stops it
+				// instead of running it to the end.
 				shouldStop: _signal ? () => _signal.aborted : undefined,
-				...params,
+				// Only the declared parameters: pi does not strip undeclared arguments,
+				// and spreading them would let a tool call override internal options.
+				query: params.query,
+				expand: params.expand,
+				page: params.page,
+				scope,
+				limit: params.limit,
 			});
 
 			return {
 				content: [{ type: "text", text: result.rendered }],
-				details: { total: result.total, entries: result.entries },
+				// Persisted into the session file recall scans: indices only, never the
+				// entries' full text (nothing renders it; `content` carries what matters).
+				details: { total: result.total, indices: result.entries.map((entry) => entry.index) },
 			};
 		},
 	});
@@ -231,11 +240,10 @@ export function activeLineageIds(sessionManager: LineageSessionManager): Set<str
 	}
 }
 
-export function searchDcpRecall(options: RecallOptions): RecallResult {
+export async function searchDcpRecall(options: RecallOptions): Promise<RecallResult> {
 	const scope = options.scope ?? "active";
 	const sessionFiles = listRawSessionFiles(scope, options);
-	const built = buildRecallEntries(sessionFiles.files, options.lineageEntryIds, options.readCapBytes, options.shouldStop);
-	const entries = built.entries;
+	const built = await buildRecallEntries(sessionFiles.files, options.lineageEntryIds, options.readCapBytes, options.shouldStop);
 	// Skipped (oversized) files were not read, so they must not count as
 	// `scanned`; `coverage.skipped` names them in the rendered output instead.
 	const coverage = {
@@ -245,11 +253,18 @@ export function searchDcpRecall(options: RecallOptions): RecallResult {
 		skipped: built.skipped,
 		aborted: built.aborted,
 	};
-	if (scope !== "active") {
-		// pi-task provenance belongs to this project: it joins every scope wider than the live session
-		const taskHistoryFile = options.taskHistoryFile ?? findTaskHistoryFile(options.cwd ?? process.cwd());
-		entries.push(...buildTaskHistoryEntries(taskHistoryFile, entries.length + 1));
-	}
+	// Indices must survive between a search and its expand, while pi keeps
+	// appending to the active session: its entries are numbered last, after the
+	// other sessions and the task provenance, so its growth shifts nothing shown.
+	const activeFile = sessionFiles.activeFile;
+	const others = built.entries.filter((entry) => entry.path !== activeFile);
+	const active = built.entries.filter((entry) => entry.path === activeFile);
+	// pi-task provenance belongs to this project: it joins every scope wider than the live session
+	const tasks =
+		scope === "active"
+			? []
+			: buildTaskHistoryEntries(options.taskHistoryFile ?? findTaskHistoryFile(options.cwd ?? process.cwd()), others.length + 1);
+	const entries = [...others, ...tasks, ...active].map((entry, position) => ({ ...entry, index: position + 1 }));
 	const fileCounts = { scannedFiles: coverage.scanned, totalFiles: coverage.total };
 
 	const expanded = options.expand?.length ? entries.filter((entry) => options.expand?.includes(entry.index)) : undefined;
@@ -300,12 +315,17 @@ function countOption(value: number | undefined, fallback: number, min: number): 
 	return typeof value === "number" && Number.isFinite(value) && value >= min ? Math.floor(value) : fallback;
 }
 
-function buildRecallEntries(
+/** One turn of the event loop: long enough for an abort to be delivered. */
+function yieldToEventLoop(): Promise<void> {
+	return new Promise((resolve) => setImmediate(resolve));
+}
+
+async function buildRecallEntries(
 	sessionFiles: string[],
 	lineageEntryIds: Set<string> | undefined,
 	readCapBytes: number | undefined,
 	shouldStop?: (() => boolean) | undefined,
-): { entries: RecallEntry[]; skipped: number; scanned: number; aborted: boolean } {
+): Promise<{ entries: RecallEntry[]; skipped: number; scanned: number; aborted: boolean }> {
 	const entries: RecallEntry[] = [];
 	// pi's fork and branch-to-new-session copy every entry, id and timestamp
 	// included, into the new file: count each entry once across files. pi ids
@@ -322,7 +342,10 @@ function buildRecallEntries(
 	let scanned = 0;
 	let aborted = false;
 
-	for (const path of sessionFiles) {
+	for (const [position, path] of sessionFiles.entries()) {
+		// The reads are synchronous: without a yield between files, an abort could
+		// only be observed after the whole scan had finished.
+		if (position > 0) await yieldToEventLoop();
 		if (shouldStop?.()) {
 			aborted = true;
 			break;
@@ -370,10 +393,12 @@ function textHash(text: string): string {
 	return createHash("sha1").update(text).digest("hex").slice(0, 16);
 }
 
-function listRawSessionFiles(scope: RecallScope, options: RecallOptions): { files: string[]; total: number } {
+/** Session files in scope, newest first and capped, with the active session
+ * (when present) moved to the end so its entries are numbered last. */
+function listRawSessionFiles(scope: RecallScope, options: RecallOptions): { files: string[]; total: number; activeFile?: string } {
 	if (scope === "active") {
 		const files = options.sessionFile && existsSync(options.sessionFile) ? [options.sessionFile] : [];
-		return { files, total: files.length };
+		return { files, total: files.length, ...(files[0] ? { activeFile: files[0] } : {}) };
 	}
 	const sessionsRoot = options.rawSessionDir ?? join(agentDir(), "sessions");
 	let candidates: string[];
@@ -387,7 +412,11 @@ function listRawSessionFiles(scope: RecallScope, options: RecallOptions): { file
 		candidates = projectSessionFiles(options.projectSessionDir, options.projectRoots);
 	}
 	const files = [...new Set(candidates)].sort((a, b) => Number(safeStat(b)?.mtimeMs ?? 0) - Number(safeStat(a)?.mtimeMs ?? 0));
-	return { files: files.slice(0, countOption(options.fileCap, FILE_CAP[scope], 0)), total: files.length };
+	const kept = files.slice(0, countOption(options.fileCap, FILE_CAP[scope], 0));
+	const activeKey = options.sessionFile ? canonicalPath(options.sessionFile) : undefined;
+	const activeFile = activeKey ? kept.find((file) => canonicalPath(file) === activeKey) : undefined;
+	if (activeFile === undefined) return { files: kept, total: files.length };
+	return { files: [...kept.filter((file) => file !== activeFile), activeFile], total: files.length, activeFile };
 }
 
 /** This repository's session files. The active session's directory, plus —
@@ -518,14 +547,19 @@ function findTaskHistoryFile(cwd: string): string | undefined {
 	return stat?.isFile() && !stat.isSymbolicLink() ? historyFile : undefined;
 }
 
+/** The nearest `.pi` from cwd up to the repository root, never above it: a
+ * parent directory's `.pi` belongs to another project. Outside a git checkout
+ * there is no root to walk to, so only cwd itself is considered. */
 function findNearestPiDir(cwd: string): string | undefined {
-	let current = resolve(cwd);
+	let current = canonicalPath(cwd);
+	const top = gitTopLevel(current);
+	const stop = top === undefined ? current : canonicalPath(top);
 	while (true) {
 		if (basename(current) === ".pi") return current;
 		const candidate = join(current, ".pi");
 		if (existsSync(candidate)) return candidate;
 		const parent = dirname(current);
-		if (parent === current) return undefined;
+		if (current === stop || parent === current) return undefined;
 		current = parent;
 	}
 }

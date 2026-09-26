@@ -6,9 +6,11 @@
  * reading the SKILL.md file. This extension closes the gap with two
  * properties:
  *
- * - The `name` parameter is a literal union over exactly the model-invoked
- *   skill set, so upstream phrasing works verbatim and the model cannot name
- *   a user-invoked skill.
+ * - The `name` parameter's description lists exactly the model-invoked skill
+ *   set, so upstream phrasing works verbatim, and `execute` loads nothing
+ *   else. `name` is a plain string, not an enum: pi validates arguments
+ *   before `execute`, so an enum would reject a user-invoked name before the
+ *   hand-off below could run.
  * - A requested name that belongs to a user-invoked skill returns a message
  *   telling the model to hand the slash command to the human — the
  *   invocation.md invariant ("nothing but the human can fire it") enforced in
@@ -71,17 +73,31 @@ function packageRoot(): string | undefined {
 	return undefined;
 }
 
-/** `<ancestor>/.agents/skills` directories from `start` upward — pi collects the
- * same roots, and a project-local `.agents` skill has to reach this enum too or
- * the tool would refuse a skill pi itself lists. Nearest ancestor first. */
+/** The nearest ancestor holding `.git`, as pi's `findGitRepoRoot`
+ * (core/package-manager.js) finds it. */
+function gitRepoRoot(start: string): string | undefined {
+	let current = resolve(start);
+	for (;;) {
+		if (existsSync(join(current, ".git"))) return current;
+		const parent = dirname(current);
+		if (parent === current) return undefined;
+		current = parent;
+	}
+}
+
+/** `<ancestor>/.agents/skills` directories from `start` upward, stopping at the
+ * git root (or at `/` outside a repository) — pi collects the same roots, and
+ * a project-local `.agents` skill has to reach this tool too or it would refuse
+ * a skill pi itself lists. Nearest ancestor first. */
 function ancestorAgentsSkillDirs(start: string): string[] {
 	const dirs: string[] = [];
+	const stop = gitRepoRoot(start);
 	let current = resolve(start);
 	for (;;) {
 		const candidate = join(current, ".agents", "skills");
 		if (existsSync(candidate)) dirs.push(candidate);
-		const parent = join(current, "..");
-		if (parent === current) return dirs;
+		const parent = dirname(current);
+		if (current === stop || parent === current) return dirs;
 		current = parent;
 	}
 }
@@ -172,13 +188,12 @@ export default function skillToolExtension(pi: ExtensionAPI): void {
 			"User-invoked skills are not available here: direct the human to run the slash command (e.g. /skill:wayfinder) instead of improvising its steps.",
 		],
 		parameters: Type.Object({
-			name:
-				loadableNames.length > 0
-					? Type.Union(
-							loadableNames.map((name) => Type.Literal(name)),
-							{ description: "Skill name — exactly the model-invoked skill set." },
-						)
-					: Type.String({ description: "Skill name (registry unavailable at startup)." }),
+			name: Type.String({
+				description:
+					loadableNames.length > 0
+						? `Skill name, one of the model-invoked set: ${loadableNames.join(", ")}.`
+						: "Skill name (registry unavailable at startup).",
+			}),
 		}),
 		renderCall: (args, theme) => {
 			const requested = args && typeof args === "object" && "name" in args ? String((args as { name: unknown }).name) : "";
@@ -196,10 +211,13 @@ export default function skillToolExtension(pi: ExtensionAPI): void {
 					text = readFileSync(skill.skillFile, "utf8");
 					details.path = skill.skillFile;
 					details.loaded = true;
+					// Always: a body may link a script or a subdirectory file, not only a .md
 					const references = referenceFiles(skill.skillFile);
-					if (references.length > 0) {
-						text = `${text.trimEnd()}\n\n---\nReference files in this skill's own directory (\`${dirname(skill.skillFile)}\`): ${references.join(", ")} — the links above are relative to that directory, so read them from there.\n`;
-					}
+					const directory = dirname(skill.skillFile);
+					text =
+						references.length > 0
+							? `${text.trimEnd()}\n\n---\nReference files in this skill's own directory (\`${directory}\`): ${references.join(", ")} — the links above are relative to that directory, so read them from there.\n`
+							: `${text.trimEnd()}\n\n---\nThis skill's own directory (\`${directory}\`): relative paths above resolve against it.\n`;
 				} catch (error) {
 					text = `Cannot read skill file for "${skill.name}": ${error instanceof Error ? error.message : String(error)}`;
 				}

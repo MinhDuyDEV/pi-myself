@@ -87,9 +87,9 @@ export function shouldIncludeJsonlEntry(value: unknown): boolean {
 	if (typeof value === "string") return true;
 	if (!value || typeof value !== "object") return false;
 	const obj = value as Record<string, unknown>;
-	const customType = typeof obj.customType === "string" ? obj.customType : "";
+	// `custom` is private extension state; a `custom_message` (pi-task's
+	// task-complete reports, for one) is something the model read, so it stays
 	if (obj.type === "custom") return false;
-	if (customType) return false;
 	// a `!!cmd` run is excluded from the LLM context by the user's choice: recall must not bring it back
 	const message =
 		obj.type === "message" && obj.message && typeof obj.message === "object" ? (obj.message as Record<string, unknown>) : undefined;

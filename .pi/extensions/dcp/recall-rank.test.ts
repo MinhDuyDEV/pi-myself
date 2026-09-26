@@ -33,6 +33,24 @@ test("a nested-quantifier pattern degrades to term scoring instead of backtracki
 	expect(rankAndFilter([entry("aaab")], "(?:a|b)+b").length).toBe(1);
 });
 
+test("a quantified group holding any quantifier is not compiled, so it cannot backtrack for seconds", () => {
+	// `(\d+,?)+$` ends its group in `?`, which the old guard missed: on digits
+	// followed by a non-digit it backtracks exponentially (~2x per digit), and a
+	// synchronous test() freezes pi. 27 digits took seconds before the fix.
+	const text = `${"1".repeat(27)}x`;
+	const started = performance.now();
+	rankAndFilter([entry(text)], "(\\d+,?)+$");
+	const elapsed = performance.now() - started;
+	expect(elapsed < 250).toBeTrue();
+	// the same shapes, with the inner quantifier elsewhere or nested one level down
+	expect(rankAndFilter([entry("aaab")], "(a?a+)+b").length).toBe(0);
+	expect(rankAndFilter([entry("aaab")], "((a+))+b").length).toBe(0);
+	expect(rankAndFilter([entry("aaab")], "(a+,?){2,}b").length).toBe(0);
+	// an unquantified or optional group with a quantifier inside stays a regex
+	expect(rankAndFilter([entry("aaab")], "(a+)b").length).toBe(1);
+	expect(rankAndFilter([entry("aaab")], "(a+)?b").length).toBe(1);
+});
+
 test("an over-long query is never compiled as a regex", () => {
 	const text = `${"a".repeat(200)}b`;
 	const pattern = `(?:a){200}b|${"z".repeat(220)}`;

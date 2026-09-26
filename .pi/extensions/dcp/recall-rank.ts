@@ -97,17 +97,51 @@ const MAX_REGEX_QUERY_LENGTH = 200;
  * large messages, not a backtracking guard. Term scoring below still covers the
  * full text. */
 const MAX_REGEX_HAYSTACK = 8_192;
-/** The classic exponential-backtracking shape: a quantifier applied to a group
- * that itself already ends in one (`(a+)+`, `(?:\d+)*`). The query is
+/** A repeating quantifier after a group: `+`, `*`, or a `{` count. An optional
+ * `?` cannot repeat the group, so it is not one. */
+const REPEATING_QUANTIFIER = /^(?:[+*]|\{\d)/;
+/** Any quantifier inside a group body, once escapes, character classes, and
+ * group prefixes such as `(?:` are removed. */
+const ANY_QUANTIFIER = /[+*?]|\{\d/;
+const GROUP_PREFIX = /\(\?(?:[:=!]|<[=!]|<[A-Za-z_$][\w$]*>)/g;
+
+/** The exponential-backtracking shape: a repeated group whose body holds any
+ * quantifier (`(a+)+`, `(?:\d+)*`, `(\d+,?)+`, `((a+))+`). The query is
  * model-authored rather than adversarial input, but a single `test()` cannot be
  * interrupted once it starts, so this shape degrades to term scoring — the regex
  * is only a ranking bonus here — instead of risking an uninterruptible hang.
- * Residual: an algebraically overlapping alternation such as `(a|aa)+` is not
- * detected; it requires deliberately constructing the pattern. */
-const NESTED_QUANTIFIER = /\([^()]*[+*]\)[+*]/;
+ * Deliberately broad: a harmless `(a+b)+` is refused too. Residual: an
+ * algebraically overlapping alternation such as `(a|aa)+` is not detected; it
+ * requires deliberately constructing the pattern. */
+function hasNestedQuantifier(pattern: string): boolean {
+	const opens: number[] = [];
+	for (let i = 0; i < pattern.length; i++) {
+		const char = pattern[i];
+		if (char === "\\") {
+			i++;
+			continue;
+		}
+		if (char === "[") {
+			// a character class: `(`, `)` and quantifier characters are literal inside
+			for (i++; i < pattern.length && pattern[i] !== "]"; i++) if (pattern[i] === "\\") i++;
+			continue;
+		}
+		if (char === "(") opens.push(i);
+		if (char !== ")") continue;
+		const open = opens.pop();
+		if (open === undefined || !REPEATING_QUANTIFIER.test(pattern.slice(i + 1))) continue;
+		const body = pattern
+			.slice(open, i)
+			.replace(GROUP_PREFIX, "(")
+			.replace(/\\./g, "")
+			.replace(/\[(?:\\.|[^\]])*\]/g, "");
+		if (ANY_QUANTIFIER.test(body)) return true;
+	}
+	return false;
+}
 
 function safeRegex(query: string): RegExp | undefined {
-	if (query.length > MAX_REGEX_QUERY_LENGTH || NESTED_QUANTIFIER.test(query)) return undefined;
+	if (query.length > MAX_REGEX_QUERY_LENGTH || hasNestedQuantifier(query)) return undefined;
 	try {
 		return new RegExp(query, "i");
 	} catch {

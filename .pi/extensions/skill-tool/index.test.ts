@@ -3,15 +3,16 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
+import { validateToolArguments } from "@earendil-works/pi-ai";
 import skillToolExtension, { defaultSkillRoots } from "./index.js";
 
-// The `skill` tool is the harness's reason to exist: the enum must equal the
-// model-invoked set, a user-invoked name must be refused with the slash
+// The `skill` tool is the harness's reason to exist: its listed names must equal
+// the model-invoked set, a user-invoked name must be refused with the slash
 // command, and the roots must match what pi itself would list for the cwd.
 
 interface RegisteredTool {
 	name: string;
-	parameters?: { properties?: { name?: { anyOf?: Array<{ const?: string }> } } };
+	parameters?: { properties?: { name?: { anyOf?: Array<{ const?: string }>; type?: string; description?: string } } };
 	execute: (
 		id: string,
 		params: { name?: string },
@@ -50,7 +51,7 @@ function skillRoot(spec: Record<string, string>): string {
 	return root;
 }
 
-test("skill tool: enum is exactly the model-invoked set, loads bodies, refuses user-invoked names", async () => {
+test("skill tool: lists exactly the model-invoked set, loads bodies, refuses user-invoked names", async () => {
 	const root = skillRoot({ grilling: "Grill the user.", wayfinder: "USER:Plan a huge chunk of work." });
 	process.env.PI_SKILL_TOOL_DIRS = root;
 	try {
@@ -58,8 +59,11 @@ test("skill tool: enum is exactly the model-invoked set, loads bodies, refuses u
 		skillToolExtension(api);
 		assert.deepEqual(commands, ["skills"]);
 		const tool = tools.find((t) => t.name === "skill")!;
-		const enumNames = tool.parameters?.properties?.name?.anyOf?.map((o) => o.const);
-		assert.deepEqual(enumNames, ["grilling"], "enum lists only model-invoked skills");
+		const nameSchema = tool.parameters?.properties?.name;
+		assert.equal(nameSchema?.anyOf, undefined, "no enum: pi would reject other names before execute runs");
+		assert.equal(nameSchema?.type, "string");
+		assert.match(nameSchema?.description ?? "", /grilling/, "the model-invoked names stay visible to the model");
+		assert.doesNotMatch(nameSchema?.description ?? "", /wayfinder/, "a user-invoked name is not offered");
 
 		const loaded = await tool.execute("1", { name: "grilling" }, undefined, undefined);
 		assert.equal(loaded.details.loaded, true);
@@ -71,6 +75,30 @@ test("skill tool: enum is exactly the model-invoked set, loads bodies, refuses u
 
 		const unknown = await tool.execute("3", { name: "nope" }, undefined, undefined);
 		assert.match(unknown.content[0].text, /Unknown skill "nope"/);
+	} finally {
+		delete process.env.PI_SKILL_TOOL_DIRS;
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("skill tool: a user-invoked name passes pi's argument validation and gets the slash-command reply", async () => {
+	// pi validates arguments against the schema before `execute`; with an enum,
+	// "wayfinder" failed validation and the /skill:wayfinder hand-off never ran.
+	const root = skillRoot({ grilling: "Grill the user.", wayfinder: "USER:Plan a huge chunk of work." });
+	process.env.PI_SKILL_TOOL_DIRS = root;
+	try {
+		const { api, tools } = mockPi();
+		skillToolExtension(api);
+		const tool = tools.find((t) => t.name === "skill")!;
+		const args = validateToolArguments(tool as never, {
+			type: "toolCall",
+			id: "1",
+			name: "skill",
+			arguments: { name: "wayfinder" },
+		}) as { name: string };
+		const refused = await tool.execute("1", args, undefined, undefined);
+		assert.equal(refused.details.loaded, false);
+		assert.match(refused.content[0].text, /\/skill:wayfinder/);
 	} finally {
 		delete process.env.PI_SKILL_TOOL_DIRS;
 		rmSync(root, { recursive: true, force: true });
@@ -93,8 +121,12 @@ test("skill tool: a body's reference files reach the model with their directory"
 		assert.match(withReferences.content[0].text, /DEEPENING\.md/, "the model learns which reference files exist");
 		assert.match(withReferences.content[0].text, /body of codebase/, "the body still travels");
 
+		// no other .md, but the directory still travels: a body may link a script
+		// (wizard's template.sh, diagnosing-bugs' scripts/*.sh)
+		writeFileSync(join(root, "plain", "template.sh"), "#!/bin/sh\n");
 		const without = await tool.execute("2", { name: "plain" }, undefined, undefined);
 		assert.doesNotMatch(without.content[0].text, /Reference files in this skill's own directory/);
+		assert.ok(without.content[0].text.includes(`(\`${join(root, "plain")}\`)`), "the skill's directory reaches the model");
 	} finally {
 		delete process.env.PI_SKILL_TOOL_DIRS;
 		rmSync(root, { recursive: true, force: true });
@@ -132,6 +164,24 @@ test("defaultSkillRoots: project and user skills come before the package's, dedu
 		rmSync(project, { recursive: true, force: true });
 	} finally {
 		rmSync(home, { recursive: true, force: true });
+	}
+});
+
+test("defaultSkillRoots stops the .agents/skills walk at the git root, as pi does", () => {
+	const home = mkdtempSync(join(tmpdir(), "skill-tool-home-"));
+	const outer = mkdtempSync(join(tmpdir(), "skill-tool-outer-"));
+	const repo = join(outer, "repo");
+	try {
+		mkdirSync(join(outer, ".agents", "skills"), { recursive: true });
+		mkdirSync(join(repo, ".git"), { recursive: true });
+		mkdirSync(join(repo, ".agents", "skills"), { recursive: true });
+		mkdirSync(join(repo, "sub"), { recursive: true });
+		const roots = defaultSkillRoots(join(repo, "sub"), join(home, ".pi", "agent"), home).map((r) => realpathSync(r));
+		assert.ok(roots.includes(realpathSync(join(repo, ".agents", "skills"))), "the repository's own .agents/skills");
+		assert.ok(!roots.includes(realpathSync(join(outer, ".agents", "skills"))), "nothing above the git root");
+	} finally {
+		rmSync(home, { recursive: true, force: true });
+		rmSync(outer, { recursive: true, force: true });
 	}
 });
 

@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, win32 } from "node:path";
 import { test } from "node:test";
@@ -20,25 +20,25 @@ const treeNode = (id: string, parentId: string | null, children: unknown[] = [])
 	children,
 });
 
-function withSession(entries: unknown[], run: (sessionFile: string) => void): void {
+async function withSession(entries: unknown[], run: (sessionFile: string) => void | Promise<void>): Promise<void> {
 	const dir = mkdtempSync(join(tmpdir(), "dcp-recall-"));
 	const sessionFile = join(dir, "session.jsonl");
 	try {
 		writeFileSync(sessionFile, entries.map(JSON.stringify).join("\n"));
-		run(sessionFile);
+		await run(sessionFile);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
 }
 
-test("path containment works with Windows separators and drive boundaries", () => {
+test("path containment works with Windows separators and drive boundaries", async () => {
 	expect(isPathWithin("C:\\repo\\.pi", "C:\\repo\\.pi\\artifacts\\tasks", win32)).toBeTrue();
 	expect(isPathWithin("C:\\repo\\.pi", "C:\\repo\\other", win32)).toBeFalse();
 	expect(isPathWithin("C:\\repo\\.pi", "D:\\repo\\.pi\\artifacts", win32)).toBeFalse();
 });
 
-test("searches Pi native compaction summaries in the active session", () => {
-	withSession(
+test("searches Pi native compaction summaries in the active session", async () => {
+	await withSession(
 		[
 			{
 				type: "compaction",
@@ -46,8 +46,8 @@ test("searches Pi native compaction summaries in the active session", () => {
 				timestamp: "2024-12-03T14:10:00.000Z",
 			},
 		],
-		(sessionFile) => {
-			const result = searchDcpRecall({ sessionFile, query: "dormant compression" });
+		async (sessionFile) => {
+			const result = await searchDcpRecall({ sessionFile, query: "dormant compression" });
 
 			expect(result.total).toBe(1);
 			expect(result.entries[0]?.role).toBe("compaction");
@@ -56,7 +56,7 @@ test("searches Pi native compaction summaries in the active session", () => {
 	);
 });
 
-test("scope:'project' searches this repository's earlier sessions, scope:'all' every project's", () => {
+test("scope:'project' searches this repository's earlier sessions, scope:'all' every project's", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-scope-"));
 	const sessions = join(root, "sessions");
 	const thisProject = join(sessions, "--repo-a--");
@@ -69,11 +69,11 @@ test("scope:'project' searches this repository's earlier sessions, scope:'all' e
 		writeFileSync(join(thisProject, "live.jsonl"), line("live session needle in repo a"));
 		writeFileSync(join(otherProject, "far.jsonl"), line("needle from repo b"));
 
-		const active = searchDcpRecall({ sessionFile: join(thisProject, "live.jsonl"), query: "needle", scope: "active" });
+		const active = await searchDcpRecall({ sessionFile: join(thisProject, "live.jsonl"), query: "needle", scope: "active" });
 		expect(active.total).toBe(1);
 		expect(active.rendered).toContain("live session needle");
 
-		const project = searchDcpRecall({
+		const project = await searchDcpRecall({
 			sessionFile: join(thisProject, "live.jsonl"),
 			projectSessionDir: thisProject,
 			rawSessionDir: sessions,
@@ -84,7 +84,7 @@ test("scope:'project' searches this repository's earlier sessions, scope:'all' e
 		expect(project.rendered).toContain("earlier session needle");
 		expect(project.rendered).not.toContain("repo b");
 
-		const all = searchDcpRecall({ projectSessionDir: thisProject, rawSessionDir: sessions, query: "needle", scope: "all" });
+		const all = await searchDcpRecall({ projectSessionDir: thisProject, rawSessionDir: sessions, query: "needle", scope: "all" });
 		expect(all.total).toBe(3);
 		expect(all.rendered).toContain("repo b");
 	} finally {
@@ -92,7 +92,7 @@ test("scope:'project' searches this repository's earlier sessions, scope:'all' e
 	}
 });
 
-test("activeLineageIds walks pi's nested SessionTreeNode chain and ignores dead branches", () => {
+test("activeLineageIds walks pi's nested SessionTreeNode chain and ignores dead branches", async () => {
 	// pi's getTree() returns SessionTreeNode = { entry: { id, parentId }, children },
 	// a nested forest — NOT a flat {id,parentId}[]. A flat fixture here is what let
 	// the shape mismatch ship: it walked nothing and returned an empty Set.
@@ -189,8 +189,8 @@ test("the registered recall tool resolves the active lineage end to end", async 
 	}
 });
 
-test("active scope with lineageEntryIds excludes superseded branch turns", () => {
-	withSession(
+test("active scope with lineageEntryIds excludes superseded branch turns", async () => {
+	await withSession(
 		[
 			{
 				type: "message",
@@ -214,8 +214,8 @@ test("active scope with lineageEntryIds excludes superseded branch turns", () =>
 				timestamp: "2024-12-03T14:12:00.000Z",
 			},
 		],
-		(sessionFile) => {
-			const filtered = searchDcpRecall({
+		async (sessionFile) => {
+			const filtered = await searchDcpRecall({
 				sessionFile,
 				query: "keep|dead",
 				scope: "active",
@@ -226,7 +226,7 @@ test("active scope with lineageEntryIds excludes superseded branch turns", () =>
 			expect(filtered.rendered).toContain("keep me beta");
 			expect(filtered.rendered).not.toContain("dead branch delta");
 
-			const unfiltered = searchDcpRecall({
+			const unfiltered = await searchDcpRecall({
 				sessionFile,
 				query: "keep|dead",
 				scope: "active",
@@ -236,7 +236,7 @@ test("active scope with lineageEntryIds excludes superseded branch turns", () =>
 	);
 });
 
-test("sessions walk skips symlinked directories", () => {
+test("sessions walk skips symlinked directories", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-symlink-walk-"));
 	const rawSessionDir = join(root, "raw-sessions");
 	const outside = join(root, "outside");
@@ -258,7 +258,7 @@ test("sessions walk skips symlinked directories", () => {
 			})}\n`,
 		);
 		symlinkSync(outside, join(rawSessionDir, "evil-link"));
-		const result = searchDcpRecall({ query: "needle", scope: "all", rawSessionDir });
+		const result = await searchDcpRecall({ query: "needle", scope: "all", rawSessionDir });
 		expect(result.rendered).toContain("real session needle");
 		expect(result.rendered).not.toContain("outside leak needle");
 	} finally {
@@ -266,8 +266,8 @@ test("sessions walk skips symlinked directories", () => {
 	}
 });
 
-test("expand rejects indices outside the available entries", () => {
-	withSession(
+test("expand rejects indices outside the available entries", async () => {
+	await withSession(
 		[
 			{
 				type: "message",
@@ -275,8 +275,8 @@ test("expand rejects indices outside the available entries", () => {
 				timestamp: "2024-12-03T14:10:00.000Z",
 			},
 		],
-		(sessionFile) => {
-			const result = searchDcpRecall({ sessionFile, expand: [1, 999] });
+		async (sessionFile) => {
+			const result = await searchDcpRecall({ sessionFile, expand: [1, 999] });
 			expect(result.entries).toHaveLength(0);
 			expect(result.rendered).toContain("Cannot expand indices");
 			expect(result.rendered).toContain("999");
@@ -284,7 +284,7 @@ test("expand rejects indices outside the available entries", () => {
 	);
 });
 
-test("session file rewrites are re-parsed (sig-keyed cache invalidates)", () => {
+test("session file rewrites are re-parsed (sig-keyed cache invalidates)", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "dcp-cache-"));
 	const sessionFile = join(dir, "session.jsonl");
 	try {
@@ -295,7 +295,7 @@ test("session file rewrites are re-parsed (sig-keyed cache invalidates)", () => 
 				message: { role: "user", content: "first content needle" },
 			})}\n`,
 		);
-		const first = searchDcpRecall({ sessionFile, query: "needle" });
+		const first = await searchDcpRecall({ sessionFile, query: "needle" });
 		expect(first.rendered).toContain("first content needle");
 
 		writeFileSync(
@@ -305,7 +305,7 @@ test("session file rewrites are re-parsed (sig-keyed cache invalidates)", () => 
 				message: { role: "user", content: "second content needle that is much longer" },
 			})}\n`,
 		);
-		const second = searchDcpRecall({ sessionFile, query: "needle" });
+		const second = await searchDcpRecall({ sessionFile, query: "needle" });
 		expect(second.rendered).toContain("second content needle that is much longer");
 		expect(second.rendered).not.toContain("first content needle");
 	} finally {
@@ -313,7 +313,7 @@ test("session file rewrites are re-parsed (sig-keyed cache invalidates)", () => 
 	}
 });
 
-test("indexes pi-task history metadata for exact provenance recall", () => {
+test("indexes pi-task history metadata for exact provenance recall", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-task-history-"));
 	const previousCwd = process.cwd();
 	const taskId = "fixture-task-provenance-unique";
@@ -349,7 +349,7 @@ test("indexes pi-task history metadata for exact provenance recall", () => {
 		);
 		process.chdir(root);
 
-		const result = searchDcpRecall({ query: description, scope: "all", limit: 10, rawSessionDir });
+		const result = await searchDcpRecall({ query: description, scope: "all", limit: 10, rawSessionDir });
 		const taskEntry = result.entries[0];
 
 		expect(taskEntry?.role).toBe("task");
@@ -359,11 +359,11 @@ test("indexes pi-task history metadata for exact provenance recall", () => {
 		expect(result.rendered).toContain("[task:reviewer:done]");
 		expect(new Set(result.entries.map((entry) => entry.index)).size).toBe(result.entries.length);
 
-		const active = searchDcpRecall({ sessionFile: rawSession, query: description, scope: "active" });
+		const active = await searchDcpRecall({ sessionFile: rawSession, query: description, scope: "active" });
 		expect(active.entries.some((entry) => entry.role === "task")).toBeFalse();
 
 		process.chdir(join(root, ".pi"));
-		const fromPiCwd = searchDcpRecall({ query: description, scope: "all", rawSessionDir });
+		const fromPiCwd = await searchDcpRecall({ query: description, scope: "all", rawSessionDir });
 		expect(fromPiCwd.entries[0]?.role).toBe("task");
 	} finally {
 		process.chdir(previousCwd);
@@ -371,7 +371,7 @@ test("indexes pi-task history metadata for exact provenance recall", () => {
 	}
 });
 
-test("does not inherit task history from an ancestor project", () => {
+test("does not inherit task history from an ancestor project", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-nearest-project-"));
 	const previousCwd = process.cwd();
 	const inner = join(root, "inner");
@@ -386,7 +386,7 @@ test("does not inherit task history from an ancestor project", () => {
 		);
 		process.chdir(inner);
 
-		const result = searchDcpRecall({ query: "outer provenance sentinel", scope: "all", rawSessionDir });
+		const result = await searchDcpRecall({ query: "outer provenance sentinel", scope: "all", rawSessionDir });
 		expect(result.entries.some((entry) => entry.role === "task")).toBeFalse();
 	} finally {
 		process.chdir(previousCwd);
@@ -394,7 +394,7 @@ test("does not inherit task history from an ancestor project", () => {
 	}
 });
 
-test("partial task metadata does not outrank an exact session match", () => {
+test("partial task metadata does not outrank an exact session match", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-task-ranking-"));
 	const rawSessionDir = join(root, "raw-sessions");
 	const historyFile = join(root, ".pi", "task-session-history.json");
@@ -407,7 +407,7 @@ test("partial task metadata does not outrank an exact session match", () => {
 		);
 		writeFileSync(historyFile, JSON.stringify([{ id: "partial-task", agentType: "reviewer", description: "needle", status: "done" }]));
 
-		const result = searchDcpRecall({
+		const result = await searchDcpRecall({
 			query: "needle exact target",
 			scope: "all",
 			rawSessionDir,
@@ -419,7 +419,7 @@ test("partial task metadata does not outrank an exact session match", () => {
 	}
 });
 
-test("task provenance rejects unsafe metadata and external transcript paths", () => {
+test("task provenance rejects unsafe metadata and external transcript paths", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-task-safety-"));
 	const previousCwd = process.cwd();
 	const piDir = join(root, ".pi");
@@ -451,7 +451,7 @@ test("task provenance rejects unsafe metadata and external transcript paths", ()
 		);
 		process.chdir(root);
 
-		const result = searchDcpRecall({ query: "unsafe provenance", scope: "all", limit: 20, rawSessionDir });
+		const result = await searchDcpRecall({ query: "unsafe provenance", scope: "all", limit: 20, rawSessionDir });
 		expect(result.entries.some((entry) => entry.text.includes("task id: .."))).toBeFalse();
 		// Newlines and Unicode line separators are whitespace: the row is indexed
 		// with the description flattened onto one line (no forged second line)
@@ -474,7 +474,7 @@ test("task provenance rejects unsafe metadata and external transcript paths", ()
 	}
 });
 
-test("task transcript lookup rejects symlinked ancestor directories", () => {
+test("task transcript lookup rejects symlinked ancestor directories", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-task-ancestor-symlink-"));
 	const piDir = join(root, ".pi");
 	const outsideArtifacts = join(root, "outside-artifacts");
@@ -493,7 +493,7 @@ test("task transcript lookup rejects symlinked ancestor directories", () => {
 			JSON.stringify([{ id: taskId, agentType: "reviewer", description: "ancestor symlink provenance", status: "done" }]),
 		);
 
-		const result = searchDcpRecall({
+		const result = await searchDcpRecall({
 			query: "ancestor symlink provenance",
 			scope: "all",
 			rawSessionDir,
@@ -507,8 +507,8 @@ test("task transcript lookup rejects symlinked ancestor directories", () => {
 	}
 });
 
-test("excludes extension state and assistant thinking while retaining visible messages", () => {
-	withSession(
+test("excludes extension state and assistant thinking while retaining visible messages", async () => {
+	await withSession(
 		[
 			{
 				type: "custom",
@@ -528,8 +528,8 @@ test("excludes extension state and assistant thinking while retaining visible me
 				timestamp: 2,
 			},
 		],
-		(sessionFile) => {
-			const result = searchDcpRecall({ sessionFile });
+		async (sessionFile) => {
+			const result = await searchDcpRecall({ sessionFile });
 
 			expect(result.rendered).toContain("Visible assistant answer");
 			expect(result.rendered).not.toContain("hidden reasoning");
@@ -538,7 +538,7 @@ test("excludes extension state and assistant thinking while retaining visible me
 	);
 });
 
-test("scope:'project' reads subdirectory launches and drops a same-prefix sibling repository", () => {
+test("scope:'project' reads subdirectory launches and drops a same-prefix sibling repository", async () => {
 	const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-project-dirs-")));
 	const sessions = join(root, "sessions");
 	const repo = join(root, "work", "repo");
@@ -555,7 +555,7 @@ test("scope:'project' reads subdirectory launches and drops a same-prefix siblin
 			[sessionHeader(`${repo}-other`, "s3"), userLine("other repository needle")].join("\n"),
 		);
 
-		const result = searchDcpRecall({
+		const result = await searchDcpRecall({
 			scope: "project",
 			query: "needle",
 			projectSessionDir: dirFor(repo),
@@ -572,7 +572,7 @@ test("scope:'project' reads subdirectory launches and drops a same-prefix siblin
 	}
 });
 
-test("a shared custom session dir: project keeps this repository's files, all includes the dir", () => {
+test("a shared custom session dir: project keeps this repository's files, all includes the dir", async () => {
 	const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-custom-dir-")));
 	const flat = join(root, "custom-sessions");
 	const repo = join(root, "work", "repo");
@@ -583,7 +583,7 @@ test("a shared custom session dir: project keeps this repository's files, all in
 		writeFileSync(join(flat, "theirs.jsonl"), [sessionHeader(join(root, "work", "elsewhere"), "s2"), userLine("theirs needle")].join("\n"));
 		writeFileSync(join(flat, "legacy.jsonl"), userLine("headerless legacy needle"));
 
-		const project = searchDcpRecall({
+		const project = await searchDcpRecall({
 			scope: "project",
 			query: "needle",
 			projectSessionDir: flat,
@@ -594,7 +594,7 @@ test("a shared custom session dir: project keeps this repository's files, all in
 		expect(project.rendered).toContain("headerless legacy needle");
 		expect(project.rendered).not.toContain("theirs needle");
 
-		const all = searchDcpRecall({
+		const all = await searchDcpRecall({
 			scope: "all",
 			query: "theirs",
 			projectSessionDir: flat,
@@ -607,7 +607,7 @@ test("a shared custom session dir: project keeps this repository's files, all in
 	}
 });
 
-test("entries a fork copied into a new session file count once", () => {
+test("entries a fork copied into a new session file count once", async () => {
 	const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-fork-")));
 	const repo = join(root, "repo");
 	const dir = join(root, "sessions", defaultSessionDirName(repo));
@@ -620,7 +620,7 @@ test("entries a fork copied into a new session file count once", () => {
 			[sessionHeader(repo, "s2"), copied, userLine("fork-only needle", "e2", "2026-09-01T00:05:00.000Z")].join("\n"),
 		);
 
-		const result = searchDcpRecall({
+		const result = await searchDcpRecall({
 			scope: "project",
 			query: "needle",
 			projectSessionDir: dir,
@@ -633,11 +633,11 @@ test("entries a fork copied into a new session file count once", () => {
 	}
 });
 
-test("a file-cap cut is reported, and a miss says it is not evidence", () => {
+test("a file-cap cut is reported, and a miss says it is not evidence", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "dcp-cap-"));
 	try {
 		for (const name of ["one", "two", "three"]) writeFileSync(join(dir, `${name}.jsonl`), userLine(`capped ${name} needle`));
-		const capped = searchDcpRecall({
+		const capped = await searchDcpRecall({
 			scope: "project",
 			query: "needle",
 			projectSessionDir: dir,
@@ -648,7 +648,7 @@ test("a file-cap cut is reported, and a miss says it is not evidence", () => {
 		expect(capped.totalFiles).toBe(3);
 		expect(capped.rendered).toContain("Scanned the newest 2 of 3 session files");
 
-		const miss = searchDcpRecall({
+		const miss = await searchDcpRecall({
 			scope: "project",
 			query: "zzz-absent-token",
 			projectSessionDir: dir,
@@ -662,8 +662,8 @@ test("a file-cap cut is reported, and a miss says it is not evidence", () => {
 	}
 });
 
-test("tool-call paths and commands, user shell runs, and branch summaries are searchable", () => {
-	withSession(
+test("tool-call paths and commands, user shell runs, and branch summaries are searchable", async () => {
+	await withSession(
 		[
 			{
 				type: "message",
@@ -692,16 +692,16 @@ test("tool-call paths and commands, user shell runs, and branch summaries are se
 			},
 			{ type: "branch_summary", id: "t3", fromId: "t1", timestamp: 3, summary: "Abandoned branch tried a wrapper layer" },
 		],
-		(sessionFile) => {
-			const byPath = searchDcpRecall({ sessionFile, query: "invoice" });
+		async (sessionFile) => {
+			const byPath = await searchDcpRecall({ sessionFile, query: "invoice" });
 			expect(byPath.rendered).toContain('tool call: edit path="src/billing/invoice.ts"');
 			expect(byPath.rendered).not.toContain("private edit body");
 
-			const shell = searchDcpRecall({ sessionFile, query: "sync" });
+			const shell = await searchDcpRecall({ sessionFile, query: "sync" });
 			expect(shell.rendered).toContain("$ npm run sync:check");
 			expect(shell.rendered).toContain("exit code: 1");
 
-			const browse = searchDcpRecall({ sessionFile });
+			const browse = await searchDcpRecall({ sessionFile });
 			expect(browse.rendered).toContain("Abandoned branch tried a wrapper layer");
 		},
 	);
@@ -719,7 +719,7 @@ test("projectRootSpellings: empty outside a git checkout, the repository root in
 	expect(projectRootSpellings(import.meta.dirname)).toContain(repoRoot);
 });
 
-test("a session whose cwd was deleted still matches through the symlinked spelling of the root", () => {
+test("a session whose cwd was deleted still matches through the symlinked spelling of the root", async () => {
 	const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-link-")));
 	const realRepo = join(root, "real", "repo");
 	const linkRepo = join(root, "link", "repo");
@@ -735,7 +735,7 @@ test("a session whose cwd was deleted still matches through the symlinked spelli
 			[sessionHeader(join(linkRepo, "gone"), "s1"), userLine("deleted subdirectory needle")].join("\n"),
 		);
 
-		const result = searchDcpRecall({
+		const result = await searchDcpRecall({
 			scope: "project",
 			query: "needle",
 			projectSessionDir: active,
@@ -748,8 +748,8 @@ test("a session whose cwd was deleted still matches through the symlinked spelli
 	}
 });
 
-test("user runs excluded from context (!!cmd) stay out of recall", () => {
-	withSession(
+test("user runs excluded from context (!!cmd) stay out of recall", async () => {
+	await withSession(
 		[
 			{
 				type: "message",
@@ -767,27 +767,32 @@ test("user runs excluded from context (!!cmd) stay out of recall", () => {
 				},
 			},
 		],
-		(sessionFile) => {
-			expect(searchDcpRecall({ sessionFile, query: "private-notes" }).total).toBe(0);
-			expect(searchDcpRecall({ sessionFile, query: "hidden output marker" }).total).toBe(0);
+		async (sessionFile) => {
+			expect((await searchDcpRecall({ sessionFile, query: "private-notes" })).total).toBe(0);
+			expect((await searchDcpRecall({ sessionFile, query: "hidden output marker" })).total).toBe(0);
 		},
 	);
 });
 
-test("entries without a timestamp are never merged by id", () => {
+test("entries without a timestamp are never merged by id", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "dcp-no-timestamp-"));
 	try {
 		const line = (text: string) => JSON.stringify({ type: "message", id: "same", message: { role: "user", content: text } });
 		writeFileSync(join(dir, "a.jsonl"), line("first foreign needle"));
 		writeFileSync(join(dir, "b.jsonl"), line("second foreign needle"));
-		const result = searchDcpRecall({ scope: "project", query: "needle", projectSessionDir: dir, taskHistoryFile: join(dir, "none.json") });
+		const result = await searchDcpRecall({
+			scope: "project",
+			query: "needle",
+			projectSessionDir: dir,
+			taskHistoryFile: join(dir, "none.json"),
+		});
 		expect(result.total).toBe(2);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
 
-test("a limit cut is disclosed and total still reports every match", () => {
+test("a limit cut is disclosed and total still reports every match", async () => {
 	const entries = [1, 2, 3].map((n) => ({
 		type: "message",
 		id: `m${n}`,
@@ -795,34 +800,34 @@ test("a limit cut is disclosed and total still reports every match", () => {
 		timestamp: `2026-09-01T00:00:0${n}.000Z`,
 		message: { role: "user", content: `needle number ${n}` },
 	}));
-	withSession(entries, (sessionFile) => {
-		const all = searchDcpRecall({ sessionFile, query: "needle", scope: "active" });
+	await withSession(entries, async (sessionFile) => {
+		const all = await searchDcpRecall({ sessionFile, query: "needle", scope: "active" });
 		expect(all.total).toBe(3);
 
 		// limit is now visible: the header keeps the true match count and the cut
 		// is named, so a truncated page cannot read as "that is all there is".
-		const capped = searchDcpRecall({ sessionFile, query: "needle", scope: "active", limit: 2 });
+		const capped = await searchDcpRecall({ sessionFile, query: "needle", scope: "active", limit: 2 });
 		expect(capped.total).toBe(3);
 		expect(capped.rendered).toContain("Showing the first 2 of 3 matches (limit)");
 		expect(capped.entries).toHaveLength(2);
 
-		expect(searchDcpRecall({ sessionFile, query: "needle", scope: "active", limit: 0 }).rendered).toContain(
+		expect((await searchDcpRecall({ sessionFile, query: "needle", scope: "active", limit: 0 })).rendered).toContain(
 			"Showing the first 0 of 3 matches (limit)",
 		);
 
 		// a negative limit used to slice(0, -n) and silently drop the tail
-		const negative = searchDcpRecall({ sessionFile, query: "needle", scope: "active", limit: -5 });
+		const negative = await searchDcpRecall({ sessionFile, query: "needle", scope: "active", limit: -5 });
 		expect(negative.total).toBe(3);
 		expect(negative.rendered.includes("Showing the first")).toBeFalse();
 
 		// NaN page used to slice(NaN, NaN) and render an empty "page NaN"
-		const nanPage = searchDcpRecall({ sessionFile, query: "needle", scope: "active", page: Number.NaN });
+		const nanPage = await searchDcpRecall({ sessionFile, query: "needle", scope: "active", page: Number.NaN });
 		expect(nanPage.rendered).toContain("(page 1)");
 		expect(nanPage.entries).toHaveLength(3);
 	});
 });
 
-test("only .jsonl session files are scanned; a stray .json is not", () => {
+test("only .jsonl session files are scanned; a stray .json is not", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-jsonl-only-"));
 	const sessions = join(root, "sessions");
 	try {
@@ -830,7 +835,7 @@ test("only .jsonl session files are scanned; a stray .json is not", () => {
 		writeFileSync(join(sessions, "real.jsonl"), `${userLine("needle from a jsonl session")}\n`);
 		// pretty-printed JSON: line-splitting it would index each fragment as an entry
 		writeFileSync(join(sessions, "stray.json"), JSON.stringify({ note: "needle from a stray json" }, null, 2));
-		const result = searchDcpRecall({ rawSessionDir: sessions, query: "needle", scope: "all" });
+		const result = await searchDcpRecall({ rawSessionDir: sessions, query: "needle", scope: "all" });
 		expect(result.total).toBe(1);
 		expect(result.rendered).toContain("needle from a jsonl session");
 	} finally {
@@ -838,7 +843,7 @@ test("only .jsonl session files are scanned; a stray .json is not", () => {
 	}
 });
 
-test("a session header longer than 16 KB still yields its cwd for scope:'project'", () => {
+test("a session header longer than 16 KB still yields its cwd for scope:'project'", async () => {
 	const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-large-header-")));
 	const repo = join(root, "repo");
 	const sub = join(repo, "sub");
@@ -860,7 +865,7 @@ test("a session header longer than 16 KB still yields its cwd for scope:'project
 		});
 		writeFileSync(join(sibling, "big.jsonl"), [header, userLine("long header needle")].join("\n"));
 
-		const result = searchDcpRecall({
+		const result = await searchDcpRecall({
 			scope: "project",
 			query: "needle",
 			projectSessionDir: base,
@@ -873,7 +878,7 @@ test("a session header longer than 16 KB still yields its cwd for scope:'project
 	}
 });
 
-test("a BOM-prefixed session header still yields its cwd", () => {
+test("a BOM-prefixed session header still yields its cwd", async () => {
 	const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-bom-header-")));
 	const repo = join(root, "repo");
 	const sub = join(repo, "sub");
@@ -886,7 +891,7 @@ test("a BOM-prefixed session header still yields its cwd", () => {
 		// lost and the subdirectory session is dropped.
 		writeFileSync(join(sibling, "bom.jsonl"), [`\uFEFF${sessionHeader(sub, "bom")}`, userLine("bom header needle")].join("\n"));
 
-		const result = searchDcpRecall({
+		const result = await searchDcpRecall({
 			scope: "project",
 			query: "needle",
 			projectSessionDir: base,
@@ -899,13 +904,13 @@ test("a BOM-prefixed session header still yields its cwd", () => {
 	}
 });
 
-test("a session file above the read cap is skipped and never claimed as searched", () => {
+test("a session file above the read cap is skipped and never claimed as searched", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-read-cap-"));
 	try {
 		writeFileSync(join(root, "small.jsonl"), userLine("small session needle"));
 		writeFileSync(join(root, "huge.jsonl"), userLine(`huge session needle ${"x".repeat(400)}`));
 
-		const result = searchDcpRecall({
+		const result = await searchDcpRecall({
 			scope: "project",
 			query: "needle",
 			projectSessionDir: root,
@@ -923,7 +928,7 @@ test("a session file above the read cap is skipped and never claimed as searched
 	}
 });
 
-test("a cwd symlinked into a repository subdirectory does not widen the project root", () => {
+test("a cwd symlinked into a repository subdirectory does not widen the project root", async () => {
 	const base = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-link-into-")));
 	const realRepo = join(base, "real", "repo");
 	const sub = join(realRepo, "src");
@@ -944,14 +949,14 @@ test("a cwd symlinked into a repository subdirectory does not widen the project 
 	}
 });
 
-test("unrelated entries sharing an id and timestamp but not text are not merged", () => {
+test("unrelated entries sharing an id and timestamp but not text are not merged", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "dcp-id-collision-"));
 	try {
 		const shared = { type: "message", id: "abcd1234", timestamp: "2026-09-01T00:00:01.000Z" };
 		writeFileSync(join(dir, "a.jsonl"), JSON.stringify({ ...shared, message: { role: "user", content: "foreign alpha needle" } }));
 		writeFileSync(join(dir, "b.jsonl"), JSON.stringify({ ...shared, message: { role: "user", content: "foreign beta needle" } }));
 
-		const result = searchDcpRecall({
+		const result = await searchDcpRecall({
 			scope: "project",
 			query: "needle",
 			projectSessionDir: dir,
@@ -965,7 +970,7 @@ test("unrelated entries sharing an id and timestamp but not text are not merged"
 	}
 });
 
-test("a multi-line task description is normalized and indexed instead of dropped", () => {
+test("a multi-line task description is normalized and indexed instead of dropped", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-multiline-task-"));
 	const rawSessionDir = join(root, "raw-sessions");
 	const historyFile = join(root, ".pi", "task-session-history.json");
@@ -984,7 +989,7 @@ test("a multi-line task description is normalized and indexed instead of dropped
 			]),
 		);
 
-		const result = searchDcpRecall({ query: "second line detail", scope: "all", rawSessionDir, taskHistoryFile: historyFile });
+		const result = await searchDcpRecall({ query: "second line detail", scope: "all", rawSessionDir, taskHistoryFile: historyFile });
 		const entry = result.entries.find((candidate) => candidate.role === "task");
 		expect(entry).toBeDefined();
 		expect(entry?.text).toContain("description: first line needle second line detail third");
@@ -1025,7 +1030,7 @@ test("the registered recall tool resolves task provenance from ctx.cwd, not proc
 	}
 });
 
-test("a task transcript lookup survives a racing delete between lstat and realpath", () => {
+test("a task transcript lookup survives a racing delete between lstat and realpath", async () => {
 	const root = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-race-")));
 	const piDir = join(root, ".pi");
 	const taskId = "race-task";
@@ -1048,7 +1053,12 @@ test("a task transcript lookup survives a racing delete between lstat and realpa
 			return originalNative(path);
 		}) as typeof realpathSync.native;
 
-		const result = searchDcpRecall({ query: "race transcript provenance", scope: "all", rawSessionDir, taskHistoryFile: historyFile });
+		const result = await searchDcpRecall({
+			query: "race transcript provenance",
+			scope: "all",
+			rawSessionDir,
+			taskHistoryFile: historyFile,
+		});
 		const entry = result.entries.find((candidate) => candidate.role === "task");
 		expect(entry).toBeDefined();
 		expect(entry?.text).not.toContain("transcript:");
@@ -1058,7 +1068,7 @@ test("a task transcript lookup survives a racing delete between lstat and realpa
 	}
 });
 
-test("a session file larger than the stream chunk is read whole, boundary line included", () => {
+test("a session file larger than the stream chunk is read whole, boundary line included", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "dcp-recall-chunk-"));
 	const sessionFile = join(dir, "session.jsonl");
 	try {
@@ -1076,7 +1086,7 @@ test("a session file larger than the stream chunk is read whole, boundary line i
 		writeFileSync(sessionFile, [...filler, straddling, userLine("final needle", "final-entry")].join("\n"));
 		expect(statSync(sessionFile).size > 1024 * 1024).toBeTrue();
 
-		const result = searchDcpRecall({ sessionFile, query: "needle" });
+		const result = await searchDcpRecall({ sessionFile, query: "needle" });
 		expect(result.total).toBe(2);
 		// the tail of a line that spans chunks is present, so nothing was dropped at
 		// the boundary and the buffer was not reused under it
@@ -1087,7 +1097,7 @@ test("a session file larger than the stream chunk is read whole, boundary line i
 	}
 });
 
-test("an interrupted scan stops early and reports its results as partial", () => {
+test("an interrupted scan stops early and reports its results as partial", async () => {
 	// Two roots, because the line cache is keyed by path: a baseline run that warmed
 	// the cache would leave nothing for the abort to interrupt, and the test would
 	// measure the cache instead of the streaming read.
@@ -1109,12 +1119,12 @@ test("an interrupted scan stops early and reports its results as partial", () =>
 	try {
 		seed(baseline);
 		seed(interrupted);
-		expect(searchDcpRecall(options(baseline)).total).toBe(4);
+		expect((await searchDcpRecall(options(baseline))).total).toBe(4);
 
 		// the predicate is consulted before every chunk read, so the scan stops
 		// partway instead of finishing work nobody is waiting for
 		let calls = 0;
-		const aborted = searchDcpRecall(options(interrupted, () => calls++ >= 3));
+		const aborted = await searchDcpRecall(options(interrupted, () => calls++ >= 3));
 		expect(aborted.rendered).toContain("The scan was interrupted after");
 		expect(aborted.rendered).toContain("of 4 session files; these results are partial");
 		expect(aborted.total < 4).toBeTrue();
@@ -1126,7 +1136,7 @@ test("an interrupted scan stops early and reports its results as partial", () =>
 	}
 });
 
-test("an interrupted read is not cached as if it were the whole file", () => {
+test("an interrupted read is not cached as if it were the whole file", async () => {
 	// The cache signature is (mtime, size), which does not change when a scan is
 	// interrupted. Caching the prefix would serve every later search a truncated
 	// file and silently lose the rest of the session — the exact failure recall
@@ -1140,18 +1150,18 @@ test("an interrupted read is not cached as if it were the whole file", () => {
 		expect(statSync(sessionFile).size > 2 * 1024 * 1024).toBeTrue();
 
 		let calls = 0;
-		const partial = searchDcpRecall({ sessionFile, query: "needle", shouldStop: () => calls++ >= 1 });
+		const partial = await searchDcpRecall({ sessionFile, query: "needle", shouldStop: () => calls++ >= 1 });
 		expect(partial.rendered).toContain("The scan was interrupted");
 		expect(partial.total < 20_000).toBeTrue();
 
 		// the whole file, from a cold-ish cache: the aborted prefix must not be it
-		expect(searchDcpRecall({ sessionFile, query: "needle" }).total).toBe(20_000);
+		expect((await searchDcpRecall({ sessionFile, query: "needle" })).total).toBe(20_000);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
 
-test("an over-long task description is indexed, and an over-long id is still rejected", () => {
+test("an over-long task description is indexed, and an over-long id is still rejected", async () => {
 	const root = mkdtempSync(join(tmpdir(), "dcp-recall-long-meta-"));
 	const piDir = join(root, ".pi");
 	const historyFile = join(piDir, "task-session-history.json");
@@ -1165,7 +1175,7 @@ test("an over-long task description is indexed, and an over-long id is still rej
 		);
 		// A 300+ character description used to be dropped whole, leaving the task
 		// unfindable by its own words; it is now truncated and searchable.
-		const result = searchDcpRecall({ query: "reconciliation", scope: "all", rawSessionDir, taskHistoryFile: historyFile, cwd: root });
+		const result = await searchDcpRecall({ query: "reconciliation", scope: "all", rawSessionDir, taskHistoryFile: historyFile, cwd: root });
 		expect(result.total).toBe(1);
 		expect(result.entries[0]?.role).toBe("task");
 		expect(result.entries[0]?.text).toContain("reconciliation");
@@ -1174,8 +1184,151 @@ test("an over-long task description is indexed, and an over-long id is still rej
 		// Truncation must not invent an identifier: the ellipsis fails the id charset,
 		// so a nonsense id is still rejected rather than indexed under a wrong one.
 		writeFileSync(historyFile, JSON.stringify([{ id: "x".repeat(90), description: "short task", status: "done" }]));
-		expect(searchDcpRecall({ query: "short task", scope: "all", rawSessionDir, taskHistoryFile: historyFile, cwd: root }).total).toBe(0);
+		expect(
+			(await searchDcpRecall({ query: "short task", scope: "all", rawSessionDir, taskHistoryFile: historyFile, cwd: root })).total,
+		).toBe(0);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+/** The registered recall tool, as pi calls it. */
+function registeredRecall() {
+	const registered: Array<{
+		execute: (...args: unknown[]) => Promise<{ content: Array<{ text: string }>; details: unknown }>;
+	}> = [];
+	registerRecallTool({
+		registerTool: (tool: unknown) => registered.push(tool as (typeof registered)[number]),
+		on() {},
+		appendEntry() {},
+	} as never);
+	return registered[0]!;
+}
+
+test("expand returns the entry the search showed after the active session grew", async () => {
+	// Between a search and its expand pi appends at least two entries to the
+	// active session (the search result and the next tool call). Numbered first,
+	// the active session shifted every older hit, and expand returned another entry.
+	const dir = mkdtempSync(join(tmpdir(), "dcp-expand-stable-"));
+	const live = join(dir, "live.jsonl");
+	const old = join(dir, "old.jsonl");
+	try {
+		writeFileSync(old, `${userLine("needle from the older session", "o1")}\n`);
+		utimesSync(old, new Date(1_700_000_000_000), new Date(1_700_000_000_000));
+		writeFileSync(live, `${userLine("live chatter", "l1", "2026-09-01T00:00:02.000Z")}\n`);
+		const options = { scope: "project" as const, sessionFile: live, projectSessionDir: dir, taskHistoryFile: join(dir, "none.json") };
+
+		const search = await searchDcpRecall({ ...options, query: "older session" });
+		const hit = search.entries[0]!;
+		expect(hit.text).toBe("needle from the older session");
+
+		appendFileSync(live, `${userLine("recall result echo", "l2", "2026-09-01T00:00:03.000Z")}\n`);
+		appendFileSync(live, `${userLine("next tool call", "l3", "2026-09-01T00:00:04.000Z")}\n`);
+
+		const expanded = await searchDcpRecall({ ...options, expand: [hit.index] });
+		expect(expanded.entries).toHaveLength(1);
+		expect(expanded.entries[0]?.text).toBe("needle from the older session");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("a custom_message the model saw (a task-complete report) is searchable; extension state is not", async () => {
+	await withSession(
+		[
+			{
+				type: "custom_message",
+				customType: "task-complete",
+				content: "Background task done. The migration flag is now on by default.",
+				display: true,
+				timestamp: "2026-09-01T00:00:01.000Z",
+			},
+			{ type: "custom", customType: "task-registry", data: { description: "migration flag registry state" } },
+		],
+		async (sessionFile) => {
+			const result = await searchDcpRecall({ sessionFile, query: "migration flag" });
+			expect(result.total).toBe(1);
+			expect(result.rendered).toContain("now on by default");
+			expect(result.rendered).not.toContain("registry state");
+		},
+	);
+});
+
+test("aborting the call's signal while the scan runs stops the scan and marks the result partial", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "dcp-recall-signal-"));
+	try {
+		for (let i = 0; i < 10; i++) writeFileSync(join(dir, `s${i}.jsonl`), `${userLine(`needle in file ${i}`, `e${i}`)}\n`);
+		const controller = new AbortController();
+		const pending = registeredRecall().execute("call-1", { query: "needle", scope: "project" }, controller.signal, undefined, {
+			cwd: dir,
+			sessionManager: { getSessionFile: () => undefined, getSessionDir: () => dir },
+		});
+		// fires on the event loop, which a synchronous scan never yields to
+		setImmediate(() => controller.abort());
+		const text = (await pending).content[0]!.text;
+		expect(text).toContain("The scan was interrupted after");
+		expect(text).toContain("of 10 session files; these results are partial");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("the registered tool ignores undeclared arguments that name internal options", async () => {
+	// pi does not strip undeclared arguments before execute: a tool call could
+	// override the read caps, the session file, or the stop predicate.
+	const dir = mkdtempSync(join(tmpdir(), "dcp-recall-params-"));
+	const sessionFile = join(dir, "session.jsonl");
+	try {
+		writeFileSync(sessionFile, `${userLine("declared needle", "a")}\n`);
+		const result = await registeredRecall().execute(
+			"call-1",
+			{ query: "needle", shouldStop: true, readCapBytes: 1, fileCap: 0, sessionFile: join(dir, "absent.jsonl") },
+			undefined,
+			undefined,
+			{ cwd: dir, sessionManager: { getSessionFile: () => sessionFile, getSessionDir: () => dir } },
+		);
+		expect(result.content[0]!.text).toContain("declared needle");
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("the tool result's details stay slim: indices, not every entry's full text", async () => {
+	// details are persisted into the session file recall itself scans; the full
+	// text of every returned entry made them ~21x the content the model reads.
+	const dir = mkdtempSync(join(tmpdir(), "dcp-recall-details-"));
+	const sessionFile = join(dir, "session.jsonl");
+	try {
+		writeFileSync(sessionFile, `${userLine(`needle ${"long body ".repeat(200)}`, "a")}\n`);
+		const result = await registeredRecall().execute("call-1", { query: "needle" }, undefined, undefined, {
+			cwd: dir,
+			sessionManager: { getSessionFile: () => sessionFile, getSessionDir: () => dir },
+		});
+		expect(result.details).toEqual({ total: 1, indices: [1] });
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("task history is not read from a .pi above the repository root", async () => {
+	const outer = realpathSync.native(mkdtempSync(join(tmpdir(), "dcp-outer-pi-")));
+	const repo = join(outer, "repo");
+	try {
+		mkdirSync(join(outer, ".pi"), { recursive: true });
+		mkdirSync(repo, { recursive: true });
+		expect(spawnSync("git", ["init", "-q"], { cwd: repo, encoding: "utf8" }).status).toBe(0);
+		writeFileSync(
+			join(outer, ".pi", "task-session-history.json"),
+			JSON.stringify([{ id: "outer-task", agentType: "reviewer", description: "outer repository sentinel", status: "done" }]),
+		);
+		const result = await searchDcpRecall({
+			query: "outer repository sentinel",
+			scope: "all",
+			rawSessionDir: join(outer, "none"),
+			cwd: repo,
+		});
+		expect(result.entries.some((entry) => entry.role === "task")).toBeFalse();
+	} finally {
+		rmSync(outer, { recursive: true, force: true });
 	}
 });

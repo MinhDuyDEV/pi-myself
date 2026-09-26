@@ -86,7 +86,8 @@ Before continuing:
  *
  * Behaviour:
  * - `agent_end` records whether the latest run was interrupted; `agent_start`
- *   clears it, so only the run immediately before the compaction counts.
+ *   and `session_tree` clear it, so only the run immediately before the
+ *   compaction, on the same branch, counts.
  * - A successful manual compaction after an interrupted run queues one
  *   continuation and consumes the record.
  * - Automatic compactions and failed compactions never resume: Pi owns both
@@ -111,6 +112,13 @@ export default function continueAfterCompaction(pi: ExtensionAPI): void {
 
 	pi.on("agent_end", (event) => {
 		lastRun = classifyRunEnd(event.messages);
+	});
+
+	// `/tree` moves to another branch without starting a run or replacing the
+	// runtime: the interrupted run belongs to the branch that was left, so a
+	// `/compact` on the new branch must not resume it.
+	pi.on("session_tree", () => {
+		lastRun = undefined;
 	});
 
 	pi.on("session_compact", (event, ctx) => {

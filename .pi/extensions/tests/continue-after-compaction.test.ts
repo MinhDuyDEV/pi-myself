@@ -199,6 +199,20 @@ test("a new run clears the interrupted record", async () => {
 	assert.equal(sent.length, 0);
 });
 
+test("navigating the session tree clears the interrupted record", async () => {
+	// Esc, then /tree to another branch (no run starts, the runtime is kept),
+	// then /compact: the interrupted run belongs to the branch that was left.
+	const { pi, sent, fire } = createFakePi();
+	continueAfterCompaction(pi);
+
+	runEndingWith(fire, "aborted");
+	fire("session_tree", { type: "session_tree", newLeafId: "other", oldLeafId: "leaf" });
+	fire("session_compact", compactEvent());
+	await flush();
+
+	assert.equal(sent.length, 0);
+});
+
 test("resumes once per interruption: a second /compact does not resume again", async () => {
 	const { pi, sent, fire } = createFakePi();
 	continueAfterCompaction(pi);
@@ -243,5 +257,5 @@ test("registers no compaction-failure handler (Pi reports those itself)", () => 
 	const { pi, handlers } = createFakePi();
 	continueAfterCompaction(pi);
 
-	assert.deepEqual([...handlers.keys()].sort(), ["agent_end", "agent_start", "session_compact", "session_shutdown"]);
+	assert.deepEqual([...handlers.keys()].sort(), ["agent_end", "agent_start", "session_compact", "session_shutdown", "session_tree"]);
 });

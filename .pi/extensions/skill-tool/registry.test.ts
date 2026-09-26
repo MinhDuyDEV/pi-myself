@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { test } from "node:test";
+import { loadSkillsFromDir } from "@earendil-works/pi-coding-agent";
 import { buildRegistry, parseFrontmatter } from "./registry.js";
 
 function makeSkillRoot(spec: Record<string, string>): string {
@@ -50,7 +51,7 @@ test("parseFrontmatter tolerates missing frontmatter", () => {
 	assert.deepEqual(parseFrontmatter("no frontmatter here"), { userInvoked: false });
 });
 
-test("buildRegistry classifies and skips invalid entries", () => {
+test("buildRegistry classifies, skips undescribed skills, and loads a bad name with a warning", () => {
 	const root = makeSkillRoot({
 		"skills/alpha/SKILL.md": MODEL_SKILL,
 		"skills/beta/SKILL.md": USER_SKILL,
@@ -65,18 +66,19 @@ test("buildRegistry classifies and skips invalid entries", () => {
 		const registry = buildRegistry([join(root, "skills")]);
 		assert.deepEqual(
 			registry.skills.map((s) => s.name),
-			["alpha", "beta", "broken"],
+			// pi loads a skill whose name breaks its rules, warning only
+			["alpha", "Bad Name", "beta", "broken"],
 		);
 		assert.deepEqual(
 			registry.modelInvoked.map((s) => s.name),
-			["alpha", "broken"],
+			["alpha", "Bad Name", "broken"],
 		);
 		assert.deepEqual(
 			registry.userInvoked.map((s) => s.name),
 			["beta"],
 		);
 		assert.equal(registry.modelInvoked[0]?.skillFile.endsWith("skills/alpha/SKILL.md"), true);
-		// a skipped skill is named in the diagnostics, never silently dropped
+		// a name warning and a skipped skill are named in the diagnostics, never silent
 		assert.ok(
 			registry.diagnostics.some((d) => d.includes("unnamed") && d.includes("skill-name rules")),
 			`expected an unnamed diagnostic, got ${JSON.stringify(registry.diagnostics)}`,
@@ -104,11 +106,44 @@ test("frontmatter parsing survives CRLF, a BOM, and a block-scalar description",
 	assert.equal(parseFrontmatter(folded).description, "Use when the description wraps across lines.");
 
 	const literal = "---\nname: literal\ndescription: |\n  line one\n  line two\n---\n";
-	assert.equal(parseFrontmatter(literal).description, "line one\nline two");
+	// YAML's clip chomping keeps the final newline, as pi's loader does
+	assert.equal(parseFrontmatter(literal).description, "line one\nline two\n");
 
 	// `True` is a YAML boolean; `yes` is a string in YAML 1.2, so it is not
 	assert.equal(parseFrontmatter("---\nname: t\ndescription: d\ndisable-model-invocation: True\n---\n").userInvoked, true);
 	assert.equal(parseFrontmatter("---\nname: t\ndescription: d\ndisable-model-invocation: yes\n---\n").userInvoked, false);
+});
+
+test("frontmatter is read the way pi's own loader reads it", () => {
+	// A hand-rolled reader disagreed with pi's YAML loader: a trailing comment
+	// made a human-only skill model-loadable, a quoted "true" was refused, an
+	// unquoted `: ` in a description loaded although pi rejects it.
+	const root = makeSkillRoot({
+		"skills/commented/SKILL.md": "---\nname: commented # a comment\ndescription: d\ndisable-model-invocation: true # human only\n---\n",
+		"skills/quoted/SKILL.md": '---\nname: quoted\ndescription: d\ndisable-model-invocation: "true"\n---\n',
+		"skills/colon/SKILL.md": "---\nname: colon\ndescription: Use when: X\n---\n",
+		"skills/Bad_Name/SKILL.md": "---\ndescription: d\n---\n",
+	});
+	try {
+		const dir = join(root, "skills");
+		const registry = buildRegistry([dir]);
+		const pi = loadSkillsFromDir({ dir, source: "test" });
+		const byName = (skills: Array<{ name: string }>) => skills.map((s) => s.name).sort();
+		assert.deepEqual(byName(registry.skills), byName(pi.skills), "the same skills load");
+		assert.deepEqual(
+			byName(registry.userInvoked),
+			byName(pi.skills.filter((s) => s.disableModelInvocation)),
+			"the same skills are human-only",
+		);
+		assert.deepEqual(byName(registry.userInvoked), ["commented"]);
+		assert.deepEqual(byName(registry.modelInvoked), ["Bad_Name", "quoted"]);
+		assert.ok(
+			registry.diagnostics.some((d) => d.includes("colon")),
+			`expected a parse diagnostic, got ${JSON.stringify(registry.diagnostics)}`,
+		);
+	} finally {
+		cleanup(root);
+	}
 });
 
 test("the walk matches pi: CRLF skills load, hidden and node_modules dirs do not", () => {
