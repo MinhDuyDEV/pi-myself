@@ -1385,6 +1385,56 @@ test("gh-resolve and gh-out-of-scope find a map linked only as a native parent (
 	);
 });
 
+test("a parent that cannot be read is reported as unknown, never as no parent (R11 review)", () => {
+	// only a 404 from the /parent endpoint means "no parent"; a 401 is no answer
+	const world = (fail: (args: string[]) => string | undefined) => {
+		const gh = fakeGh(
+			[
+				{ number: 1, title: "Map", state: "OPEN", body: "## Decisions so far\n", labels: ["wayfinder:map"] },
+				{ number: 4, title: "Native child", state: "OPEN", body: "## Question\n\nq?" },
+				{ number: 5, title: "Named child", state: "OPEN", body: "Part of: #1\n\n## Question\n\nq?" },
+			],
+			{ parentOf: { 4: 1 } },
+		);
+		const run: GhRun = (root, args, input) => {
+			const failure = fail(args);
+			if (failure) throw new TrackerError(failure);
+			return gh.run(root, args, input);
+		};
+		return { gh, run };
+	};
+	const unauthorised = (args: string[]) =>
+		args.some((a) => /\/parent$/.test(a)) ? "gh api repos/{owner}/{repo}/issues/4/parent --jq: gh: Bad credentials (HTTP 401)" : undefined;
+
+	const withGist = world(unauthorised);
+	const resolved = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "a", gist: "g" }, withGist.run);
+	assert.match(resolved, /#4's native parent could not be read \(.*Bad credentials \(HTTP 401\)\), so no map was updated/);
+	assert.doesNotMatch(resolved, /neither #4's body nor a native sub-issue link names a parent/);
+	assert.equal(
+		withGist.gh.edits.some((e) => e.number === 1),
+		false,
+	);
+
+	// without a gist the check says it could not tell, instead of staying silent
+	const noGist = world(unauthorised);
+	assert.match(
+		ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "a" }, noGist.run),
+		/could not check for a map whose Decisions so far needs a gist: #4's native parent could not be read/,
+	);
+
+	// a body-named map that cannot be read after the close is reported; the resolve stands
+	const unreadable = world((args) =>
+		args[0] === "issue" && args[1] === "view" && args[2] === "1" ? "gh issue view: HTTP 502" : undefined,
+	);
+	const out = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "5", answer: "a", gist: "g" }, unreadable.run);
+	assert.match(out, /^Resolved #5 \(closed with a resolution comment\)/);
+	assert.match(out, /#1, #5's parent, could not be read \(gh issue view: HTTP 502\), so no map was updated/);
+	assert.ok(
+		unreadable.gh.edits.some((e) => e.args[1] === "close" && e.number === 5),
+		"the issue was closed",
+	);
+});
+
 test("a body-named parent is used without asking GitHub for a native parent (R11)", () => {
 	const apiCalls: string[] = [];
 	const gh = fakeGh(
@@ -1553,10 +1603,23 @@ test("gh-create-ticket falls back to the map's task list when the sub-issue link
 	const specOut = ghCreateTicketOp("/tmp", { op: "gh-create-ticket", title: "Counter", what: "w", parent: "3" }, gh.run);
 	assert.match(
 		specOut,
-		/#3 is not a wayfinder map, so it was not edited: #7 is linked only by its Part of line and will be ordered by number/,
+		/#3 is not an open wayfinder:map issue, so it was not edited: #7 is linked only by its Part of line and will be ordered by number/,
 	);
 	assert.equal(
 		gh.edits.some((e) => e.args[1] === "edit" && e.number === 3),
+		false,
+	);
+
+	// a closed map is not edited either, and the report does not call it "not a map"
+	const closedMap = fakeGh([{ number: 1, title: "Old map", state: "CLOSED", body: "## Tickets\n", labels: ["wayfinder:map"] }], {
+		failSubIssuePost: true,
+	});
+	assert.match(
+		ghCreateTicketOp("/tmp", { op: "gh-create-ticket", title: "Late", type: "task", parent: "1" }, closedMap.run),
+		/#1 is not an open wayfinder:map issue, so it was not edited: #2 is linked only by its Part of line/,
+	);
+	assert.equal(
+		closedMap.edits.some((e) => e.args[1] === "edit" && e.number === 1),
 		false,
 	);
 
@@ -1639,14 +1702,18 @@ test("gh-list lists closed issues, or all, when asked (R21)", () => {
 		],
 		{ beforeRun: (args) => args[0] === "issue" && args[1] === "list" && calls.push(args) },
 	);
-	const closed = ghListOp("/tmp", { op: "gh-list", state: "closed" }, gh.run);
+	const closed = ghListOp("/tmp", { op: "gh-list", issueState: "closed" }, gh.run);
 	assert.deepEqual(calls.at(-1)!.slice(2, 4), ["--state", "closed"]);
-	assert.match(closed, /^## GitHub issues \(2 closed\)\n- #2 — Rejected \[wontfix\] · closed\n- #3 — Done · closed$/);
+	// the heading already says closed; the per-line marker only tells open from closed under "all"
+	assert.match(closed, /^## GitHub issues \(2 closed\)\n- #2 — Rejected \[wontfix\]\n- #3 — Done$/);
 
-	assert.match(ghListOp("/tmp", { op: "gh-list", state: "closed", status: "wontfix" }, gh.run), /\(1 closed, label wontfix\)/);
-	assert.equal(ghListOp("/tmp", { op: "gh-list", state: "closed", status: "needs-info" }, gh.run), "No closed issues labelled needs-info.");
+	assert.match(ghListOp("/tmp", { op: "gh-list", issueState: "closed", status: "wontfix" }, gh.run), /\(1 closed, label wontfix\)/);
+	assert.equal(
+		ghListOp("/tmp", { op: "gh-list", issueState: "closed", status: "needs-info" }, gh.run),
+		"No closed issues labelled needs-info.",
+	);
 
-	const all = ghListOp("/tmp", { op: "gh-list", state: "all", status: "wontfix" }, gh.run);
+	const all = ghListOp("/tmp", { op: "gh-list", issueState: "all", status: "wontfix" }, gh.run);
 	assert.deepEqual(calls.at(-1)!.slice(2, 4), ["--state", "all"]);
 	assert.match(all, /\(2 open or closed, label wontfix\)/);
 	assert.match(all, /^- #1 — Live \[wontfix\]$/m, "an open issue's line is unchanged");
@@ -1658,6 +1725,9 @@ test("gh-list lists closed issues, or all, when asked (R21)", () => {
 
 	// op functions can be called without schema validation
 	const before = calls.length;
-	assert.throws(() => ghListOp("/tmp", { op: "gh-list", state: "merged" } as never, gh.run), /state must be "open", "closed" or "all"/);
+	assert.throws(
+		() => ghListOp("/tmp", { op: "gh-list", issueState: "merged" } as never, gh.run),
+		/issueState must be "open", "closed" or "all"/,
+	);
 	assert.equal(calls.length, before, "no gh call on an invalid state");
 });

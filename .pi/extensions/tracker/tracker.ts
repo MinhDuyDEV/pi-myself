@@ -681,33 +681,37 @@ export function mapNotesOf(op: string, notes: string | undefined, what: string |
 	return fromNotes || fromWhat;
 }
 
-/** Create `.scratch/<effort>/map.md` — the wayfinder map skeleton, headed
- * `# Map: <title>` (the feature slug when no title is given). */
-export function createMap(
-	repoRoot: string,
-	feature: string,
-	destination: string,
-	notes: string,
-	fog: string,
-	outOfScope: string,
-	title = "",
-): string {
+/** A new map's sections, named: five positional strings once put the fog into
+ * Notes. An absent or blank field gets the section's placeholder. */
+export interface MapSections {
+	/** The map's heading, `# Map: <title>`; the feature slug when absent. */
+	title?: string | undefined;
+	destination?: string | undefined;
+	notes?: string | undefined;
+	/** "Not yet specified". */
+	fog?: string | undefined;
+	outOfScope?: string | undefined;
+}
+
+/** Create `.scratch/<effort>/map.md` — the wayfinder map skeleton. */
+export function createMap(repoRoot: string, feature: string, sections: MapSections): string {
+	const { title, destination, notes, fog, outOfScope } = sections;
 	createFeature(repoRoot, feature);
 	const file = join(featureDir(repoRoot, feature), "map.md");
 	writeNewFile(
 		file,
 		[
-			`# Map: ${title.trim() || feature}`,
+			`# Map: ${title?.trim() || feature}`,
 			"",
 			"Label: wayfinder:map",
 			"",
 			"## Destination",
 			"",
-			destination || "(what reaching the end of this map looks like: the spec, decision, or change this effort finds its way to)",
+			destination?.trim() || "(what reaching the end of this map looks like: the spec, decision, or change this effort finds its way to)",
 			"",
 			"## Notes",
 			"",
-			notes || "(domain; skills every session should consult; standing preferences)",
+			notes?.trim() || "(domain; skills every session should consult; standing preferences)",
 			"",
 			"## Decisions so far",
 			"",
@@ -715,11 +719,11 @@ export function createMap(
 			"",
 			"## Not yet specified",
 			"",
-			fog || "(in-scope fog you cannot ticket yet)",
+			fog?.trim() || "(in-scope fog you cannot ticket yet)",
 			"",
 			"## Out of scope",
 			"",
-			outOfScope || "(work consciously ruled out of this effort)",
+			outOfScope?.trim() || "(work consciously ruled out of this effort)",
 			"",
 		].join("\n"),
 		"map",

@@ -165,7 +165,7 @@ export function runOp(root: string, params: TrackerParams): string {
 		case "create-map": {
 			const feature = reqFeature(params);
 			const notes = mapNotesOf(params.op, params.notes, params.what);
-			const file = createMap(root, feature, params.destination ?? "", notes, params.fog?.trim() ?? "", "", params.title ?? "");
+			const file = createMap(root, feature, { title: params.title, destination: params.destination, notes, fog: params.fog });
 			return `Map written: ${rel(root, file)}`;
 		}
 

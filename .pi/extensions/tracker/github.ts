@@ -269,6 +269,14 @@ export interface IssueRef {
 const refToken = () =>
 	/(?:([A-Za-z0-9._-]+\/[A-Za-z0-9._-]+))?#(\d+)\b|github\.com\/([A-Za-z0-9._-]+)\/([A-Za-z0-9._-]+)\/(?:issues|pull)\/(\d+)/g;
 
+/** The ref one `refToken()` match names, or undefined for a non-positive number. */
+function refOfMatch(match: RegExpMatchArray): IssueRef | undefined {
+	const number = Number(match[2] ?? match[5]);
+	if (!Number.isInteger(number) || number <= 0) return undefined;
+	const repo = match[1] ?? (match[3] && match[4] ? `${match[3]}/${match[4]}` : undefined);
+	return repo ? { number, repo } : { number };
+}
+
 /** References named by a blocker/parent value.
  *
  * Only text up to the first `(` counts. `#N` in explanatory prose is not a
@@ -287,10 +295,8 @@ function refsIn(text: string): IssueRef[] {
 	for (const part of trimmed.split(",")) {
 		const scoped = part.replace(/^[ \t]*[-*][ \t]*/gm, "").split("(")[0] ?? "";
 		for (const match of scoped.matchAll(refToken())) {
-			const number = Number(match[2] ?? match[5]);
-			if (!Number.isInteger(number) || number <= 0) continue;
-			const repo = match[1] ?? (match[3] && match[4] ? `${match[3]}/${match[4]}` : undefined);
-			refs.push(repo ? { number, repo } : { number });
+			const ref = refOfMatch(match);
+			if (ref) refs.push(ref);
 		}
 	}
 	if (refs.length > 0) return refs;
@@ -487,13 +493,13 @@ function numberFromUrl(url: string): string {
 /** `gh issue list` pages internally but stops at `--limit` without saying so. */
 const LIST_LIMIT = 1000;
 
-/** gh-list: issues in one GitHub state (`state`: open by default, closed, or
- * all), optionally filtered by label (`status`). */
+/** gh-list: issues in one GitHub state (`issueState`: open by default, closed,
+ * or all), optionally filtered by label (`status`). */
 export function ghListOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	// op functions can be called without the tool schema's validation
-	const state = params.state ?? "open";
+	const state = params.issueState ?? "open";
 	if (!(GH_LIST_STATES as readonly string[]).includes(state)) {
-		throw new TrackerError(`gh-list state must be "open", "closed" or "all" (got ${JSON.stringify(state)})`);
+		throw new TrackerError(`gh-list issueState must be "open", "closed" or "all" (got ${JSON.stringify(state)})`);
 	}
 	// the canonical triage role is mapped to this repo's label vocabulary, the
 	// same way gh-status maps it; passing the raw role silently returns nothing
@@ -507,7 +513,8 @@ export function ghListOp(root: string, params: TrackerParams, run: GhRun = ghRun
 	if (issues.length === 0) return label ? `No ${stateName} issues labelled ${label}.` : `No ${stateName} issues in this GitHub repo.`;
 	return [
 		`## GitHub issues (${issues.length} ${stateName}${label ? `, label ${label}` : ""})`,
-		...issues.map((issue) => `- ${issueLine(issue)}${issue.state === "OPEN" ? "" : " · closed"}`),
+		// under "all" a line has to say which state it is in; the heading says it otherwise
+		...issues.map((issue) => `- ${issueLine(issue)}${state === "all" && issue.state !== "OPEN" ? ` · ${stateLabel(issue)}` : ""}`),
 		// the endpoint caps silently: report a floor as a floor, not as a total
 		...(issues.length >= LIST_LIMIT ? ["", `_(stopped at the ${LIST_LIMIT}-issue limit; filter with status)_`] : []),
 	].join("\n");
@@ -565,12 +572,20 @@ function taskListRefs(body: string): IssueRef[] {
 		const token = item[1] ?? "";
 		const match = refToken().exec(token);
 		if (!match || (match.index !== 0 && !/^https?:\/\//.test(token))) continue;
-		const number = Number(match[2] ?? match[5]);
-		if (!Number.isInteger(number) || number <= 0) continue;
-		const repo = match[1] ?? (match[3] && match[4] ? `${match[3]}/${match[4]}` : undefined);
-		refs.push(repo ? { number, repo } : { number });
+		const ref = refOfMatch(match);
+		if (ref) refs.push(ref);
 	}
 	return uniqueRefs(refs);
+}
+
+/** The footnote a scoped frontier prints when the map has no native sub-issue
+ * order: which order the list is actually in, and why. */
+function mapOrderFootnote(map: number, nativeListRead: boolean, hasTaskList: boolean): string {
+	const native = nativeListRead ? `#${map} has no native sub-issue order` : `#${map}'s native sub-issue list could not be read`;
+	if (hasTaskList) return `_(${native}; these follow its task list, then issue number)_`;
+	return nativeListRead
+		? `_(${native} to follow; these are in issue-number order)_`
+		: `_(${native}; children found only by a "Part of" line are listed, in issue-number order)_`;
 }
 
 /** gh-frontier: open, unassigned, not a map, not a parent, no open blocker, no
@@ -645,8 +660,8 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
 	// children not in the native list, then issue number. With neither there is no
 	// map order — and the heading says which one the list is actually in, rather
 	// than claiming an order it does not have.
-	const native = nativeChildren ?? [];
-	const combined = [...native, ...taskOrder.filter((number) => !native.includes(number))];
+	const nativeOrder = nativeChildren ?? [];
+	const combined = [...nativeOrder, ...taskOrder.filter((number) => !nativeOrder.includes(number))];
 	const mapOrder = combined.length > 0 ? combined : undefined;
 	const orderOf = (issue: GhIssue): number => {
 		const at = mapOrder?.indexOf(issue.number) ?? -1;
@@ -685,17 +700,8 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
 					return `  ${issueLine(issue)} · ${reason}${unread}`;
 				})
 			: ["  (none)"]),
-		...(scopeParent !== undefined && native.length === 0
-			? [
-					"",
-					nativeChildren === undefined
-						? taskOrder.length > 0
-							? `_(#${scopeParent}'s native sub-issue list could not be read; these follow its task list, then issue number)_`
-							: `_(#${scopeParent}'s native sub-issue list could not be read; children found only by a "Part of" line are listed, in issue-number order)_`
-						: taskOrder.length > 0
-							? `_(#${scopeParent} has no native sub-issue order; these follow its task list, then issue number)_`
-							: `_(#${scopeParent} has no native sub-issue order to follow; these are in issue-number order)_`,
-				]
+		...(scopeParent !== undefined && nativeOrder.length === 0
+			? ["", mapOrderFootnote(scopeParent, nativeChildren !== undefined, taskOrder.length > 0)]
 			: []),
 		...(misdirected.length
 			? [
@@ -718,7 +724,7 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
 /** Most recent comments gh-show renders. Anything dropped is named in the
  * heading — triage reads prior `## Triage Notes` from here, so a silent cut
  * would make it re-ask a resolved question. */
-const MAX_SHOWN_COMMENTS = 30;
+export const MAX_SHOWN_COMMENTS = 30;
 /** Comments gh-show keeps however old: triage's `## Agent Brief`
  * (triage/AGENT-BRIEF.md) and `## Triage Notes` (triage/SKILL.md), and this
  * tool's own gh-resolve / gh-out-of-scope comments. A heading at a line start,
@@ -1061,8 +1067,8 @@ export function ghCreateTicketOp(root: string, params: TrackerParams, run: GhRun
 function addToMapTaskList(root: string, parent: string, child: string, run: GhRun): string {
 	try {
 		const map = issueView(root, parent, run);
-		if (map.isPullRequest || map.state !== "OPEN" || !map.labels.includes("wayfinder:map")) {
-			return `#${parent} is not a wayfinder map, so it was not edited: #${child} is linked only by its Part of line and will be ordered by number`;
+		if (!isOpenMap(map)) {
+			return `#${parent} is not an open wayfinder:map issue, so it was not edited: #${child} is linked only by its Part of line and will be ordered by number`;
 		}
 		run(root, ["issue", "edit", parent, "--body-file", "-"], appendUnderHeading(map.body, "Tickets", `[ ] #${child}`));
 		return `added #${child} to map #${parent}'s ## Tickets task list instead (it carries the link and the map order)`;
@@ -1140,55 +1146,90 @@ export function ghClaimOp(root: string, params: TrackerParams, run: GhRun = ghRu
 	return `Claimed ${issueLine(after)} (set this before any work).`;
 }
 
-/** The issue's native parent (REST "Get parent issue",
- * `GET /repos/{owner}/{repo}/issues/{n}/parent`), or undefined when it has none
- * (the endpoint 404s) or the answer could not be read. */
-function nativeParentOf(root: string, number: number, run: GhRun): number | undefined {
+/** An issue's native parent (REST "Get parent issue",
+ * `GET /repos/{owner}/{repo}/issues/{n}/parent`). Only the endpoint's 404 means
+ * `none` (checked live: "No parent issue found (HTTP 404)"); any other failure
+ * is `unknown`, because an answer that never came says nothing about a parent. */
+type NativeParent = { kind: "found"; number: number } | { kind: "none" } | { kind: "unknown"; cause: string };
+
+function nativeParentOf(root: string, number: number, run: GhRun): NativeParent {
+	let answer: string;
 	try {
-		const parent = Number(run(root, ["api", `repos/{owner}/{repo}/issues/${number}/parent`, "--jq", ".number"]).trim());
-		return Number.isInteger(parent) && parent > 0 ? parent : undefined;
-	} catch {
-		return undefined;
+		answer = run(root, ["api", `repos/{owner}/{repo}/issues/${number}/parent`, "--jq", ".number"]).trim();
+	} catch (error) {
+		const cause = errorMessage(error);
+		return /\bHTTP 404\b/.test(cause) ? { kind: "none" } : { kind: "unknown", cause };
 	}
+	const parent = Number(answer);
+	return Number.isInteger(parent) && parent > 0
+		? { kind: "found", number: parent }
+		: { kind: "unknown", cause: `unexpected answer ${JSON.stringify(answer)}` };
 }
 
-/** The open, non-PR `wayfinder:map` issue a ticket's parent is, or the reason
- * there is none. The parent is the one the body names (`Part of` / `## Parent`),
- * else the native sub-issue parent — a child linked in GitHub's UI carries no
- * body line. Only such an issue is a map: a to-tickets ticket names its *spec*
- * with `Part of`, and to-tickets forbids modifying a parent. */
-function parentMapOf(root: string, issue: GhIssue, heading: string, run: GhRun): { number: number; map: GhIssue } | string {
-	const parent = parentRefs(issue.body)[0] ?? nativeParentOf(root, issue.number, run);
-	if (!parent) {
-		return `no parent map: neither #${issue.number}'s body nor a native sub-issue link names a parent; add the ${heading} line by hand`;
-	}
-	const map = issueView(root, String(parent), run);
-	if (map.isPullRequest || map.state !== "OPEN" || !map.labels.includes("wayfinder:map")) {
-		return `#${parent} is not an open wayfinder:map issue, so no map was updated; the gist stays in the resolution comment`;
-	}
-	return { number: parent, map };
+/** An open, non-PR `wayfinder:map` issue: the only parent this tool edits. A
+ * to-tickets ticket names its *spec* as its parent, and to-tickets forbids
+ * modifying a parent. */
+function isOpenMap(issue: GhIssue): boolean {
+	return !issue.isPullRequest && issue.state === "OPEN" && issue.labels.includes("wayfinder:map");
 }
 
-/** Append a `- [title](url): gist` bullet under a section of the parent map's body. */
+/** A ticket's parent map: `map` when there is one, `none` with the reason when
+ * there is none, and `unknown` with the reason when the parent could not be read
+ * — which a caller must never report as "no map". */
+type ParentMap = { kind: "map"; number: number; map: GhIssue } | { kind: "none"; reason: string } | { kind: "unknown"; reason: string };
+
+/** The parent is the one the body names (`Part of` / `## Parent`), else the
+ * native sub-issue parent — a child linked in GitHub's UI carries no body line. */
+function parentMapOf(root: string, issue: GhIssue, heading: string, run: GhRun): ParentMap {
+	let parent = parentRefs(issue.body)[0];
+	if (parent === undefined) {
+		const native = nativeParentOf(root, issue.number, run);
+		if (native.kind === "unknown")
+			return { kind: "unknown", reason: `#${issue.number}'s native parent could not be read (${native.cause})` };
+		if (native.kind === "none") {
+			return {
+				kind: "none",
+				reason: `no parent map: neither #${issue.number}'s body nor a native sub-issue link names a parent; add the ${heading} line by hand`,
+			};
+		}
+		parent = native.number;
+	}
+	let map: GhIssue;
+	try {
+		map = issueView(root, String(parent), run);
+	} catch (error) {
+		return { kind: "unknown", reason: `#${parent}, #${issue.number}'s parent, could not be read (${errorMessage(error)})` };
+	}
+	if (!isOpenMap(map)) {
+		return {
+			kind: "none",
+			reason: `#${parent} is not an open wayfinder:map issue, so no map was updated; the gist stays in the resolution comment`,
+		};
+	}
+	return { kind: "map", number: parent, map };
+}
+
+/** Append a `- [title](url): gist` bullet under a section of the parent map's
+ * body. Runs after the issue was closed, so every outcome is a report line. */
 function appendToParentMap(root: string, issue: GhIssue, heading: string, gist: string, run: GhRun): string {
 	const found = parentMapOf(root, issue, heading, run);
-	if (typeof found === "string") return found;
+	if (found.kind === "none") return found.reason;
+	if (found.kind === "unknown") {
+		return `${found.reason}, so no map was updated; the gist stays in the resolution comment — add the ${heading} line by hand if it has a map`;
+	}
 	const updated = appendUnderHeading(found.map.body, heading, `[${issue.title}](${issue.url || `#${issue.number}`}): ${gist.trim()}`);
 	run(root, ["issue", "edit", String(found.number), "--body-file", "-"], updated);
 	return `map #${found.number} ${heading} updated`;
 }
 
 /** A resolve without a gist on a ticket whose parent is a map: say the map's
- * Decisions-so-far was not updated (it used to be skipped silently). Nothing is
- * said when there is no map — a gist is only expected where a map indexes it. */
+ * Decisions-so-far was not updated (it used to be skipped silently), and say so
+ * when the parent could not be read. Nothing is said when there is no map — a
+ * gist is only expected where a map indexes it. */
 function missingGistNote(root: string, issue: GhIssue, run: GhRun): string | undefined {
-	let found: ReturnType<typeof parentMapOf>;
-	try {
-		found = parentMapOf(root, issue, "Decisions so far", run);
-	} catch (error) {
-		return `could not read #${issue.number}'s parent to check for a map (${errorMessage(error)})`;
-	}
-	if (typeof found === "string") return undefined;
+	const found = parentMapOf(root, issue, "Decisions so far", run);
+	if (found.kind === "none") return undefined;
+	if (found.kind === "unknown") return `could not check for a map whose Decisions so far needs a gist: ${found.reason}`;
 	return `map #${found.number} Decisions so far was NOT updated: no "gist" was given — add "[${issue.title}](${issue.url || `#${issue.number}`}): <gist>" with gh-note (parent ${found.number}, section "Decisions so far")`;
 }
 

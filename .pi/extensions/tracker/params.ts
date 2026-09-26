@@ -59,8 +59,9 @@ export interface TrackerParams {
 	fog?: string;
 	/** Map section a `note` appends to (default `Notes`). */
 	section?: string;
-	/** gh-list only: GitHub's open/closed issue state (default `open`). */
-	state?: GhListState;
+	/** gh-list only: GitHub's open/closed issue state (default `open`). Named
+	 * apart from `status`, which carries triage's state roles. */
+	issueState?: GhListState;
 }
 
 /** GitHub's issue states gh-list can list (`gh issue list --state`). */
@@ -127,13 +128,10 @@ export const trackerSchema = Type.Object({
 	section: Optional(
 		Type.String({ description: "Map section a note appends to (default 'Notes'; e.g. 'Not yet specified', 'Out of scope')." }),
 	),
-	state: Optional(
+	issueState: Optional(
 		Type.Union(
 			GH_LIST_STATES.map((state) => Type.Literal(state)),
-			{
-				description:
-					"gh-list only: GitHub's open/closed issue state to list (default 'open'; 'all' for both). Not a triage role — that is 'status'.",
-			},
+			{ description: "gh-list only: list open (default), closed, or all issues." },
 		),
 	),
 });
