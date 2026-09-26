@@ -23,7 +23,7 @@ Everything pi-myself adds around the vendored tree: `.pi/` (extensions, skills, 
 _Avoid_: "the framework", "runtime config"
 
 **Backend (tracker)**:
-Which issue-tracker implementation the `tracker` tool uses: the **local backend** (`.scratch/<feature>/issues/NN-<slug>.md` + `map.md`, the local-markdown convention) or the **GitHub backend** (`gh-*` ops over the `gh` CLI, issues in `MinhDuyDEV/pi-myself`). `docs/agents/issue-tracker.md` names the one in play.
+Which issue-tracker implementation the `tracker` tool uses: the **local backend** (`.scratch/<feature>/issues/NN-<slug>.md` + `map.md`, the local-markdown convention) or the **GitHub backend** (`gh-*` ops over the `gh` CLI, issues in `MinhDuyDEV/pi-myself`). `docs/agents/issue-tracker.md` names the one in play, and the tool refuses the other op family (both, for GitLab or any backend it does not implement).
 _Avoid_: "mode", "driver"
 
 **Prompt**:
