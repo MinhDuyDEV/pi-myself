@@ -99,7 +99,12 @@ export const trackerSchema = Type.Object({
 			{ description: "Wayfinder ticket type (create-ticket): local `Type:` line / GitHub `wayfinder:<type>` label." },
 		),
 	),
-	index: Optional(Type.Number({ description: "1-based acceptance-criterion index (tick)." })),
+	index: Optional(
+		Type.Number({
+			description:
+				"1-based acceptance-criterion index (tick): the Nth checkbox, checked or not, of the Acceptance criteria section (else the body).",
+		}),
+	),
 	destination: Optional(Type.String({ description: "Map destination (create-map)." })),
 	notes: Optional(Type.String({ description: "Map 'Not yet specified' fog at charting time (create-map)." })),
 	section: Optional(

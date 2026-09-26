@@ -38,6 +38,7 @@ export default function trackerExtension(pi: ExtensionAPI): void {
 		promptGuidelines: [
 			"Claim a ticket with op 'claim' (local) or 'gh-claim' (GitHub, assigns @me) before working it — wayfinder's rule; it is the session's first write.",
 			"Publish blockers first (create-ticket with blockedBy naming real ids); resolve with 'resolve'/'gh-resolve' plus the answer and a gist so the map's Decisions-so-far stays indexed.",
+			"Triage's won't-fix is 'gh-resolve' with status:\"wontfix\" (comment + close as not planned + exactly one state role), never 'out-of-scope'/'gh-out-of-scope', which is wayfinder's rule-out of a map ticket.",
 			"Use the backend docs/agents/issue-tracker.md configures; these ops own the fields (status, blockers, parent, criteria boxes) and never rewrite the prose around them. 'edit' changes a ticket's title/body; 'note' appends a line to a map section.",
 		],
 		parameters: trackerSchema,

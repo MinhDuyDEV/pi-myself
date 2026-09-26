@@ -26,7 +26,8 @@ import { WAYFINDER_TYPES } from "./params.js";
  * - `Type:` line for wayfinder ticket types
  * - `Blocked by: 01, 02` (or "None (can start immediately)"); a ticket is
  *   unblocked when every listed ticket is resolved
- * - Frontier: open, unblocked, unclaimed; first by number wins
+ * - Frontier: open, unblocked, unclaimed, and not held back by a triage state
+ *   role (NOT_READY_ROLES); first by number wins
  * - Resolve: `## Answer` + `Status: resolved` (done and wontfix also close)
  *
  * The wayfinder / to-tickets / triage skills own the prose discipline; this
@@ -35,6 +36,10 @@ import { WAYFINDER_TYPES } from "./params.js";
 
 export const CLOSED_STATUSES = new Set(["resolved", "done", "wontfix", "out-of-scope"]);
 export const TRIAGE_ROLES = ["needs-triage", "needs-info", "ready-for-agent", "ready-for-human", "wontfix"] as const;
+/** Triage state roles that mean "not agent work yet": unevaluated, waiting on
+ * the reporter, or human-only. Both frontiers hold these back. `ready-for-agent`
+ * (what to-tickets writes) and a missing role (wayfinder children) stay takeable. */
+export const NOT_READY_ROLES = ["needs-triage", "needs-info", "ready-for-human"] as const;
 /** triage's category roles: exactly one per triaged item, beside exactly one state role. */
 export const CATEGORY_ROLES = ["bug", "enhancement"] as const;
 
@@ -320,11 +325,16 @@ function allBlockersClosed(tickets: Ticket[], blockedBy: string[]): boolean {
 	return true;
 }
 
-/** Open, unblocked, unclaimed — the wayfinder frontier (first by number wins, list order preserves that). */
+/** Open, unblocked, unclaimed, not held back by a triage state role — the
+ * wayfinder frontier (first by number wins, list order preserves that). Files
+ * keep the canonical role (`canonicalRole` on every write), so the `Status:`
+ * line is compared as is. */
 export function frontierOf(tickets: Ticket[]): { takeable: Ticket[]; blocked: Ticket[] } {
 	const open = tickets.filter((t) => !isClosed(t));
+	const notReady = new Set<string>(NOT_READY_ROLES);
 	const takeable = open.filter(
-		(ticket) => ticket.status.toLowerCase() !== "claimed" && !ticket.assignee && allBlockersClosed(tickets, ticket.blockedBy),
+		(ticket) =>
+			ticket.status !== "claimed" && !notReady.has(ticket.status) && !ticket.assignee && allBlockersClosed(tickets, ticket.blockedBy),
 	);
 	return { takeable: takeable, blocked: open.filter((t) => !takeable.includes(t)) };
 }
@@ -497,20 +507,23 @@ export function createTicket(
 	assertTicketType(ticketType);
 	const dir = issuesDir(repoRoot, feature);
 	mkdirSync(dir, { recursive: true });
-	// Number and file are allocated together: `wx` fails on a collision, and the
-	// retry re-reads the directory instead of overwriting a parallel session's
-	// ticket (two sessions previously both computed `01` and one won silently).
-	for (let attempt = 0; attempt < TICKET_ALLOCATION_ATTEMPTS; attempt++) {
-		const number = nextTicketNumber(dir);
-		const file = join(dir, `${String(number).padStart(2, "0")}-${slugify(title)}.md`);
-		try {
-			writeFileSync(file, ticketBody(number, title, what, blockedBy, status, ticketType, criteria), { flag: "wx" });
-			return parseTicket(file);
-		} catch (error) {
-			if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+	// Number and file are allocated together under the directory's allocation
+	// lock: `wx` alone only guards the exact `NN-<slug>.md` name, so two sessions
+	// creating tickets with different titles both computed the same NN. `wx` and
+	// the retry stay as a guard against a writer that does not take the lock.
+	return withFileLock(join(dir, ".next-number"), () => {
+		for (let attempt = 0; attempt < TICKET_ALLOCATION_ATTEMPTS; attempt++) {
+			const number = nextTicketNumber(dir);
+			const file = join(dir, `${String(number).padStart(2, "0")}-${slugify(title)}.md`);
+			try {
+				writeFileSync(file, ticketBody(number, title, what, blockedBy, status, ticketType, criteria), { flag: "wx" });
+				return parseTicket(file);
+			} catch (error) {
+				if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+			}
 		}
-	}
-	throw new TrackerError(`could not allocate a ticket number in ${dir} after ${TICKET_ALLOCATION_ATTEMPTS} attempts`);
+		throw new TrackerError(`could not allocate a ticket number in ${dir} after ${TICKET_ALLOCATION_ATTEMPTS} attempts`);
+	});
 }
 
 /** Body of a new ticket at `number` (the number is part of the H1). */
@@ -607,6 +620,21 @@ export function setTicketField(repoRoot: string, feature: string, token: string,
 	return mutateTicket(repoRoot, feature, token, (ticket) => upsertFieldLine(ticket.raw, label, value));
 }
 
+/** wayfinder's claim: `Status: claimed`, the session's first write. Both
+ * refusals run inside the ticket's lock, on the content about to be rewritten:
+ * a check on an earlier read let a resolve landing in between be overwritten
+ * back to `claimed`, and let two sessions both take the same ticket. */
+export function claimTicket(repoRoot: string, feature: string, token: string): Ticket {
+	return mutateTicket(repoRoot, feature, token, (ticket) => {
+		if (isClosed(ticket)) throw new TrackerError(`cannot claim ${ticket.id}: it is ${ticket.status}`);
+		if (ticket.status === "claimed" || ticket.assignee) {
+			const holder = ticket.assignee ? `assignee: ${ticket.assignee}` : "Status: claimed";
+			throw new TrackerError(`cannot claim ${ticket.id}: already claimed (${holder}) — take it only with them`);
+		}
+		return upsertFieldLine(ticket.raw, "Status", "claimed");
+	});
+}
+
 /** Rewrite the H1, keeping a leading `NN: ` number so the title stays bound to
  * its file. */
 function upsertTitle(text: string, title: string): string {
@@ -661,22 +689,40 @@ export function resolveTicket(repoRoot: string, feature: string, token: string, 
 	return updated;
 }
 
-/** Mark the Nth (1-based) unchecked acceptance criterion as done. */
-export function tickCriterion(repoRoot: string, feature: string, token: string, index: number): Ticket {
-	return mutateTicket(repoRoot, feature, token, (ticket) => {
-		let seen = 0;
-		let hit = false;
-		const text = ticket.raw.replace(/- \[ \]/g, (match) => {
-			seen += 1;
-			if (seen === index) {
-				hit = true;
-				return "- [x]";
-			}
+/** Tick the Nth (1-based) criterion box. N counts every box, checked or not,
+ * so positions stay fixed across ticks (counting only unchecked boxes made
+ * "tick 1, tick 2" mark boxes 1 and 3). Scoped to the `## Acceptance criteria`
+ * section when the body has one (the GitHub template), else the whole body (the
+ * local template). A box already ticked is refused, never silently re-ticked.
+ * `where` names the ticket in errors. Shared by both backends. */
+export function tickCheckbox(text: string, index: number, where: string): string {
+	const heading = /^##\s+Acceptance criteria\s*$/im.exec(text);
+	let start = 0;
+	let end = text.length;
+	if (heading) {
+		start = heading.index + heading[0].length;
+		const next = text.slice(start).search(/^##\s/m);
+		if (next !== -1) end = start + next;
+	}
+	let seen = 0;
+	let checked = false;
+	const scoped = text.slice(start, end).replace(/- \[([ xX])\]/g, (match, mark: string) => {
+		seen += 1;
+		if (seen !== index) return match;
+		if (mark !== " ") {
+			checked = true;
 			return match;
-		});
-		if (!hit) throw new TrackerError(`no unchecked criterion #${index} in ${ticket.file} (found ${seen})`);
-		return text;
+		}
+		return "- [x]";
 	});
+	if (checked) throw new TrackerError(`criterion #${index} ${where} is already checked`);
+	if (seen < index) throw new TrackerError(`no criterion #${index} ${where} (found ${seen})`);
+	return `${text.slice(0, start)}${scoped}${text.slice(end)}`;
+}
+
+/** Mark the Nth (1-based) acceptance criterion as done (see tickCheckbox). */
+export function tickCriterion(repoRoot: string, feature: string, token: string, index: number): Ticket {
+	return mutateTicket(repoRoot, feature, token, (ticket) => tickCheckbox(ticket.raw, index, `in ${ticket.file}`));
 }
 
 /** Append a section (`## Comments` and friends) at the end of a ticket's body,

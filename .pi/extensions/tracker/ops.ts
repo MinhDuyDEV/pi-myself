@@ -25,6 +25,7 @@ import {
 	assertSection,
 	CATEGORY_ROLES,
 	canonicalRole,
+	claimTicket,
 	createMap,
 	createSpec,
 	createTicket,
@@ -121,11 +122,9 @@ export function runOp(root: string, params: TrackerParams): string {
 		}
 
 		case "claim": {
-			// A closed ticket keeps its status: writing "claimed" through
-			// setTicketField would lift it back into the frontier.
-			const target = ticket(params, root);
-			if (isClosed(target)) throw new TrackerError(`cannot claim ${target.id}: it is ${target.status}`);
-			const updated = setTicketField(root, reqFeature(params), req(params, "ticket"), "Status", "claimed");
+			// A closed or already-claimed ticket is refused under the ticket's lock
+			// (claimTicket), so a parallel resolve or claim cannot slip in between.
+			const updated = claimTicket(root, reqFeature(params), req(params, "ticket"));
 			return `Claimed (set this before any work):\n\n${renderTicket(updated)}`;
 		}
 

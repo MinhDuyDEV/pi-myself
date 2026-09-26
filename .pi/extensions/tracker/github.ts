@@ -7,10 +7,12 @@ import {
 	CATEGORY_ROLES,
 	labelValue,
 	loadTriageLabelMap,
+	NOT_READY_ROLES,
 	replaceSection,
 	replaceTicketBody,
 	sectionText,
 	TrackerError,
+	tickCheckbox,
 	upsertFieldLine,
 } from "./tracker.js";
 
@@ -541,7 +543,9 @@ function nativeSubIssues(root: string, parent: number, run: GhRun): number[] | u
 	}
 }
 
-/** gh-frontier: open, unassigned, not a map, not a parent, no open blocker.
+/** gh-frontier: open, unassigned, not a map, not a parent, no open blocker, no
+ * not-ready triage state role (`needs-triage`/`needs-info`/`ready-for-human`,
+ * matched in the canonical and this repo's mapped spelling).
  * Blocked = native `issue_dependencies_summary.blocked_by > 0` OR a ref in the
  * body that names an open issue/PR. Parents (maps, specs, anything with
  * sub-issues or named by a `Part of` / `## Parent`) are indexes, not work units:
@@ -590,6 +594,15 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
 		return true;
 	});
 	const refsOf = (issue: GhIssue): BlockerRefs => blockerRefsOf(issue, stateByNumber, root, run);
+	// label (either spelling) → canonical not-ready role
+	const roles = loadTriageLabelMap(root);
+	const notReadyLabels = new Map<string, string>();
+	for (const role of NOT_READY_ROLES) {
+		notReadyLabels.set(role, role);
+		notReadyLabels.set(roles.get(role) ?? role, role);
+	}
+	const notReadyRole = (issue: GhIssue): string | undefined =>
+		issue.labels.map((label) => notReadyLabels.get(label)).find((role) => role !== undefined);
 	// Map order when scoped to a map: wayfinder's first-in-map-order wins, and the
 	// native sub-issue list is the only place that order is recorded. An unreadable
 	// or empty list means number order — and the heading says which one the list is
@@ -601,7 +614,13 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
 	};
 	const byMapOrder = (a: GhIssue, b: GhIssue): number => orderOf(a) - orderOf(b) || a.number - b.number;
 	const takeable = open
-		.filter((issue) => issue.assignees.length === 0 && (issue.openBlockers ?? 0) === 0 && refsOf(issue).open.length === 0)
+		.filter(
+			(issue) =>
+				issue.assignees.length === 0 &&
+				(issue.openBlockers ?? 0) === 0 &&
+				refsOf(issue).open.length === 0 &&
+				notReadyRole(issue) === undefined,
+		)
 		.sort(byMapOrder);
 	const blocked = open.filter((issue) => !takeable.includes(issue)).sort(byMapOrder);
 	const misdirected = takeable.map((issue) => ({ issue, refs: refsOf(issue).unresolved })).filter((entry) => entry.refs.length > 0);
@@ -619,7 +638,9 @@ export function ghFrontierOp(root: string, params: TrackerParams, run: GhRun = g
 						? `waiting on #${refs.open.join(", #")}`
 						: native > 0
 							? `waiting on ${native} native blocker(s)`
-							: "claimed";
+							: issue.assignees.length === 0 && notReadyRole(issue) !== undefined
+								? `not ready: ${notReadyRole(issue)}`
+								: "claimed";
 					const unread = refs.unresolved.length ? ` · also names ${refs.unresolved.join(", ")}, not gating` : "";
 					return `  ${issueLine(issue)} · ${reason}${unread}`;
 				})
@@ -998,19 +1019,33 @@ export function ghClaimOp(root: string, params: TrackerParams, run: GhRun = ghRu
 	return `Claimed ${issueLine(view)} (set this before any work).`;
 }
 
-/** Append a `- [title](url): gist` bullet under a section of the parent map's body. */
+/** Append a `- [title](url): gist` bullet under a section of the parent map's body.
+ * Only an open, non-PR `wayfinder:map` issue is a map: a to-tickets ticket names
+ * its *spec* with `Part of`, and to-tickets forbids modifying a parent issue. */
 function appendToParentMap(root: string, issue: GhIssue, heading: string, gist: string, run: GhRun): string {
 	const parent = parentRefs(issue.body)[0];
 	if (!parent) return `no parent map named in #${issue.number}'s body; add the ${heading} line by hand`;
 	const map = issueView(root, String(parent), run);
+	if (map.isPullRequest || map.state !== "OPEN" || !map.labels.includes("wayfinder:map")) {
+		return `#${parent} is not an open wayfinder:map issue, so no map was updated; the gist stays in the resolution comment`;
+	}
 	const updated = appendUnderHeading(map.body, heading, `[${issue.title}](${issue.url || `#${issue.number}`}): ${gist.trim()}`);
 	run(root, ["issue", "edit", String(parent), "--body-file", "-"], updated);
 	return `map #${parent} ${heading} updated`;
 }
 
-/** gh-resolve: comment the answer, close, gist into the parent map's
- * Decisions-so-far. `status: wontfix` closes as "not planned" without an
- * `## Answer` heading (triage's rejected-bug / already-implemented paths). */
+/** Reply for a resolve/rule-out whose issue was closed before the op ran. The
+ * comment is posted (so the ticket carries its answer) but nothing is re-closed
+ * and no map gets a gist: the resolution did not happen here. */
+function alreadyClosedNote(number: string): string {
+	return `#${number} was already closed — the resolution comment was posted, it was not re-closed, and no gist was appended to a map`;
+}
+
+/** gh-resolve: comment the answer, then close (the template's order: `gh issue
+ * close --comment` on an already-closed issue exits 0 and silently drops the
+ * comment), then gist into the parent map's Decisions-so-far. `status: wontfix`
+ * closes as "not planned" without an `## Answer` heading (triage's rejected-bug
+ * / already-implemented paths). */
 export function ghResolveOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	const number = reqNumber(params.ticket, "resolve");
 	const answer = (params.answer ?? "").trim();
@@ -1024,22 +1059,32 @@ export function ghResolveOp(root: string, params: TrackerParams, run: GhRun = gh
 	// wontfix is a state role: applying it the same way gh-status does keeps
 	// exactly one state role, instead of leaving e.g. needs-info behind.
 	if (wontfix) applyRole(root, number, "wontfix", issue, run, notes);
-	run(root, ["issue", "close", number, "--reason", wontfix ? "not planned" : "completed", "--comment", comment]);
+	run(root, ["issue", "comment", number, "--body-file", "-"], `${comment}\n`);
+	if (issue.state !== "OPEN") return [alreadyClosedNote(number), ...notes].join(" — ");
+	run(root, ["issue", "close", number, "--reason", wontfix ? "not planned" : "completed"]);
 	notes.unshift(`Resolved #${number} (closed${wontfix ? " as not planned with the wontfix state role" : " with a resolution comment"})`);
 	if (gist && !wontfix) notes.push(appendToParentMap(root, issue, "Decisions so far", gist, run));
 	return notes.join(" — ");
 }
 
-/** gh-out-of-scope: wayfinder's rule-out — close the ticket and gist it into
- * the map's Out-of-scope section (never Decisions-so-far). */
+/** gh-out-of-scope: wayfinder's rule-out — comment the reason, close the
+ * ticket, and gist it into the map's Out-of-scope section (never
+ * Decisions-so-far). */
 export function ghOutOfScopeOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	const number = reqNumber(params.ticket, "out-of-scope");
 	const reason = (params.answer ?? "").trim();
 	if (!reason) throw new TrackerError('out-of-scope requires "answer" (why it is out of scope)');
 	const issue = issueView(root, number, run);
 	assertNotPullRequest(issue, number, "rule out of scope");
-	run(root, ["issue", "close", number, "--reason", "not planned", "--comment", ["## Out of scope", "", reason].join("\n")]);
-	return `Closed #${number} as out of scope — ${appendToParentMap(root, issue, "Out of scope", params.gist?.trim() || reason, run)}`;
+	const gist = params.gist?.trim();
+	run(
+		root,
+		["issue", "comment", number, "--body-file", "-"],
+		`${["## Out of scope", "", reason, ...(gist ? ["", `Gist: ${gist}`] : [])].join("\n")}\n`,
+	);
+	if (issue.state !== "OPEN") return alreadyClosedNote(number);
+	run(root, ["issue", "close", number, "--reason", "not planned"]);
+	return `Closed #${number} as out of scope — ${appendToParentMap(root, issue, "Out of scope", gist || reason, run)}`;
 }
 
 /** gh-comment: append a comment (agent briefs, triage notes, verification blocks). */
@@ -1213,24 +1258,15 @@ export function ghBlockOp(root: string, params: TrackerParams, run: GhRun = ghRu
 	].join("\n");
 }
 
-/** gh-tick: mark the Nth (1-based) unchecked `- [ ]` in the issue body. */
+/** gh-tick: mark the Nth (1-based) acceptance-criterion box, counting checked
+ * and unchecked boxes alike (see tickCheckbox). */
 export function ghTickOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	const number = reqNumber(params.ticket, "tick");
 	const index = params.index;
 	if (typeof index !== "number" || index < 1) throw new TrackerError('tick requires a 1-based numeric "index"');
 	const issue = issueView(root, number, run);
 	assertOpenTicket(issue, number, "tick");
-	let seen = 0;
-	let hit = false;
-	const updated = issue.body.replace(/- \[ \]/g, (match) => {
-		seen += 1;
-		if (seen === index) {
-			hit = true;
-			return "- [x]";
-		}
-		return match;
-	});
-	if (!hit) throw new TrackerError(`no unchecked criterion #${index} on #${number} (found ${seen})`);
+	const updated = tickCheckbox(issue.body, index, `on #${number}`);
 	run(root, ["issue", "edit", number, "--body-file", "-"], updated);
 	return `Ticked criterion ${index} of #${number}.`;
 }

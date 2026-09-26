@@ -51,7 +51,14 @@ interface FakeIssue {
  * for the REST listing (with dependency / sub-issue summaries), per-issue
  * comments, sub-issue order, database ids, issue state, and the native-edge
  * POSTs/DELETEs. Mutations are recorded in `edits`, `posts`, `deletions`,
- * `createdLabels`. */
+ * `createdLabels`.
+ *
+ * `issue comment` posts its `--body-file -` input as a comment. `issue close`
+ * follows gh's `closeRun` (cli/cli pkg/cmd/issue/close/close.go): on an open
+ * issue it posts any `--comment`, then closes; on an issue that is already
+ * closed it writes "! Issue … is already closed" to stderr (recorded in
+ * `stderr`; a `GhRun` never sees it), exits 0, and posts nothing — the
+ * `--comment` is silently dropped. */
 function fakeGh(
 	issues: FakeIssue[],
 	options: {
@@ -66,6 +73,7 @@ function fakeGh(
 	const posts: string[] = [];
 	const deletions: string[] = [];
 	const createdLabels: string[] = [];
+	const stderr: string[] = [];
 	/** Native `blocked_by` edges per child, keyed by database id (1000 + number). */
 	const nativeEdges = new Map<number, Set<number>>();
 	const labels = new Set(
@@ -205,13 +213,35 @@ function fakeGh(
 			});
 			return `https://example.test/issues/${number}`;
 		}
-		if (sub === "edit" || sub === "close" || sub === "comment") {
+		if (sub === "close") {
+			const issue = issues.find((i) => i.number === Number(numberOrFlag));
+			if (!issue) throw new TrackerError(`no issue #${numberOrFlag}`);
+			if (issue.state !== "OPEN") {
+				stderr.push(`! Issue example/repo#${issue.number} (${issue.title}) is already closed`);
+				return "";
+			}
+			edits.push({ number: issue.number, args, input });
+			if (args.includes("--comment")) {
+				issue.comments = [...(issue.comments ?? []), { author: "me", body: args[args.indexOf("--comment") + 1] ?? "" }];
+			}
+			issue.state = "CLOSED";
+			return "";
+		}
+		if (sub === "comment") {
+			const issue = issues.find((i) => i.number === Number(numberOrFlag));
+			if (!issue) throw new TrackerError(`no issue #${numberOrFlag}`);
+			edits.push({ number: issue.number, args, input });
+			const body = args.includes("--body") ? args[args.indexOf("--body") + 1] : input;
+			issue.comments = [...(issue.comments ?? []), { author: "me", body: body ?? "" }];
+			return `${issue.url ?? `https://example.test/issues/${issue.number}`}#issuecomment-1`;
+		}
+		if (sub === "edit") {
 			edits.push({ number: Number(numberOrFlag), args, input });
 			return "";
 		}
 		throw new TrackerError(`unexpected gh sub: ${sub}`);
 	};
-	return { run, edits, posts, deletions, createdLabels, issues, nativeEdges, labels };
+	return { run, edits, posts, deletions, createdLabels, issues, nativeEdges, labels, stderr };
 }
 
 const BODY = (refs: string, what = "Do the thing.") =>
@@ -262,6 +292,35 @@ test("gh-frontier: native blocked_by count, body refs, maps, parents (sub-issues
 	assert.match(scoped, /children of #1/);
 	assert.match(scoped, /^- #2 — Child A/m);
 	assert.doesNotMatch(scoped, /#8 — Unblocked by closed/, "outside the parent's children");
+});
+
+test("gh-frontier holds back needs-triage, needs-info and ready-for-human (mapped spellings too)", () => {
+	const root = mkdtempSync(join(tmpdir(), "tracker-ghfrontier-roles-"));
+	try {
+		mkdirSync(join(root, "docs", "agents"), { recursive: true });
+		writeFileSync(
+			join(root, "docs", "agents", "triage-labels.md"),
+			"| Label in mattpocock/skills | Label in our tracker | Meaning |\n| --- | --- | --- |\n| `needs-info` | `waiting` | x |\n",
+		);
+		const gh = fakeGh([
+			{ number: 1, title: "Untriaged", state: "OPEN", body: "", labels: ["needs-triage", "bug"] },
+			{ number: 2, title: "Waiting on reporter", state: "OPEN", body: "", labels: ["waiting"] },
+			{ number: 3, title: "Human only", state: "OPEN", body: "", labels: ["ready-for-human"] },
+			{ number: 4, title: "Agent ready", state: "OPEN", body: "", labels: ["ready-for-agent"] },
+			// a wayfinder child carries no triage role by design
+			{ number: 5, title: "Which parser?", state: "OPEN", body: "## Question\n\nq?", labels: ["wayfinder:research"] },
+		]);
+		const out = ghFrontierOp(root, { op: "gh-frontier" }, gh.run);
+		assert.deepEqual(
+			[...out.matchAll(/^- #(\d+)/gm)].map((m) => Number(m[1])),
+			[4, 5],
+		);
+		assert.match(out, /#1 — Untriaged.* · not ready: needs-triage/);
+		assert.match(out, /#2 — Waiting on reporter.* · not ready: needs-info/);
+		assert.match(out, /#3 — Human only.* · not ready: ready-for-human/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 });
 
 test("gh-frontier: a blocker ref that names no issue is not gating, and is disclosed", () => {
@@ -418,8 +477,8 @@ test("gh-resolve: answer comment + close, and the gist lands in the parent map's
 	assert.match(out, /map #1 Decisions so far updated/);
 	const close = gh.edits.find((e) => e.args[1] === "close")!;
 	assert.deepEqual(close.args.slice(3, 5), ["--reason", "completed"]);
-	const comment = close.args[close.args.indexOf("--comment") + 1];
-	assert.match(comment, /## Answer\n\nCSV\.\n\nGist: CSV beats TSV/);
+	const comment = gh.edits.find((e) => e.args[1] === "comment" && e.number === 4)!.input;
+	assert.match(comment ?? "", /## Answer\n\nCSV\.\n\nGist: CSV beats TSV/);
 	const mapEdit = gh.edits.find((e) => e.args[1] === "edit" && e.number === 1)!;
 	assert.match(
 		mapEdit.input ?? "",
@@ -431,7 +490,9 @@ test("gh-resolve: answer comment + close, and the gist lands in the parent map's
 	ghResolveOp("/tmp", { op: "gh-resolve", ticket: "5", answer: "Already implemented in v2.", status: "wontfix" }, wontfix.run);
 	const wfClose = wontfix.edits.find((e) => e.args[1] === "close")!;
 	assert.deepEqual(wfClose.args.slice(3, 5), ["--reason", "not planned"]);
-	assert.doesNotMatch(wfClose.args[wfClose.args.indexOf("--comment") + 1], /## Answer/);
+	const wfComment = wontfix.edits.find((e) => e.args[1] === "comment")!.input ?? "";
+	assert.match(wfComment, /Already implemented in v2\./);
+	assert.doesNotMatch(wfComment, /## Answer/);
 	assert.ok(wontfix.edits.some((e) => e.args.includes("--add-label") && e.args.includes("wontfix")));
 });
 
@@ -450,6 +511,73 @@ test("gh-out-of-scope closes as not planned and gists into the map's Out of scop
 	assert.match(mapEdit.input ?? "", /## Decisions so far\n\n## Out of scope\n\n- \[Support TSV\]\(.*\): TSV: no source emits it/);
 	const close = gh.edits.find((e) => e.args[1] === "close")!;
 	assert.deepEqual(close.args.slice(3, 5), ["--reason", "not planned"]);
+});
+
+test("gh-resolve and gh-out-of-scope comment, then close; an already-closed issue gets the comment but no map gist", () => {
+	const mapBody = "## Decisions so far\n\n## Out of scope\n";
+	const world = () =>
+		fakeGh([
+			{ number: 1, title: "Map", state: "OPEN", body: mapBody, labels: ["wayfinder:map"] },
+			{ number: 4, title: "Open one", state: "OPEN", body: "Part of: #1\n\n## Question\n\nq?" },
+			// closed by hand in the UI, or by a PR, before the resolve ran
+			{ number: 5, title: "Closed one", state: "CLOSED", body: "Part of: #1\n\n## Question\n\nq?" },
+		]);
+
+	// open issue: the template's order — `gh issue comment`, then `gh issue close`
+	const open = world();
+	ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "Yes.", gist: "yes" }, open.run);
+	const calls = open.edits.filter((e) => e.number === 4).map((e) => e.args[1]);
+	assert.deepEqual(calls, ["comment", "close"]);
+	assert.equal(open.edits.find((e) => e.args[1] === "close")!.args.includes("--comment"), false);
+	assert.match(open.issues.find((i) => i.number === 4)!.comments!.at(-1)!.body, /## Answer\n\nYes\./);
+
+	// already closed: gh's close would drop a --comment and exit 0, so the answer
+	// is posted on its own, the reply says so, and the map gains no gist
+	const closed = world();
+	const out = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "5", answer: "No.", gist: "no" }, closed.run);
+	assert.match(out, /#5 was already closed/);
+	assert.doesNotMatch(out, /Decisions so far updated/);
+	assert.match(closed.issues.find((i) => i.number === 5)!.comments!.at(-1)!.body, /## Answer\n\nNo\./, "the answer is on the ticket");
+	assert.equal(
+		closed.edits.some((e) => e.number === 1),
+		false,
+		"nothing new is posted to the map",
+	);
+
+	const ruled = world();
+	const ruledOut = ghOutOfScopeOp("/tmp", { op: "gh-out-of-scope", ticket: "5", answer: "Not now.", gist: "not now" }, ruled.run);
+	assert.match(ruledOut, /#5 was already closed/);
+	assert.match(ruled.issues.find((i) => i.number === 5)!.comments!.at(-1)!.body, /## Out of scope\n\nNot now\./);
+	assert.equal(
+		ruled.edits.some((e) => e.number === 1),
+		false,
+		"nothing new is posted to the map",
+	);
+});
+
+test("gh-resolve appends the gist only to an open wayfinder:map parent, never to a to-tickets spec", () => {
+	const specBody = "## Problem Statement\n\nToo many requests.\n";
+	const gh = fakeGh([
+		{ number: 1, title: "Spec: rate limiting", state: "OPEN", body: specBody, labels: ["ready-for-agent"] },
+		{ number: 2, title: "Counter", state: "OPEN", body: `Part of: #1\n\n${BODY("None")}` },
+		{ number: 3, title: "Map: done", state: "CLOSED", body: "## Decisions so far\n", labels: ["wayfinder:map"] },
+		{ number: 4, title: "Late child", state: "OPEN", body: "Part of: #3\n\n## Question\n\nq?" },
+	]);
+	const out = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "2", answer: "Shipped.", gist: "counter in redis" }, gh.run);
+	assert.match(out, /#1 is not an open wayfinder:map issue, so no map was updated; the gist stays in the resolution comment/);
+	assert.equal(
+		gh.edits.some((e) => e.number === 1),
+		false,
+		"the spec body is untouched (to-tickets: do NOT modify any parent issue)",
+	);
+	assert.match(gh.issues.find((i) => i.number === 2)!.comments!.at(-1)!.body, /Gist: counter in redis/);
+
+	const late = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "a", gist: "g" }, gh.run);
+	assert.match(late, /#3 is not an open wayfinder:map issue/, "a closed map is not appended to");
+	assert.equal(
+		gh.edits.some((e) => e.number === 3),
+		false,
+	);
 });
 
 test("gh-status swaps only within the role family: state roles, category roles, other labels untouched", () => {
@@ -501,7 +629,31 @@ test("gh-block mirrors the line and adds native edges; gh-tick marks exactly one
 
 	ghTickOp("/tmp", { op: "gh-tick", ticket: "5", index: 2 }, gh.run);
 	assert.equal(gh.edits.at(-1)!.input?.match(/- \[x\]/g)?.length, 1);
-	assert.throws(() => ghTickOp("/tmp", { op: "gh-tick", ticket: "5", index: 9 }, gh.run), /no unchecked criterion #9/);
+	assert.throws(() => ghTickOp("/tmp", { op: "gh-tick", ticket: "5", index: 9 }, gh.run), /no criterion #9 on #5 \(found 2\)/);
+});
+
+test("gh-tick addresses the Nth box of ## Acceptance criteria, checked or not, and refuses a ticked one", () => {
+	const gh = fakeGh([
+		{
+			number: 5,
+			title: "T",
+			state: "OPEN",
+			// a box in the prose above the criteria section is not a criterion
+			body: "## What to build\n\n- [ ] prose aside\n\n## Acceptance criteria\n\n- [ ] a\n- [ ] b\n- [ ] c\n\n**Blocked by:** None\n",
+		},
+	]);
+	const issue = gh.issues.find((i) => i.number === 5)!;
+	const tick = (index: number) => {
+		ghTickOp("/tmp", { op: "gh-tick", ticket: "5", index }, gh.run);
+		issue.body = gh.edits.at(-1)!.input ?? "";
+	};
+	tick(1);
+	tick(2);
+	assert.match(issue.body, /- \[ \] prose aside/, "outside the criteria section");
+	assert.match(issue.body, /- \[x\] a\n- \[x\] b\n- \[ \] c/, "positions stay fixed: 1 then 2 marks boxes 1 and 2");
+	const before = gh.edits.length;
+	assert.throws(() => ghTickOp("/tmp", { op: "gh-tick", ticket: "5", index: 1 }, gh.run), /criterion #1 on #5 is already checked/);
+	assert.equal(gh.edits.length, before, "a refused tick writes nothing");
 });
 
 test("gh-show renders every comment in full; gh-comment posts; gh-list filters by label", () => {

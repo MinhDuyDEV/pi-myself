@@ -120,6 +120,22 @@ test("tick marks the Nth unchecked criterion; list shows features", () => {
 	}
 });
 
+test("tick addresses the Nth criterion box, checked or not, and refuses a box already ticked", () => {
+	const root = tempRepo();
+	try {
+		op(root, { op: "create-ticket", feature: "ticks", title: "Three", what: "x", criteria: ["one", "two", "three"] });
+		const file = join(root, ".scratch", "ticks", "issues", "01-three.md");
+		op(root, { op: "tick", feature: "ticks", ticket: "01", index: 1 });
+		op(root, { op: "tick", feature: "ticks", ticket: "01", index: 2 });
+		const raw = readFileSync(file, "utf8");
+		assert.match(raw, /- \[x\] one\n- \[x\] two\n- \[ \] three/, "positions stay fixed: 1 then 2 marks boxes 1 and 2");
+		assert.throws(() => op(root, { op: "tick", feature: "ticks", ticket: "01", index: 1 }), /criterion #1 .* is already checked/);
+		assert.equal(readFileSync(file, "utf8"), raw, "a refused tick writes nothing");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("create-spec publishes .scratch/<feature>/spec.md once; list shows every ticket of a feature", () => {
 	const root = tempRepo();
 	try {
@@ -205,6 +221,33 @@ test("status: a category role lands on its own line and leaves the state role al
 	}
 });
 
+test("frontier holds back needs-triage, needs-info and ready-for-human; ready-for-agent and wayfinder children stay takeable", () => {
+	const root = tempRepo();
+	try {
+		for (const [title, status] of [
+			["Untriaged", "needs-triage"],
+			["Waiting on reporter", "needs-info"],
+			["Human only", "ready-for-human"],
+			["Agent ready", "ready-for-agent"],
+		] as const) {
+			op(root, { op: "create-ticket", feature: "roles", title, what: "x", status });
+		}
+		// a wayfinder child as the local template describes it: no triage role at all
+		writeFileSync(
+			join(root, ".scratch", "roles", "issues", "05-which-parser.md"),
+			"# 5: Which parser?\n\n**Type:** research\n\n**Blocked by:** None (can start immediately)\n\n## Question\n\nCSV?\n",
+		);
+		const frontier = op(root, { op: "frontier", feature: "roles" });
+		const takeable = [...frontier.matchAll(/^- (\d+) —/gm)].map((m) => m[1]);
+		assert.deepEqual(takeable, ["04", "05"]);
+		assert.match(frontier, /01 — Untriaged \[needs-triage\]/);
+		assert.match(frontier, /02 — Waiting on reporter \[needs-info\]/);
+		assert.match(frontier, /03 — Human only \[ready-for-human\]/);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("runAllFrontiers prints one section per feature; errors name the missing piece", () => {
 	const root = tempRepo();
 	try {
@@ -265,6 +308,67 @@ test("claim and tick refuse a closed ticket instead of reopening it", () => {
 		const raw = readFileSync(join(root, ".scratch", "gone", "issues", "01-done-thing.md"), "utf8");
 		assert.match(raw, /\*\*Status:\*\* resolved/);
 		assert.doesNotMatch(op(root, { op: "frontier", feature: "gone" }), /^- 01/m);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("a second claim errors, naming the existing claim, instead of replying Claimed", () => {
+	const root = tempRepo();
+	try {
+		op(root, { op: "create-ticket", feature: "race", title: "Contended", what: "x" });
+		assert.match(op(root, { op: "claim", feature: "race", ticket: "01" }), /Claimed/);
+		assert.throws(() => op(root, { op: "claim", feature: "race", ticket: "01" }), /cannot claim 01: already claimed \(Status: claimed\)/);
+
+		// an assignee line is a claim too
+		op(root, { op: "create-ticket", feature: "race", title: "Assigned", what: "y" });
+		const assigned = join(root, ".scratch", "race", "issues", "02-assigned.md");
+		writeFileSync(assigned, readFileSync(assigned, "utf8").replace("# 2: Assigned\n", "# 2: Assigned\n\n**Assignee:** sam\n"));
+		assert.throws(() => op(root, { op: "claim", feature: "race", ticket: "02" }), /cannot claim 02: already claimed \(assignee: sam\)/);
+		assert.match(readFileSync(assigned, "utf8"), /\*\*Status:\*\* ready-for-agent/, "the losing claim writes nothing");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("claim re-checks under the ticket lock: a resolve landing between read and write is not overwritten", async () => {
+	// A child process holds the ticket's lock and, while holding it, lands a
+	// resolve. The claim below reads the ticket (still open) before the child's
+	// write, then waits on the lock. Checking only that early read wrote
+	// `claimed` over the resolve; the check under the lock refuses instead.
+	const root = tempRepo();
+	const script = join(root, "resolver.ts");
+	const heldFlag = join(root, "held.flag");
+	try {
+		op(root, { op: "create-ticket", feature: "race", title: "Contended", what: "x" });
+		const file = join(root, ".scratch", "race", "issues", "01-contended.md");
+		writeFileSync(
+			script,
+			[
+				`import { withFileLock } from ${JSON.stringify(join(import.meta.dirname, "tracker.js"))};`,
+				'import { readFileSync, writeFileSync } from "node:fs";',
+				"const [, , file, held] = process.argv as [string, string, string, string];",
+				"withFileLock(file, () => {",
+				'\twriteFileSync(held, "held");',
+				"\tAtomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 500);",
+				'\twriteFileSync(file, readFileSync(file, "utf8").replace("**Status:** ready-for-agent", "**Status:** resolved"));',
+				"});",
+				"",
+			].join("\n"),
+		);
+		const child = spawn(process.execPath, [join(REPO_ROOT, "node_modules", ".bin", "tsx"), script, file, heldFlag], {
+			cwd: REPO_ROOT,
+			stdio: ["ignore", "ignore", "pipe"],
+		});
+		const exited = new Promise<void>((done) => child.on("exit", () => done()));
+		const deadline = Date.now() + 5_000;
+		while (!existsSync(heldFlag) && Date.now() < deadline) {
+			await new Promise((done) => setTimeout(done, 5));
+		}
+		assert.equal(existsSync(heldFlag), true, "the resolver never acquired the lock");
+		assert.throws(() => op(root, { op: "claim", feature: "race", ticket: "01" }), /cannot claim 01: it is resolved/);
+		await exited;
+		assert.match(readFileSync(file, "utf8"), /\*\*Status:\*\* resolved/, "the resolve survives");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
@@ -358,6 +462,43 @@ test("ticket numbering never overwrites an existing file", () => {
 		assert.equal(existsSync(second), true);
 		assert.match(readFileSync(second, "utf8"), /second/);
 		assert.equal(readFileSync(join(root, ".scratch", "num", "issues", "01-same-title.md"), "utf8"), first, "01 is untouched");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("two creators with different titles never share a ticket number", () => {
+	// Deterministic interleaving: another creator holds the allocation lock (it
+	// has scanned the directory and picked 01 but not written yet). A creator that
+	// scanned without the lock also picked 01 and wrote `01-mine.md` beside the
+	// other's `01-other.md` (`wx` only guards the exact name). Under the lock it
+	// allocates nothing until the holder is done, then takes 02.
+	const root = tempRepo();
+	try {
+		const dir = join(root, ".scratch", "alloc", "issues");
+		mkdirSync(dir, { recursive: true });
+		const lock = join(dir, ".next-number.lock");
+		writeFileSync(lock, ""); // the other creator is mid-allocation
+		assert.throws(
+			() => op(root, { op: "create-ticket", feature: "alloc", title: "Mine", what: "x" }),
+			/timed out waiting for the tracker lock/,
+			"no number is allocated while another creator holds the allocation lock",
+		);
+		assert.deepEqual(
+			readdirSync(dir).filter((f) => f.endsWith(".md")),
+			[],
+		);
+
+		// the other creator finishes its write with the number it picked, then releases
+		writeFileSync(join(dir, "01-other.md"), "# 1: Other\n\n**Status:** ready-for-agent\n");
+		rmSync(lock);
+		op(root, { op: "create-ticket", feature: "alloc", title: "Mine", what: "x" });
+		const numbers = readdirSync(dir)
+			.filter((f) => f.endsWith(".md"))
+			.map((f) => f.slice(0, 2))
+			.sort();
+		assert.deepEqual(numbers, ["01", "02"], "every ticket has its own NN");
+		assert.equal(existsSync(lock), false, "the allocation lock is released");
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
