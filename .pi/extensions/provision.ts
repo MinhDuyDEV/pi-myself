@@ -51,6 +51,8 @@ export function setupReport(result: Pick<SpawnSyncReturns<string>, "status" | "s
 
 export type DoctorSpawnResult = Pick<SpawnSyncReturns<string>, "status" | "signal" | "error" | "stdout" | "stderr">;
 export interface DoctorInputs {
+	/** `ctx.isProjectTrusted()`: pi loads a project's .pi/ resources only when trusted. */
+	projectTrusted: boolean;
 	repoRoot: string;
 	packageRoot: string;
 	agentDir: string;
@@ -96,6 +98,17 @@ function roleModel(inputs: DoctorInputs, name: string): string | undefined {
 	const text = inputs.readFile(join(inputs.repoRoot, ".pi", "agents", `${name}.md`));
 	const frontmatter = text === undefined ? undefined : /^---\n([\s\S]*?)\n---/.exec(text)?.[1];
 	return frontmatter === undefined ? undefined : /^model:[ \t]*(\S.*)$/m.exec(frontmatter)?.[1]?.trim();
+}
+
+function checkTrust(inputs: DoctorInputs): DoctorFinding {
+	if (inputs.projectTrusted) return { status: "ok", check: "trust", detail: "pi loads this project's .pi/ resources" };
+	return {
+		status: "warn",
+		check: "trust",
+		detail:
+			"this project is not trusted: pi loads none of its .pi/ settings, extensions, or APPEND_SYSTEM.md, and a task that declares skills does not resolve",
+		fix: "run /trust in an interactive pi session here (or accept the trust prompt on the next start)",
+	};
 }
 
 function checkRoles(inputs: DoctorInputs): DoctorFinding {
@@ -244,6 +257,7 @@ function checkGitignore(inputs: DoctorInputs): DoctorFinding {
 /** The read-only doctor: one finding per check, in a fixed order. Pure over its inputs. */
 export function runDoctor(inputs: DoctorInputs): DoctorFinding[] {
 	return [
+		checkTrust(inputs),
 		checkRoles(inputs),
 		checkModelTiers(inputs),
 		checkCompanions(inputs),
@@ -275,6 +289,7 @@ export default function provisionExtension(pi: ExtensionAPI): void {
 			const root = resolveRepoRoot(ctx.cwd);
 			if (args.trim().split(/\s+/).includes("--check")) {
 				const findings = runDoctor({
+					projectTrusted: ctx.isProjectTrusted(),
 					repoRoot: root,
 					packageRoot: pkg,
 					agentDir: agentDir(),

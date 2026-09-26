@@ -136,6 +136,43 @@ test("refuses core.hooksPath inside the work tree: those hooks are the repositor
 	assert.equal(existsSync(join(root, ".husky", "pre-commit.local")), false);
 });
 
+test("refuses a core.hooksPath outside the repository's git directory: those hooks are shared", () => {
+	// A machine-wide hooks folder (git-secrets, gitleaks setups) runs in every
+	// repository; writing this repo's command there breaks commits everywhere.
+	const shared = mkdtempSync(join(tmpdir(), "pi-myself-global-hooks-"));
+	writeFileSync(join(shared, "pre-commit"), "#!/bin/sh\nexit 0\n");
+	const globalConfig = join(mkdtempSync(join(tmpdir(), "pi-myself-gitconfig-")), "config");
+	writeFileSync(globalConfig, `[core]\n\thooksPath = ${shared}\n`);
+	const root = makeRoot();
+	const env = { ...GIT_ENV, GIT_CONFIG_GLOBAL: globalConfig };
+	const viaGlobal = spawnSync(process.execPath, [SCRIPT, "--root", root, "--command", "true"], { encoding: "utf8", env });
+	assert.equal(viaGlobal.status, 1, viaGlobal.stdout);
+	assert.match(viaGlobal.stderr, /core\.hooksPath points outside this repository's git directory/);
+	assert.equal(readFileSync(join(shared, "pre-commit"), "utf8"), "#!/bin/sh\nexit 0\n", "the shared hook is untouched");
+	assert.equal(existsSync(join(shared, "pre-commit.local")), false);
+
+	// the same through the repository's own config, pointing at an absolute path outside it
+	const local = makeRoot();
+	git(local, "config", "core.hooksPath", shared);
+	const viaLocal = run(local, "--command", "true");
+	assert.equal(viaLocal.status, 1);
+	assert.match(viaLocal.stderr, /outside this repository's git directory/);
+});
+
+test("a second foreign hook never overwrites the first one kept as .local", () => {
+	const root = makeRoot();
+	writeFileSync(hookPath(root, "pre-commit"), "#!/bin/sh\necho first\n");
+	chmodSync(hookPath(root, "pre-commit"), 0o755);
+	assert.equal(run(root, "--command", "true").status, 0);
+	// something replaces our hook with its own
+	writeFileSync(hookPath(root, "pre-commit"), "#!/bin/sh\necho second\n");
+	const result = run(root, "--command", "true");
+	assert.equal(result.status, 1);
+	assert.match(result.stderr, /pre-commit\.local already holds/);
+	assert.match(hook(root, "pre-commit.local"), /echo first/, "the first project hook is kept");
+	assert.match(hook(root, "pre-commit"), /echo second/, "and the second is left where it is");
+});
+
 test("refuses outside a git work tree instead of inventing .git/hooks", () => {
 	const plain = mkdtempSync(join(tmpdir(), "pi-myself-no-git-"));
 	const result = run(plain, "--command", "true");

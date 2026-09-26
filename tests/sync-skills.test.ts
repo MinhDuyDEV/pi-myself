@@ -8,8 +8,8 @@ import { test } from "node:test";
 // The lock guards the whole vendored tree, not only the registered SKILL.md
 // files: a skill's references (PHASE-BOUNDARIES.md, scripts, templates) are
 // loaded by the model too, so an edit to one must fail `--check` like an edit
-// to the SKILL.md itself. `--relock` rewrites the lock from the tree on disk
-// with no network, and never blesses a drifted SKILL.md.
+// to the SKILL.md itself. `--relock` only adds the digest to a lock that has
+// none, with no network: it never blesses a drifted file, SKILL.md or not.
 
 const ROOT = resolve(import.meta.dirname, "..");
 const VENDOR_REL = join("vendor", "mattpocock-skills");
@@ -67,13 +67,26 @@ test("sync-skills --relock records the tree without a clone, and refuses when a 
 	assert.match(refused.output, /tdd: SKILL\.md hash drifted/);
 	assert.equal(readFileSync(join(root, "skills-lock.json"), "utf8"), lockBefore, "a refused relock writes nothing");
 
-	// a reference-file change with every SKILL.md intact is what relock is for
+	// once the lock digests the tree, a reference-file edit is drift too: relock
+	// would otherwise re-open, one command away, the gap the digest closed
+	const edited = fakeCheckout();
+	appendFileSync(join(edited, PHASE_BOUNDARIES), "\nlocal wording\n");
+	const editedLock = readFileSync(join(edited, "skills-lock.json"), "utf8");
+	const refusedTree = sync(edited, "--relock");
+	assert.equal(refusedTree.status, 1, `relock must not bless an edited reference file:\n${refusedTree.output}`);
+	assert.match(refusedTree.output, /changed.*PHASE-BOUNDARIES\.md/);
+	assert.equal(readFileSync(join(edited, "skills-lock.json"), "utf8"), editedLock, "a refused relock writes nothing");
+
+	// what relock is for: a lock written before the digest existed gets one
 	const fresh = fakeCheckout();
-	appendFileSync(join(fresh, PHASE_BOUNDARIES), "\nupstream wording\n");
+	const old = JSON.parse(readFileSync(join(fresh, "skills-lock.json"), "utf8"));
+	delete old.vendorTree;
+	writeFileSync(join(fresh, "skills-lock.json"), `${JSON.stringify(old, null, "\t")}\n`);
 	const relocked = sync(fresh, "--relock");
 	assert.equal(relocked.status, 0, relocked.output);
 	const lock = JSON.parse(readFileSync(join(fresh, "skills-lock.json"), "utf8"));
 	assert.equal(lock.upstream.head, JSON.parse(lockBefore).upstream.head, "relock keeps the recorded upstream head");
+	assert.equal(lock.vendorTree.digest, JSON.parse(lockBefore).vendorTree.digest, "the added digest is the tree's");
 	assert.equal(sync(fresh, "--check").status, 0, "the relocked tree checks clean");
 });
 

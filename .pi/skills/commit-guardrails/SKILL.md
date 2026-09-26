@@ -38,8 +38,10 @@ In the pi-myself checkout the same thing is wired to npm scripts: `npm run hooks
 - A hook pi-myself did not write is moved beside the installed one as `<name>.local` (a symlink moves
   as a link) and the installed hook runs it first, so the project's own check keeps blocking; a hook
   carrying the pi-myself marker is ours and is refreshed in place.
-- It refuses outside a git work tree, and when `core.hooksPath` points inside the work tree (husky and
-  similar tracked hooks): those are the repository's files, so the check goes into them by hand.
+- It refuses outside a git work tree, and whenever `core.hooksPath` leaves the repository's git
+  directory: inside the work tree those hooks are tracked (husky), elsewhere they are shared by other
+  repositories or the whole machine; add the check there by hand. It also refuses a second foreign
+  hook rather than overwrite the one already kept as `<name>.local`.
 
 ## When there is no guardrail at all
 

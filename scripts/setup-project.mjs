@@ -77,9 +77,13 @@ const fsWrite = {
 	mkdir(path) {
 		if (!CHECK) mkdirSync(path, { recursive: true });
 	},
+	/** Never through a symlink: a link at `path` (an earlier backup of a linked
+	 * role, say) is removed, not followed, so a file outside the repo is never written. */
 	write(path, text) {
 		pendingWrites++;
-		if (!CHECK) writeFileSync(path, text);
+		if (CHECK) return;
+		if (lstatExists(path) && lstatSync(path).isSymbolicLink()) rmSync(path);
+		writeFileSync(path, text);
 	},
 	rename(from, to) {
 		pendingWrites++;
@@ -203,18 +207,35 @@ function syncAgent(sourcePath, target, rel) {
 		fsWrite.write(target, source);
 		return previous === undefined ? ["created"] : ["created", "was deleted in this project; the roster is harness-owned"];
 	}
-	const content = existing === undefined ? source : withFields(source, projectChoices(existing, previous));
-	if (!link && existing === content) return ["unchanged"];
+	const choices = existing === undefined ? {} : projectChoices(existing, previous);
+	const content = existing === undefined ? source : withFields(source, choices);
+	// A kept value that differs from the package's is named on every run: an older
+	// baseline cannot tell a choice from a value an older version failed to update.
+	const kept = Object.entries(choices)
+		.filter(([field, value]) => value !== frontmatterField(source, field))
+		.map(([field, value]) => `kept your ${field}: ${value}; the package ships ${frontmatterField(source, field) ?? "none"}`);
+	const withKept = (note) => [note, ...kept].filter(Boolean).join("; ") || undefined;
+	if (!link && existing === content) return ["unchanged", withKept(undefined)];
 	if (link) {
 		// never write through a link: keep the project's link, put a file in its place
 		fsWrite.rename(target, `${target}.local`);
 		fsWrite.write(target, content);
-		return ["updated", `your symlink kept as ${basename(target)}.local`];
+		return ["updated", withKept(`your symlink kept as ${basename(target)}.local`)];
 	}
 	const edited = editedByProject(existing, previous, source);
 	if (edited) fsWrite.write(`${target}.local`, existing);
 	fsWrite.write(target, content);
-	return ["updated", edited ? `your copy saved as ${basename(target)}.local` : undefined];
+	return ["updated", withKept(edited ? `your copy saved as ${basename(target)}.local` : undefined)];
+}
+
+/** `<path>.local`, or the first free `<path>.local.N` when an earlier backup that differs is already there. */
+function freeBackupPath(path, text) {
+	let candidate = `${path}.local`;
+	for (let n = 2; lstatExists(candidate); n++) {
+		if (!lstatSync(candidate).isSymbolicLink() && readFileSync(candidate, "utf8") === text) break;
+		candidate = `${path}.local.${n}`;
+	}
+	return candidate;
 }
 
 /** A dangling symlink fails existsSync; lstat still sees it. */
@@ -269,9 +290,11 @@ for (const [rel, previous] of Object.entries(shippedBefore)) {
 		const text = readFileSync(target, "utf8");
 		const unedited = typeof shippedBefore[rel] === "string" && sha256(text) === shippedBefore[rel];
 		if (unedited || text.includes(STALE_COPY_MARKER)) {
-			if (!unedited) fsWrite.write(`${target}.local`, text);
+			// a one-time migration: an earlier .local may hold the repo's own pre-harness file, so it is never overwritten
+			const backup = unedited ? undefined : freeBackupPath(target, text);
+			if (backup !== undefined) fsWrite.write(backup, text);
 			fsWrite.remove(target);
-			const note = unedited ? "" : `; your copy saved as ${rel}.local — move its project rules into AGENTS.md`;
+			const note = backup === undefined ? "" : `; your copy saved as ${basename(backup)} — move its project rules into AGENTS.md`;
 			record(["removed", `the workflow policy is now injected by the pi-myself policy extension${note}`], rel);
 		}
 	}

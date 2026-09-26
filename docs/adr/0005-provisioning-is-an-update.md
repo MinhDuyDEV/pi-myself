@@ -18,7 +18,8 @@ The first fix (2026-09-26) made a rerun rewrite every role from the package and 
 
 ## Consequences
 
-- A plain upgrade writes no backup files, and a model-only tune is never reported as an edit.
+- A plain upgrade writes no backup files, and a model-only tune is never reported as an edit. A kept `model`, `thinking`, or `max_turns` that differs from the package's is named on every run, because a v1 baseline cannot tell a choice from a value an older version failed to update.
+- No write follows a symlink: a linked role is replaced by a file with the link kept as `<name>.local`, and a later backup replaces that link rather than writing through it (review A, 2026-09-26).
 - A project that sets `model` opts out of the package's tier choices, so the review-family ≠ reason-family rule (ADR 0006) holds only where models are left alone; `/setup-pi-myself --check` reports a shared family in the repo's own roles.
 - The baseline file must be committed; without it every difference is treated as an edit and backed up.
 - Per-project rules belong in the repo's `AGENTS.md`, not in an edited role.

@@ -1,6 +1,7 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { agentDir } from "./lib/agent-dir.js";
 import { packageRoot } from "./lib/repo-root.js";
 
 /**
@@ -38,6 +39,14 @@ export const STALE_COPY_MARKER = "Runtime playbook: which process owns the work"
 const STALE_COPY_NOTICE =
 	"pi-myself: .pi/APPEND_SYSTEM.md is an old copy of the harness workflow policy, so the current policy is not injected. Run /setup-pi-myself to migrate it (an edited copy is kept as APPEND_SYSTEM.md.local).";
 
+/** pi appends a trusted project's `.pi/APPEND_SYSTEM.md`, else the agent directory's
+ * (resource-loader discoverAppendSystemPromptFile): the notice names the file it read. */
+function staleCopyNotice(ctx: ExtensionContext): string {
+	const projectCopy = ctx.isProjectTrusted() && existsSync(join(ctx.cwd, ".pi", "APPEND_SYSTEM.md"));
+	if (projectCopy) return STALE_COPY_NOTICE;
+	return `pi-myself: APPEND_SYSTEM.md in the pi agent directory (${join(agentDir(), "APPEND_SYSTEM.md")}) holds an old copy of the harness workflow policy, so the current policy is not injected. Remove that copy from it; /setup-pi-myself migrates only a project's own .pi/APPEND_SYSTEM.md.`;
+}
+
 function readPolicy(path: string): { text: string } | { error: string } {
 	try {
 		const text = readFileSync(path, "utf8").trim();
@@ -69,7 +78,7 @@ export function createPolicyExtension(workflowPath: string): (pi: ExtensionAPI) 
 				return;
 			}
 			if (event.systemPromptOptions.appendSystemPrompt.includes(STALE_COPY_MARKER)) {
-				noticeOnce(ctx, STALE_COPY_NOTICE, "warning");
+				noticeOnce(ctx, staleCopyNotice(ctx), "warning");
 				return;
 			}
 			event.systemPromptOptions.sections[POLICY_SECTION] = policy.text;

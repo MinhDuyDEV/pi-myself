@@ -22,9 +22,11 @@
  * It never switches off or overwrites a hook it did not write: a foreign hook
  * is moved beside ours as `<name>.local` (a symlink moves as a link, never
  * written through) and ours runs it first, so the project's own check keeps
- * running. It refuses outside a git work tree, and when `core.hooksPath` points
- * inside the work tree (tracked hooks such as husky's): those files belong to
- * the repository, so the command goes into them by hand. `--check` writes
+ * running. It refuses outside a git work tree, and whenever `core.hooksPath`
+ * leaves this repository's git directory: inside the work tree those hooks are
+ * tracked (husky), elsewhere they are shared (a global hooks folder runs in
+ * every repository). It also refuses a second foreign hook rather than
+ * overwrite the one already kept as `<name>.local`. `--check` writes
  * nothing and exits non-zero when a hook is missing or stale.
  *
  * It ships inside this skill rather than in the package's `scripts/`, because a
@@ -36,7 +38,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 /** Any hook carrying this token is ours to overwrite; one without it is the project's. */
 const MARKER = "pi-myself:";
@@ -104,17 +106,38 @@ function hooksDirFor(root) {
 	const raw = git(root, "rev-parse", "--git-path", "hooks");
 	const hooksDir = isAbsolute(raw) ? raw : resolve(root, raw);
 	const gitDir = realpathSync(resolve(root, git(root, "rev-parse", "--git-common-dir")));
-	const real = existsSync(hooksDir) ? realpathSync(hooksDir) : hooksDir;
+	const real = canonicalPath(hooksDir);
 	const inside = (parent, child) => {
 		const rel = relative(parent, child);
 		return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 	};
-	if (inside(topLevel, real) && !inside(gitDir, real)) {
+	// Only this repository's own git directory is ours to write: a hooks folder in
+	// the work tree is tracked (husky), and one elsewhere is shared — a global
+	// core.hooksPath runs in every repository on the machine.
+	if (!inside(gitDir, real)) {
+		if (inside(topLevel, real)) {
+			throw new Error(
+				`core.hooksPath points inside the work tree (${real}); those hooks are the repository's own files, so add the check to them by hand instead`,
+			);
+		}
 		throw new Error(
-			`core.hooksPath points inside the work tree (${real}); those hooks are the repository's own files, so add the check to them by hand instead`,
+			`core.hooksPath points outside this repository's git directory (${real}); hooks there are shared with other repositories or the whole machine, so add the check there by hand, or unset core.hooksPath for this repository`,
 		);
 	}
 	return hooksDir;
+}
+
+/** The real path of the deepest existing ancestor, with the missing tail re-attached (macOS /var → /private/var). */
+function canonicalPath(path) {
+	const tail = [];
+	let current = path;
+	while (!existsSync(current)) {
+		const parent = dirname(current);
+		if (parent === current) return path;
+		tail.unshift(basename(current));
+		current = parent;
+	}
+	return join(realpathSync(current), ...tail);
 }
 
 function resolveCommand(root, command) {
@@ -152,6 +175,21 @@ function main() {
 	const command = resolveCommand(root, options.command);
 	const actions = [];
 	let stale = false;
+
+	// Refuse before writing anything: a foreign hook moves to `<name>.local`, so a
+	// second foreign hook would overwrite the first one kept there.
+	if (!options.check) {
+		for (const [name, content] of desiredHooks(command, options.trailer)) {
+			const path = join(hooksDir, name);
+			const current = inspect(path);
+			const foreign = current.exists && (current.link || !current.text?.includes(MARKER)) && current.text !== content;
+			if (foreign && inspect(`${path}.local`).exists) {
+				throw new Error(
+					`${name}.local already holds a hook pi-myself kept earlier, and ${name} is another hook it did not write; merge the two by hand (or move one away), then rerun`,
+				);
+			}
+		}
+	}
 
 	for (const [name, content] of desiredHooks(command, options.trailer)) {
 		const path = join(hooksDir, name);

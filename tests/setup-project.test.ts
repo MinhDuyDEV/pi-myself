@@ -418,4 +418,46 @@ test("a symlinked role is replaced by a file and the link kept as .local; the sh
 	assert.ok(readFileSync(copy, "utf8").includes("upstream change"));
 	assert.ok(lstatSync(`${copy}.local`).isSymbolicLink(), "the project's link is kept beside it");
 	assert.match(output, /updated\s+agents\/reviewer\.md \(your symlink kept as reviewer\.md\.local\)/);
+
+	// the next backup must not follow that link: edit the role, update the package, rerun
+	appendFileSync(copy, "\nproject rule\n");
+	appendFileSync(join(pkg.root, ".pi", "agents", "reviewer.md"), "\nsecond upstream change\n");
+	const again = runScript(target, undefined, pkg.script);
+	assert.equal(readFileSync(shared, "utf8"), before, "a later backup never writes through the kept link");
+	assert.ok(!lstatSync(`${copy}.local`).isSymbolicLink(), "the new backup is a regular file");
+	assert.ok(readFileSync(`${copy}.local`, "utf8").includes("project rule"));
+	assert.match(again, /updated\s+agents\/reviewer\.md \(your copy saved as reviewer\.md\.local\)/);
+});
+
+test("migrating a stale APPEND_SYSTEM.md never overwrites an earlier backup", () => {
+	// An older version's first run saved the repo's own APPEND_SYSTEM.md as .local;
+	// the edited stale copy must land beside it, not on top of it.
+	const target = provisionedBefore(`${OLD_POLICY}\n# project rule\n`, OLD_POLICY);
+	const earlier = join(target, ".pi", "APPEND_SYSTEM.md.local");
+	writeFileSync(earlier, "Project rule: answer in French.\n");
+	const output = runScript(target);
+	assert.equal(readFileSync(earlier, "utf8"), "Project rule: answer in French.\n", "the earlier backup is untouched");
+	assert.match(output, /removed\s+APPEND_SYSTEM\.md \(.*your copy saved as APPEND_SYSTEM\.md\.local\.2/);
+	assert.ok(readFileSync(`${earlier}.2`, "utf8").includes("# project rule"));
+});
+
+test("a role's kept project values are reported when they differ from what the package ships", () => {
+	// S4 left repos with values an older version never updated; a v1 baseline
+	// cannot tell those from a choice, so every kept value that differs from the
+	// package's is named on each run instead of being kept silently.
+	const pkg = fakePackage();
+	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	runScript(target, undefined, pkg.script);
+	const reviewer = join(target, ".pi", "agents", "reviewer.md");
+	setField(reviewer, "model", "local/reviewer");
+	const shipped = /^model: (.*)$/m.exec(readFileSync(join(pkg.root, ".pi", "agents", "reviewer.md"), "utf8"))?.[1];
+	const output = runScript(target, undefined, pkg.script);
+	assert.match(
+		output,
+		new RegExp(
+			`agents/reviewer\\.md \\(kept your model: local/reviewer; the package ships ${shipped?.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&")}\\)`,
+		),
+	);
+	assert.match(output, /\b0 created, 0 updated\b/, "reporting a kept value is not a change");
+	assert.doesNotMatch(output, /agents\/explore\.md/, "a role that follows the package is not mentioned");
 });

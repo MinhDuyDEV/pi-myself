@@ -34,9 +34,12 @@ function healthyFiles(): Record<string, string> {
 
 const done = (stdout: string, status = 0): DoctorSpawnResult => ({ status, signal: null, error: undefined, stdout, stderr: "" });
 
-function inputs(overrides: { files?: Record<string, string>; tools?: string[]; spawn?: DoctorInputs["spawn"] } = {}): DoctorInputs {
+function inputs(
+	overrides: { files?: Record<string, string>; tools?: string[]; spawn?: DoctorInputs["spawn"]; trusted?: boolean } = {},
+): DoctorInputs {
 	const files = overrides.files ?? healthyFiles();
 	return {
+		projectTrusted: overrides.trusted ?? true,
 		repoRoot: REPO,
 		packageRoot: PKG,
 		agentDir: AGENT_DIR,
@@ -62,8 +65,17 @@ test("a healthy project gets one ok per check and no warning", () => {
 	const findings = runDoctor(inputs());
 	assert.deepEqual(
 		findings.map((f) => `${f.status} ${f.check}`),
-		["ok roles", "ok model tiers", "ok companions", "ok tracker docs", "ok install scope", "ok gitignore"],
+		["ok trust", "ok roles", "ok model tiers", "ok companions", "ok tracker docs", "ok install scope", "ok gitignore"],
 	);
+});
+
+test("an untrusted project is a warning: pi loads none of its .pi/ resources", () => {
+	// Without trust pi skips the project's .pi/ settings, extensions, and
+	// APPEND_SYSTEM.md, and a task that declares skills does not resolve.
+	const trust = finding(runDoctor(inputs({ trusted: false })), "trust");
+	assert.equal(trust.status, "warn");
+	assert.match(trust.detail, /not trusted/);
+	assert.match(trust.fix ?? "", /\/trust/);
 });
 
 test("stale roles: the doctor runs the script's --check against the repo and relays what would change", () => {
@@ -190,7 +202,11 @@ test("/setup-pi-myself --check notifies one read-only report and provisions noth
 	try {
 		execFileSync("git", ["init", "-q"], { cwd: repo });
 		const notices: Array<[string, string | undefined]> = [];
-		await handler!("--check", { cwd: repo, ui: { notify: (message: string, type?: string) => notices.push([message, type]) } });
+		await handler!("--check", {
+			cwd: repo,
+			isProjectTrusted: () => true,
+			ui: { notify: (message: string, type?: string) => notices.push([message, type]) },
+		});
 		assert.equal(notices.length, 1, "one report");
 		const [message, type] = notices[0]!;
 		assert.equal(type, "warning");

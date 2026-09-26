@@ -21,10 +21,10 @@
  *   tree and the lock disagree.
  *
  * Relock mode (--relock):
- *   Rewrite the lock from the tree on disk, keeping the recorded upstream head
- *   (no network). It refuses — writing nothing — unless every registered
- *   SKILL.md still matches its recorded hash, so it can never bless an edited
- *   skill; it exists to add or refresh the tree digest without a re-clone.
+ *   Add the whole-tree digest to a lock written before it existed, keeping the
+ *   recorded upstream head (no network). It refuses — writing nothing — when
+ *   any registered SKILL.md differs from its recorded hash, and, once the lock
+ *   has a digest, when any vendored file differs: it never blesses a change.
  *
  * User-invoked skills are invoked by the human through pi's native
  * `/skill:<name>` commands (settings enableSkillCommands) — no generated
@@ -258,11 +258,19 @@ if (CHECK || RELOCK) {
 	const drift = skillDrift(lock, computed);
 
 	if (RELOCK) {
+		// Once the lock digests the tree, any vendored change is drift: blessing
+		// it here would re-open, one command away, the gap the digest closed.
+		// Relock exists only to add the digest to a lock written before it.
+		if (lock.vendorTree?.digest) drift.push(...treeDrift(lock.vendorTree, computed.vendorTree));
 		if (drift.length > 0) {
 			for (const line of drift) console.error(`  ${line}`);
 			die(
-				`relock refused, nothing written: ${drift.length} registered skill(s) differ from the lock, and a relock never blesses a SKILL.md. Restore them, or run \`npm run sync:skills\` to re-vendor upstream.`,
+				`relock refused, nothing written: the vendored tree differs from the lock in ${drift.length} item(s), and a relock never blesses a change. Restore the files (git checkout -- ${rel(ROOT, CLONE)}), or run \`npm run sync:skills\` to re-vendor upstream.`,
 			);
+		}
+		if (lock.vendorTree?.digest) {
+			console.log("sync-skills: the lock already digests the tree and nothing drifted; relock wrote nothing.");
+			process.exit(0);
 		}
 		writeLock(computed);
 		console.log(

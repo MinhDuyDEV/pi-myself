@@ -19,7 +19,7 @@
 - Skill/catalog tests: `node --test tests/*.test.ts`.
 - Lint + format: `npm run lint` (Biome, read-only check), `npm run lint:fix` (writes).
 - Typecheck: `npm run typecheck` (root), `npm run extensions:typecheck` (extensions).
-- Vendored sync: `npm run sync:skills` (upgrade), `npm run sync:check` (verify), `node scripts/sync-skills.mjs --relock` (rehash without cloning).
+- Vendored sync: `npm run sync:skills` (upgrade), `npm run sync:check` (verify).
 - Child contract: `npm run agents:sync` (rewrite the role blocks), `npm run agents:check` (verify).
 - Git guardrail: `npm run hooks:install` (pre-commit staged check; `-- --trailer` also stamps the session id), `npm run hooks:check` (verify).
 - Everything at once: `npm run check` (lint → both typechecks → tests → sync check → agents check), which is what CI runs.
