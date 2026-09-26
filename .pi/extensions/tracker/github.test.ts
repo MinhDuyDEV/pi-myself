@@ -71,8 +71,10 @@ function fakeGh(
 		labels?: string[];
 		subIssueOrder?: Record<number, number[]>;
 		/** Native parent per child: what `gh api repos/{o}/{r}/issues/<n>/parent`
-		 * answers (REST "Get parent issue"); a child with no entry gets a 404. */
-		parentOf?: Record<number, number>;
+		 * answers (REST "Get parent issue"); a child with no entry gets a 404. A
+		 * bare number is a parent in this repository (`repoSlug`); sub-issues may
+		 * cross repositories of one owner, so `repo` can name another. */
+		parentOf?: Record<number, number | { number: number; repo: string }>;
 		/** Make only the native sub-issue link (`POST .../sub_issues`) fail. */
 		failSubIssuePost?: boolean;
 		/** What `gh repo view --json nameWithOwner` answers. */
@@ -198,10 +200,11 @@ function fakeGh(
 			const parentFor = /issues\/(\d+)\/parent$/.exec(path);
 			if (parentFor) {
 				const parent = options.parentOf?.[Number(parentFor[1])];
-				if (parent === undefined) throw new TrackerError("gh api: Not Found (HTTP 404)");
+				if (parent === undefined) throw new TrackerError("gh api: No parent issue found (HTTP 404)");
 				const jq = args.includes("--jq") ? args[args.indexOf("--jq") + 1] : undefined;
-				if (jq !== ".number") throw new TrackerError(`unexpected --jq ${jq} on ${path}`);
-				return String(parent);
+				if (jq !== "{number, repository_url}") throw new TrackerError(`unexpected --jq ${jq} on ${path}`);
+				const { number, repo } = typeof parent === "number" ? { number: parent, repo: options.repoSlug ?? "example/repo" } : parent;
+				return JSON.stringify({ number, repository_url: `https://api.github.com/repos/${repo}` });
 			}
 			if (/issues\?state=/.test(path)) {
 				const state = /state=all/.test(path) ? "all" : "open";
@@ -854,6 +857,8 @@ test("gh-show names omitted comments and truncated bodies", () => {
 	assert.match(out, /## Comments \(30 of 35 — 5 older comments were not shown; read them all with `gh issue view 4 --comments`\)/);
 	assert.equal(/note 0\b/.test(out), false, "the 5 oldest are the omitted ones");
 	assert.match(out, /note 34/);
+	const one = fakeGh([{ number: 6, title: "O", state: "OPEN", body: "b", comments: many.slice(0, 31) }]);
+	assert.match(ghShowOp("/tmp", { op: "gh-show", ticket: "6" }, one.run), /## Comments \(30 of 31 — 1 older comment was not shown;/);
 
 	const long = fakeGh([{ number: 5, title: "L", state: "OPEN", body: "b", comments: [{ author: "a", body: "y".repeat(5000) }] }]);
 	const shown = ghShowOp("/tmp", { op: "gh-show", ticket: "5" }, long.run);
@@ -1356,7 +1361,10 @@ test("gh-resolve and gh-out-of-scope find a map linked only as a native parent (
 	const resolved = world();
 	const out = ghResolveOp("/tmp", { op: "gh-resolve", ticket: "4", answer: "CSV.", gist: "CSV beats TSV" }, resolved.gh.run);
 	assert.match(out, /map #1 Decisions so far updated/);
-	assert.ok(resolved.apiCalls.includes("api repos/{owner}/{repo}/issues/4/parent --jq .number"), resolved.apiCalls.join("\n"));
+	assert.ok(
+		resolved.apiCalls.includes("api repos/{owner}/{repo}/issues/4/parent --jq {number, repository_url}"),
+		resolved.apiCalls.join("\n"),
+	);
 	assert.match(
 		resolved.gh.edits.find((e) => e.args[1] === "edit" && e.number === 1)!.input ?? "",
 		/## Decisions so far\n\n- \[Pick parser\]\(https:\/\/example\.test\/issues\/4\): CSV beats TSV/,
@@ -1432,6 +1440,24 @@ test("a parent that cannot be read is reported as unknown, never as no parent (R
 	assert.ok(
 		unreadable.gh.edits.some((e) => e.args[1] === "close" && e.number === 5),
 		"the issue was closed",
+	);
+});
+
+test("a native parent in another repository is never read as this repository's issue (R11 review)", () => {
+	// sub-issues may cross repositories of one owner; local #1 is a different issue
+	const gh = fakeGh(
+		[
+			{ number: 1, title: "Local map", state: "OPEN", body: "## Decisions so far\n", labels: ["wayfinder:map"] },
+			{ number: 4, title: "Child", state: "OPEN", body: "## Question\n\nq?" },
+		],
+		{ parentOf: { 4: { number: 1, repo: "example/other" } } },
+	);
+	const out = ghResolveOp("/tmp/r11-foreign", { op: "gh-resolve", ticket: "4", answer: "a", gist: "g" }, gh.run);
+	assert.match(out, /#4's parent is example\/other#1, in another repository, so no map was updated/);
+	assert.equal(
+		gh.edits.some((e) => e.number === 1),
+		false,
+		"local #1 is not the parent",
 	);
 });
 

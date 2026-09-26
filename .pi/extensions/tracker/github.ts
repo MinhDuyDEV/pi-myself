@@ -791,7 +791,7 @@ export function ghShowOp(root: string, params: TrackerParams, run: GhRun = ghRun
 		...(comments.length
 			? [
 					"",
-					`## Comments (${comments.length}${omitted > 0 ? ` of ${total} — ${omitted} older comments were not shown; read them all with \`gh issue view ${issue.number} --comments\`` : ""})`,
+					`## Comments (${comments.length}${omitted > 0 ? ` of ${total} — ${omitted} older ${omitted === 1 ? "comment was" : "comments were"} not shown; read them all with \`gh issue view ${issue.number} --comments\`` : ""})`,
 					...comments.map(renderComment),
 				]
 			: []),
@@ -1149,21 +1149,37 @@ export function ghClaimOp(root: string, params: TrackerParams, run: GhRun = ghRu
 /** An issue's native parent (REST "Get parent issue",
  * `GET /repos/{owner}/{repo}/issues/{n}/parent`). Only the endpoint's 404 means
  * `none` (checked live: "No parent issue found (HTTP 404)"); any other failure
- * is `unknown`, because an answer that never came says nothing about a parent. */
-type NativeParent = { kind: "found"; number: number } | { kind: "none" } | { kind: "unknown"; cause: string };
+ * is `unknown`, because an answer that never came says nothing about a parent.
+ * Sub-issues may cross repositories of one owner, so a parent elsewhere is
+ * `foreign`: read as a bare number it would name this repository's issue. */
+type NativeParent =
+	| { kind: "found"; number: number }
+	| { kind: "none" }
+	| { kind: "foreign"; ref: string }
+	| { kind: "unknown"; cause: string };
 
 function nativeParentOf(root: string, number: number, run: GhRun): NativeParent {
 	let answer: string;
 	try {
-		answer = run(root, ["api", `repos/{owner}/{repo}/issues/${number}/parent`, "--jq", ".number"]).trim();
+		answer = run(root, ["api", `repos/{owner}/{repo}/issues/${number}/parent`, "--jq", "{number, repository_url}"]).trim();
 	} catch (error) {
 		const cause = errorMessage(error);
 		return /\bHTTP 404\b/.test(cause) ? { kind: "none" } : { kind: "unknown", cause };
 	}
-	const parent = Number(answer);
-	return Number.isInteger(parent) && parent > 0
-		? { kind: "found", number: parent }
-		: { kind: "unknown", cause: `unexpected answer ${JSON.stringify(answer)}` };
+	const unexpected: NativeParent = { kind: "unknown", cause: `unexpected answer ${JSON.stringify(answer)}` };
+	let parsed: { number?: unknown; repository_url?: unknown };
+	try {
+		parsed = JSON.parse(answer) as typeof parsed;
+	} catch {
+		return unexpected;
+	}
+	const parent = Number(parsed.number);
+	// `https://api.github.com/repos/OWNER/REPO`, or an Enterprise host's `/api/v3/repos/...`
+	const repo = /\/repos\/([^/]+\/[^/]+)\/?$/.exec(String(parsed.repository_url ?? ""))?.[1];
+	if (!Number.isInteger(parent) || parent <= 0 || repo === undefined) return unexpected;
+	const here = localRepoSlug(root, run);
+	if (here === undefined) return { kind: "unknown", cause: `this repository's name could not be read to compare with ${repo}#${parent}` };
+	return repo.toLowerCase() === here.toLowerCase() ? { kind: "found", number: parent } : { kind: "foreign", ref: `${repo}#${parent}` };
 }
 
 /** An open, non-PR `wayfinder:map` issue: the only parent this tool edits. A
@@ -1186,6 +1202,12 @@ function parentMapOf(root: string, issue: GhIssue, heading: string, run: GhRun):
 		const native = nativeParentOf(root, issue.number, run);
 		if (native.kind === "unknown")
 			return { kind: "unknown", reason: `#${issue.number}'s native parent could not be read (${native.cause})` };
+		if (native.kind === "foreign") {
+			return {
+				kind: "none",
+				reason: `#${issue.number}'s parent is ${native.ref}, in another repository, so no map was updated; the gist stays in the resolution comment`,
+			};
+		}
 		if (native.kind === "none") {
 			return {
 				kind: "none",
