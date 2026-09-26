@@ -61,7 +61,7 @@ In the local backend a state role lives on the `Status:` line and a category rol
 The takeable edge of the tracker: issues that are open, unclaimed (no assignee, no `Status: claimed`), not a map, not held back by a triage state role (`needs-triage`, `needs-info`, `ready-for-human`), and whose every `**Blocked by:**` reference is closed. First by number wins.
 
 **Smart zone**:
-The ~150k-token window within which the model still reasons sharply (ask-matt's PHASE-BOUNDARIES.md). The `smart-zone` meter shows the reading in the footer past 60%, toasts the decision order once when crossing 85%/100%, and never compacts on its own.
+The ~150k-token window within which the model still reasons sharply (ask-matt's PHASE-BOUNDARIES.md), capped by the model's context window when that is smaller. The `smart-zone` meter shows the reading in the footer past 60%, toasts the decision order once when crossing 85%/100%, skips failed and aborted runs, and never compacts on its own.
 
 ## Relationships
 

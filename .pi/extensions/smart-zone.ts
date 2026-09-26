@@ -61,7 +61,7 @@ function zoneNote(level: SmartZoneLevel): string {
 		case "watch":
 			return `past ${Math.round(WATCH_RATIO * 100)}% of the smart zone — fine to continue, but pick the boundary deliberately`;
 		case "boundary":
-			return "phase-boundary decision due: continue only if this context is a primary source for the next phase; else /new > /skill:handoff > subagent > /compact (ask-matt/PHASE-BOUNDARIES.md)";
+			return "phase-boundary decision due: continue only if this context is a primary source for the next phase; else /new > /skill:handoff > subagent > /compact";
 		case "over":
 			return "past the smart zone — reasoning degrades from here; compact at a phase boundary now (pass an instruction so the summary keeps what the next phase needs)";
 	}
