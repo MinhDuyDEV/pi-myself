@@ -11,17 +11,21 @@
  * is one line of work rather than a new mechanism.
  *
  * Two hooks, both owning their file outright:
- *   - `pre-commit`        runs the staged-file check (`--command`, default
- *     `npx --no-install biome check --staged --no-errors-on-unmatched`, so a
- *     consumer needs no npm script of its own);
- *   - `prepare-commit-msg` appends `Pi-Session: <id>` (opt-in, `--trailer`),
- *     which ties a commit back to the session that produced it.
+ *   - `pre-commit`        runs the staged-file check: `--command`, or, only when
+ *     Biome is installed in the repo, `npx --no-install biome check --staged
+ *     --no-errors-on-unmatched` (without Biome, npx would resolve an unrelated
+ *     package named `biome` and block every commit);
+ *   - `prepare-commit-msg` adds `Pi-Session: <id>` (opt-in, `--trailer`)
+ *     through `git interpret-trailers`, which places it above a `git commit -v`
+ *     scissors line instead of below it, where git would cut it.
  *
- * Idempotent, and it never destroys a hook it did not write: a foreign hook is
- * preserved beside it as `<name>.local` (the same convention `setup-project.mjs`
- * uses for an edited role) before being replaced. `--check` writes
- * nothing and exits non-zero when a hook is missing or stale, which is what the
- * test suite runs.
+ * It never switches off or overwrites a hook it did not write: a foreign hook
+ * is moved beside ours as `<name>.local` (a symlink moves as a link, never
+ * written through) and ours runs it first, so the project's own check keeps
+ * running. It refuses outside a git work tree, and when `core.hooksPath` points
+ * inside the work tree (tracked hooks such as husky's): those files belong to
+ * the repository, so the command goes into them by hand. `--check` writes
+ * nothing and exits non-zero when a hook is missing or stale.
  *
  * It ships inside this skill rather than in the package's `scripts/`, because a
  * consuming repo receives only the package's skills — and pi's tool result
@@ -31,24 +35,26 @@
  * Usage: node install-git-hooks.mjs [--root DIR] [--command CMD] [--trailer] [--check]
  */
 import { execFileSync } from "node:child_process";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
+import { isAbsolute, join, relative, resolve } from "node:path";
 
 /** Any hook carrying this token is ours to overwrite; one without it is the project's. */
 const MARKER = "pi-myself:";
 
-/**
- * What the pre-commit hook runs. The default works in any repo that has Biome
- * and does not depend on the host repo declaring an npm script; a repo with its
- * own gate passes `--command` (this repo uses `npm run --silent lint:staged`).
- */
-const DEFAULT_COMMAND = "npx --no-install biome check --staged --no-errors-on-unmatched";
+/** The staged check used when `--command` is omitted — only valid where Biome is installed. */
+const BIOME_COMMAND = "npx --no-install biome check --staged --no-errors-on-unmatched";
+
+/** Runs the project's own hook, moved aside as `<name>.local`, before ours; its failure fails the commit. */
+function chainLocal(name) {
+	return `local_hook="$(dirname "$0")/${name}.local"
+if [ -x "$local_hook" ]; then "$local_hook" "$@" || exit $?; fi`;
+}
 
 function preCommit(command) {
 	return `#!/bin/sh
 # Installed by pi-myself (commit-guardrails skill); delete this file to uninstall.
 # ${MARKER} pre-commit
-set -e
+${chainLocal("pre-commit")}
 exec ${command}
 `;
 }
@@ -57,15 +63,16 @@ const PREPARE_COMMIT_MSG = `#!/bin/sh
 # Installed by pi-myself (commit-guardrails skill); delete this file to uninstall.
 # ${MARKER} prepare-commit-msg
 # Ties the commit to the pi session that produced it. Skipped when pi exported
-# nothing, and for merge/squash commits whose message git generated.
+# nothing, and for merge/squash commits whose message git generated. A trailer
+# is a convenience: failing to add one never blocks the commit.
+${chainLocal("prepare-commit-msg")}
 [ -n "$PI_SESSION_ID" ] || exit 0
 case "$2" in merge|squash) exit 0 ;; esac
-grep -q '^Pi-Session: ' "$1" && exit 0
-printf '\\nPi-Session: %s\\n' "$PI_SESSION_ID" >> "$1"
+git interpret-trailers --in-place --if-exists doNothing --trailer "Pi-Session: $PI_SESSION_ID" "$1" || true
 `;
 
 function parseArgs(argv) {
-	const options = { root: undefined, command: DEFAULT_COMMAND, trailer: false, check: false };
+	const options = { root: undefined, command: undefined, trailer: false, check: false };
 	for (let index = 0; index < argv.length; index += 1) {
 		const arg = argv[index];
 		if (arg === "--trailer") options.trailer = true;
@@ -81,27 +88,60 @@ function parseArgs(argv) {
 	return options;
 }
 
-/** The hooks directory git itself would use, so a worktree or a custom core.hooksPath is honoured. */
-function hooksDirFor(root) {
-	try {
-		const raw = execFileSync("git", ["-C", root, "rev-parse", "--git-path", "hooks"], { encoding: "utf8" }).trim();
-		return raw.startsWith("/") ? raw : resolve(root, raw);
-	} catch {
-		return join(root, ".git", "hooks");
-	}
+function git(root, ...args) {
+	return execFileSync("git", ["-C", root, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
-function desiredHooks(options) {
-	const hooks = [["pre-commit", preCommit(options.command)]];
-	if (options.trailer) hooks.push(["prepare-commit-msg", PREPARE_COMMIT_MSG]);
+/** The hooks directory git itself uses (worktrees and core.hooksPath honoured); refuses where writing it would be wrong. */
+function hooksDirFor(root) {
+	let topLevel;
+	try {
+		if (git(root, "rev-parse", "--is-inside-work-tree") !== "true") throw new Error("bare repository");
+		topLevel = realpathSync(git(root, "rev-parse", "--show-toplevel"));
+	} catch {
+		throw new Error(`${root} is not inside a git work tree; run it from the repository (or pass --root)`);
+	}
+	const raw = git(root, "rev-parse", "--git-path", "hooks");
+	const hooksDir = isAbsolute(raw) ? raw : resolve(root, raw);
+	const gitDir = realpathSync(resolve(root, git(root, "rev-parse", "--git-common-dir")));
+	const real = existsSync(hooksDir) ? realpathSync(hooksDir) : hooksDir;
+	const inside = (parent, child) => {
+		const rel = relative(parent, child);
+		return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
+	};
+	if (inside(topLevel, real) && !inside(gitDir, real)) {
+		throw new Error(
+			`core.hooksPath points inside the work tree (${real}); those hooks are the repository's own files, so add the check to them by hand instead`,
+		);
+	}
+	return hooksDir;
+}
+
+function resolveCommand(root, command) {
+	if (command !== undefined) return command;
+	if (existsSync(join(root, "node_modules", ".bin", "biome"))) return BIOME_COMMAND;
+	throw new Error("Biome is not installed in this repository (node_modules/.bin/biome); pass the repo's own staged check with --command");
+}
+
+function desiredHooks(command, trailer) {
+	const hooks = [["pre-commit", preCommit(command)]];
+	if (trailer) hooks.push(["prepare-commit-msg", PREPARE_COMMIT_MSG]);
 	return hooks;
 }
 
-function readHook(path) {
+/** `{ exists, link, text }` for a hook path; a dangling link exists as a link with no text. */
+function inspect(path) {
 	try {
-		return readFileSync(path, "utf8");
+		const link = lstatSync(path).isSymbolicLink();
+		let text;
+		try {
+			text = readFileSync(path, "utf8");
+		} catch {
+			text = undefined;
+		}
+		return { exists: true, link, text };
 	} catch {
-		return undefined;
+		return { exists: false, link: false, text: undefined };
 	}
 }
 
@@ -109,37 +149,38 @@ function main() {
 	const options = parseArgs(process.argv.slice(2));
 	const root = resolve(options.root ?? process.cwd());
 	const hooksDir = hooksDirFor(root);
+	const command = resolveCommand(root, options.command);
 	const actions = [];
+	let stale = false;
 
-	for (const [name, content] of desiredHooks(options)) {
+	for (const [name, content] of desiredHooks(command, options.trailer)) {
 		const path = join(hooksDir, name);
-		const current = readHook(path);
-		if (current === content) {
+		const current = inspect(path);
+		if (!current.link && current.text === content) {
 			actions.push(`${options.check ? "ok       " : "unchanged"} ${name}`);
 			continue;
 		}
-		if (current !== undefined && !current.includes(MARKER)) {
-			actions.push(`${options.check ? "stale    " : "backup   "} ${name}.local (kept: a hook pi-myself did not write)`);
-			if (!options.check) writeFileSync(`${path}.local`, current);
-		}
+		const foreign = current.exists && (current.link || !current.text?.includes(MARKER));
 		if (options.check) {
-			actions.push(`stale    ${name} (run: npm run hooks:install)`);
+			stale = true;
+			actions.push(`stale    ${name}${foreign ? " (a hook pi-myself did not write is in its place)" : ""}`);
 			continue;
 		}
 		mkdirSync(hooksDir, { recursive: true });
+		if (foreign) {
+			// move, never copy or write through: a link stays a link, a script keeps its mode
+			renameSync(path, `${path}.local`);
+			actions.push(`kept     ${name}.local (a hook pi-myself did not write; the new ${name} runs it first)`);
+		}
 		writeFileSync(path, content);
 		chmodSync(path, 0o755);
-		actions.push(`${current === undefined ? "created " : "updated "} ${name}`);
+		actions.push(`${current.exists && !foreign ? "updated " : "created "} ${name}`);
 	}
 
 	for (const line of actions) console.log(line);
-
-	if (options.check) {
-		const stale = actions.some((line) => line.startsWith("stale") || line.startsWith("backup"));
-		if (stale) {
-			console.error(`git hooks in ${root} are not installed; run: npm run hooks:install`);
-			process.exitCode = 1;
-		}
+	if (stale) {
+		console.error(`git hooks in ${root} are not installed or out of date; rerun the installer without --check`);
+		process.exitCode = 1;
 	}
 }
 

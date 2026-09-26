@@ -151,3 +151,17 @@ test("every file shipped in a local skill is reachable from its SKILL.md", () =>
 	}
 	assert.deepEqual(offenders, []);
 });
+
+test("a local skill runs its own helpers from its directory, never through $ROOT/.pi/skills", () => {
+	// A consuming repo receives local skills inside the installed package; only
+	// this checkout has them under `.pi/skills/`, so `$ROOT/.pi/skills/...` is a
+	// path that exists here and nowhere else.
+	const offenders: string[] = [];
+	for (const skill of skills) {
+		for (const rel of shippedFiles(skill.dir).filter((file) => file.endsWith(".md"))) {
+			const text = readFileSync(join(SKILLS, skill.dir, rel), "utf8");
+			if (/\$ROOT\/\.pi\/skills\//.test(text)) offenders.push(`.pi/skills/${skill.dir}/${rel}`);
+		}
+	}
+	assert.deepEqual(offenders, [], "address a bundled script as `<this skill's directory>/...`");
+});

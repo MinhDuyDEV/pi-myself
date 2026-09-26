@@ -16,10 +16,14 @@ The installer lives beside this file, so it works in any repo that has pi-myself
 skill directory pi reported when it loaded this skill:
 
 ```bash
-node <this skill's directory>/install-git-hooks.mjs                     # pre-commit, default check
-node <this skill's directory>/install-git-hooks.mjs --command "npm test" --trailer
-node <this skill's directory>/install-git-hooks.mjs --check             # verify, write nothing
+node "<this skill's directory>/install-git-hooks.mjs" --command "npm run lint:staged"   # the repo's own staged check
+node "<this skill's directory>/install-git-hooks.mjs" --command "npm test" --trailer
+node "<this skill's directory>/install-git-hooks.mjs" --command "npm test" --check     # verify, write nothing
 ```
+
+`--command` may be omitted only where Biome is installed in the repo (`node_modules/.bin/biome`); the
+default is then `npx --no-install biome check --staged --no-errors-on-unmatched`. Without Biome the
+installer refuses rather than write a hook that blocks every commit.
 
 In the pi-myself checkout the same thing is wired to npm scripts: `npm run hooks:install`,
 `npm run hooks:install -- --trailer`, `npm run hooks:check`.
@@ -31,8 +35,11 @@ In the pi-myself checkout the same thing is wired to npm scripts: `npm run hooks
 - Not covered: typecheck, tests, the vendored lock, whole-tree scans. Those stay with `npm run
   check`, which is what CI runs. A hook that ran everything would be slow enough that people learn
   to type `--no-verify`, which is worse than no hook.
-- A hook pi-myself did not write is preserved beside the installed one as `<name>.local` and named in
-  the output; a hook carrying the pi-myself marker is ours and is refreshed in place.
+- A hook pi-myself did not write is moved beside the installed one as `<name>.local` (a symlink moves
+  as a link) and the installed hook runs it first, so the project's own check keeps blocking; a hook
+  carrying the pi-myself marker is ours and is refreshed in place.
+- It refuses outside a git work tree, and when `core.hooksPath` points inside the work tree (husky and
+  similar tracked hooks): those are the repository's files, so the check goes into them by hand.
 
 ## When there is no guardrail at all
 

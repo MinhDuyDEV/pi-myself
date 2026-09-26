@@ -16,7 +16,7 @@ const ROOT = resolve(import.meta.dirname, "..");
 const SCRIPT = join(ROOT, ".pi", "skills", "ultra-review", "scripts", "create_ultra_review_report.py");
 const DIGEST = "a".repeat(64);
 
-function runScaffold(workspace: string, extra: string[] = []): string {
+function runScaffold(workspace: string, extra: string[] = [], name = "Probe Review"): string {
 	return execFileSync(
 		"python3",
 		[
@@ -24,7 +24,7 @@ function runScaffold(workspace: string, extra: string[] = []): string {
 			"--workspace",
 			workspace,
 			"--review-name",
-			"Probe Review",
+			name,
 			"--scope",
 			"the review diff",
 			"--review-brief-sha256",
@@ -85,6 +85,22 @@ test("the scaffold increments the round and lists the prior reports", () => {
 		assert.match(report, /^Round: 2$/m);
 		assert.match(report, /Previous reports read:\n- docs\/ultrareview\/26-01-02-probe-review-round-1\.md/);
 		assert.equal(existsSync(join(workspace, "docs/ultrareview/26-01-02-probe-review-round-1.md")), true, "the earlier report is kept");
+	} finally {
+		rmSync(workspace, { recursive: true, force: true });
+	}
+});
+
+test("a review whose name ends another review's name starts at its own round 1", () => {
+	// "review" must not count "probe-review" reports as its earlier rounds.
+	const workspace = mkdtempSync(join(tmpdir(), "ultra-review-names-"));
+	try {
+		runScaffold(workspace);
+		runScaffold(workspace);
+		const output = runScaffold(workspace, [], "Review");
+		const meta = JSON.parse(output.slice(0, output.indexOf("---BEGIN ULTRA REVIEW TEMPLATE---"))) as { round: number; report_path: string };
+		assert.equal(meta.round, 1);
+		assert.equal(meta.report_path, "docs/ultrareview/26-01-02-review-round-1.md");
+		assert.match(readFileSync(join(workspace, meta.report_path), "utf8"), /Previous reports read:\n- none/);
 	} finally {
 		rmSync(workspace, { recursive: true, force: true });
 	}

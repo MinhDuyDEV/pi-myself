@@ -6,7 +6,7 @@ import { join, resolve } from "node:path";
 import { test } from "node:test";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { packageRoot, resolveRepoRoot } from "../lib/repo-root.js";
-import provisionExtension from "../provision.js";
+import provisionExtension, { SETUP_TIMEOUT_MS, setupReport } from "../provision.js";
 
 const PKG = resolve(import.meta.dirname, "..", "..", "..");
 
@@ -40,4 +40,31 @@ test("provision registers /setup-pi-myself and never checks the provisioned copi
 	provisionExtension(pi as unknown as ExtensionAPI);
 	assert.deepEqual(commands, ["setup-pi-myself"]);
 	assert.deepEqual(events, [], "rerunning the command is the update path — no session-start check of the provisioned copies");
+});
+
+test("/setup-pi-myself reports why the script did not finish instead of an empty failure", () => {
+	const base = { stdout: "", stderr: "", signal: null, status: null, error: undefined };
+	const timedOut = setupReport({
+		...base,
+		stdout: "created  agents/explore.md\n",
+		error: Object.assign(new Error("spawnSync node ETIMEDOUT"), { code: "ETIMEDOUT" }),
+	});
+	assert.equal(timedOut.type, "error");
+	assert.match(timedOut.message, new RegExp(`timed out after ${SETUP_TIMEOUT_MS / 1000}s`));
+	assert.match(timedOut.message, /created {2}agents\/explore\.md/, "what it did before stopping is still shown");
+
+	const missing = setupReport({ ...base, error: Object.assign(new Error("spawnSync node ENOENT"), { code: "ENOENT" }) });
+	assert.match(missing.message, /could not run \(spawnSync node ENOENT\)/);
+
+	const killed = setupReport({ ...base, signal: "SIGKILL" });
+	assert.match(killed.message, /failed \(killed by SIGKILL\)/);
+	assert.match(setupReport({ ...base, status: 1, stderr: "boom" }).message, /failed \(exit 1\):\nboom/);
+});
+
+test("a successful run names the companions the roles depend on", () => {
+	const ok = setupReport({ stdout: "setup-project: 7 created\n", stderr: "", signal: null, status: 0, error: undefined });
+	assert.equal(ok.type, "info");
+	assert.match(ok.message, /setup-project: 7 created/);
+	assert.match(ok.message, /pi install npm:@heyhuynhgiabuu\/pi-task/, "the roles are dead without the task tool");
+	assert.match(ok.message, /\/skill:setup-matt-pocock-skills/);
 });

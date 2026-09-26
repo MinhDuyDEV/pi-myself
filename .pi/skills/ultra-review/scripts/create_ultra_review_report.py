@@ -15,7 +15,9 @@ import sys
 from pathlib import Path
 
 
-ROUND_RE_TEMPLATE = r".*-{name}-round-(\d+)\.md$"
+# Anchored on the date prefix the script itself writes (YY-MM-DD-), so a review
+# named "review" never counts "probe-review" reports as its own rounds.
+ROUND_RE_TEMPLATE = r"^\d{{2}}-\d{{2}}-\d{{2}}-{name}-round-(\d+)\.md$"
 
 
 def slugify(value: str) -> str:

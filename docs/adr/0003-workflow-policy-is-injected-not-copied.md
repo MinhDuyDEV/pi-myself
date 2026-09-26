@@ -1,6 +1,6 @@
 # ADR 0003: The workflow policy is injected by an extension, not copied into each repo
 
-Supersedes the copy parts of PLAN.md §5 "Harness rules never reach a consuming repo" (2026-09-14) and of the provisioning decisions of 2026-09-15 and 2026-09-26 as far as they concern `APPEND_SYSTEM.md`. The task-role copy and the `enableSkillCommands` setting are unchanged.
+Supersedes the copy parts of PLAN.md §5 "Harness rules never reach a consuming repo" (2026-09-14) and of the provisioning decisions of 2026-09-15 and 2026-09-26 as far as they concern `APPEND_SYSTEM.md`. The task-role copy is unchanged.
 
 ## Context
 

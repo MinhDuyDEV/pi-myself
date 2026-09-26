@@ -39,10 +39,10 @@ Before round 2 or later, read every earlier report with the same review name. Pa
 
 ## Artifact
 
-Resolve `$ROOT` (the repository root) once, as the workflow policy says, then let the script own the path, round number, and skeleton:
+Resolve `$ROOT` (the repository root) once, as the workflow policy says, then let the script own the path, round number, and skeleton. The script ships in this skill's own directory (the one pi reported when it loaded this skill), which in a consuming repo is inside the installed package, not under `$ROOT`:
 
 ```bash
-python3 "$ROOT/.pi/skills/ultra-review/scripts/create_ultra_review_report.py" --workspace "$ROOT" --review-name <review-name> --scope "<scope>" --review-brief-sha256 <sha256> --scout-count 10 --directive-count <count>
+python3 "<this skill's directory>/scripts/create_ultra_review_report.py" --workspace "$ROOT" --review-name <review-name> --scope "<scope>" --review-brief-sha256 <sha256> --scout-count 10 --directive-count <count>
 ```
 
 Use the script's `report_path`; never improvise or overwrite it. Replace every `TODO`. If scouts submitted no candidates, state `No candidates reported.` After writing, print the report path and full content.
