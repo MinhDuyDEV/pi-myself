@@ -43,7 +43,7 @@ One identity-addressed Markdown file the `pi-workspace-memory` extension keeps u
 _Avoid_: "MEMORY.md" (retired, ADR 0002), "note"
 
 **Lock**:
-`skills-lock.json` — the vendored tree's provenance record: upstream head + sha256 and bucket per registered SKILL.md. Drift between the lock and the tree fails `npm run sync:check`.
+`skills-lock.json` — the vendored tree's provenance record: upstream head, sha256 and bucket per registered SKILL.md, and a digest over every vendored file. Drift between the lock and the tree fails `npm run sync:check`.
 
 **Issue**:
 A single tracked unit of work in the **issue tracker** (GitHub Issues here): a bug, task, spec, or slice produced by `to-tickets`.

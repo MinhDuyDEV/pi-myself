@@ -20,10 +20,12 @@
 - `tests/` — catalog, lock, invocation, asset, prompt-contract, marker, and guidance-hygiene (links, duplicates, byte budgets) tests.
 - `.pi/extensions/**/*.test.ts` — extension unit and lifecycle tests, colocated with source.
 - `scripts/run-extension-tests.mjs` — discovers and runs Node extension tests.
-- `scripts/sync-skills.mjs` — vendored sync + lock integrity (`--check`).
+- `scripts/sync-skills.mjs` — vendored sync + lock integrity: per-skill hashes plus a digest of every file under `vendor/mattpocock-skills/` (`--check`; `--relock` rehashes without a network clone and refuses a drifted `SKILL.md`).
 - `scripts/sync-agents.mjs` — the child-contract splice (`npm run agents:sync`; `--check` is `npm run agents:check`, part of `npm run check`).
 - `npm run hooks:install` / `hooks:check` — the repo-local git guardrail, run through the installer shipped in the `commit-guardrails` skill (staged check, optional `--trailer` session id; `--check` verifies without writing).
 - `scripts/setup-project.mjs` — provisions and updates a consuming repo (`/setup-pi-myself`): the task roles, plus the removal of an `APPEND_SYSTEM.md` an older run copied. A rerun is an update — each role is rewritten from the package; `model`, `thinking`, and `max_turns` survive only where the project chose them (they differ from what the package shipped last time), and a copy changed in any other line is refreshed after being saved as `<name>.local`. The baseline in the project's `.pi/` (`pi-myself-provisioned.json`: per role, the hash without those three lines plus the shipped values) is what tells an edit or a choice apart from the package's previous version; without an entry, any other difference is backed up. A symlinked role is replaced by a file (the link kept as `.local`), a role the package stopped shipping is removed when untouched, a repository's own `APPEND_SYSTEM.md`, a role the project added, and `settings.json` are never touched; project-specific rules belong in the repo's `AGENTS.md`.
+- `/setup-pi-myself --check` (provision extension) — a read-only doctor: roles stale against the package (`setup-project.mjs --check`, a dry run that exits 1 when a run would change anything), review ≠ reason model family in the repo's roles, the `task`/`memory_search`/web-tool companions, `docs/agents/` tracker and domain docs, a duplicate global + project install, and runtime state missing from `.gitignore`; each warning names its fix.
+- `.github/workflows/quality.yml` runs `npm run check` on Node 22.18.0 (the `engines` minimum) and 22.20.0; `.github/workflows/upstream-freshness.yml` fails weekly when upstream `mattpocock/skills` main has moved past the lock's head.
 - `package.json` — npm scripts and pi package registration.
 - `biome.json` — formatter + linter config (tabs, double quotes, `preset: recommended`); excludes `vendor/` and the generated lock, and relaxes two rules for `*.test.ts` only. Takes no comments: Biome silently drops `files.includes` when one is present.
 - `tsconfig.json` — root/test TypeScript; excludes `.pi/` and `vendor/`. Strict beyond `strict: true`: `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `exactOptionalPropertyTypes`.
@@ -39,7 +41,7 @@ Not source of truth, do not edit: `node_modules/`, `.pi/node_modules/`, `.pi/npm
 - `.pi/extensions/dcp/` — session-history recall.
 - `.pi/extensions/skill-tool/` — skill invocation surface; its loadable set must equal the model-invoked set (tested).
 - `.pi/extensions/tracker/` — local backend writes under `.scratch/` only (slug-validated paths); GitHub backend shells out to `gh` with the repo as cwd and needs `gh auth login`.
-- `skills-lock.json` — vendored provenance; regenerate via `npm run sync:skills`, never by hand.
+- `skills-lock.json` — vendored provenance (upstream head, per-skill hashes, whole-tree digest); regenerate via `npm run sync:skills` or `--relock`, never by hand.
 - Package lifecycle scripts and browser helpers — may execute processes or create external side effects.
 
 ## Verification
@@ -50,6 +52,6 @@ npm run lint                  # Biome format + lint (read-only)
 npm test                      # extensions + skill hygiene tests
 npm run extensions:typecheck  # runtime extensions
 npm run typecheck             # root + tests
-npm run sync:check            # vendored lock integrity
+npm run sync:check            # vendored lock integrity (every vendored file)
 npm run agents:check          # every role carries the current child contract
 ```

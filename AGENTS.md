@@ -7,9 +7,9 @@
 - `package.json` registers `.pi/extensions/`, `.pi/skills/`, `.pi/prompts/`, and the vendored `engineering`, `productivity`, and `in-progress` trees under `vendor/mattpocock-skills/skills/`.
 - `.pi/extensions/` contains runtime TypeScript extensions. Pi discovers top-level `.ts` files and one-level subdirectories with `index.ts`; keep tests beside their owner.
 - `.pi/skills/<name>/SKILL.md` defines our own model-visible skills; progressive references and executable helpers stay with their owning skill.
-- `vendor/mattpocock-skills/` is the **vendored upstream** `mattpocock/skills` tree. It is read-only by rule: never edit files under it. Upgrade it with `npm run sync:skills` (re-clone + rehash `skills-lock.json`).
+- `vendor/mattpocock-skills/` is the **vendored upstream** `mattpocock/skills` tree. It is read-only by rule: never edit files under it. Upgrade it with `npm run sync:skills`.
 - `.pi/prompts/<name>.md` defines the hand-written user slash commands (`/verify`, `/init`). Skills need no wrapper: pi exposes every skill natively as `/skill:<name>`. `/setup-pi-myself` is a command the `provision` extension registers.
-- `scripts/sync-skills.mjs` is the gate for all vendored-tree changes; `--check` verifies lock integrity and is run in CI and by `npm run sync:check`. `scripts/setup-project.mjs` provisions a consuming repo (run by `/setup-pi-myself`).
+- `scripts/sync-skills.mjs` is the gate for all vendored-tree changes; its lock digests every vendored file. `scripts/setup-project.mjs` provisions a consuming repo (run by `/setup-pi-myself`).
 - `.pi/policy/`: `WORKFLOW.md` is the parent's workflow policy, injected by the `policy` extension; `CHILD-CONTRACT.md` holds the rules every task child follows, spliced into the end of each role by `npm run agents:sync` (a child sees only its role body). Edit these sources, never a generated block.
 
 ## Commands
@@ -19,7 +19,7 @@
 - Skill/catalog tests: `node --test tests/*.test.ts`.
 - Lint + format: `npm run lint` (Biome, read-only check), `npm run lint:fix` (writes).
 - Typecheck: `npm run typecheck` (root), `npm run extensions:typecheck` (extensions).
-- Vendored sync: `npm run sync:skills` (upgrade), `npm run sync:check` (verify).
+- Vendored sync: `npm run sync:skills` (upgrade), `npm run sync:check` (verify), `node scripts/sync-skills.mjs --relock` (rehash without cloning).
 - Child contract: `npm run agents:sync` (rewrite the role blocks), `npm run agents:check` (verify).
 - Git guardrail: `npm run hooks:install` (pre-commit staged check; `-- --trailer` also stamps the session id), `npm run hooks:check` (verify).
 - Everything at once: `npm run check` (lint → both typechecks → tests → sync check → agents check), which is what CI runs.
