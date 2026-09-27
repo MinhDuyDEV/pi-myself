@@ -474,3 +474,35 @@ test("a role's kept project values are reported when they differ from what the p
 	assert.match(output, /\b0 created, 0 updated\b/, "reporting a kept value is not a change");
 	assert.doesNotMatch(output, /agents\/explore\.md/, "a role that follows the package is not mentioned");
 });
+
+test("a consuming repo ignores its whole .pi/ with one line; the package checkout is exempt", () => {
+	// ADR 0008: the declaration, the baseline, the roles and pi's runtime state are
+	// all local to the machine that installed the harness, so one line covers them.
+	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	runScript(target);
+	const ignore = readFileSync(join(target, ".gitignore"), "utf8");
+	assert.match(ignore, /^\.pi\/\*$/m, "one line covers declaration, baseline, roles and runtime state");
+	assert.match(ignore, /ADR 0008/);
+	assert.match(ignore, /^# /m, "the line is marked, so a reader knows what added it");
+
+	// appended once, never edited or duplicated
+	assert.match(runScript(target), /\b0 created, 0 updated\b/, "a rerun adds nothing");
+	assert.equal(readFileSync(join(target, ".gitignore"), "utf8"), ignore);
+
+	// a repo that already ignores .pi/ another way keeps its own spelling
+	const settled = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	writeFileSync(join(settled, ".gitignore"), "node_modules/\n.pi/\n");
+	runScript(settled);
+	assert.equal(readFileSync(join(settled, ".gitignore"), "utf8"), "node_modules/\n.pi/\n");
+
+	// the checkout is not its own consumer: there .pi/ is the package source
+	const pkg = fakePackage();
+	runScript(pkg.root, undefined, pkg.script);
+	assert.ok(!existsSync(join(pkg.root, ".gitignore")), "the checkout's .pi/ is source and must stay tracked");
+
+	// --check names the line and still writes nothing
+	const fresh = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	const check = runCheck([fresh, "--check"]);
+	assert.match(check.stdout, /^\[check\] created\s+\.gitignore \(/m, "the dry run names the ignore line");
+	assert.ok(!existsSync(join(fresh, ".gitignore")), "a check writes nothing");
+});

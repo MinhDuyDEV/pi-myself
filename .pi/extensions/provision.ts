@@ -1,6 +1,6 @@
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { agentDir } from "./lib/agent-dir.js";
 import { packageRoot, resolveRepoRoot } from "./lib/repo-root.js";
@@ -21,15 +21,16 @@ import { packageRoot, resolveRepoRoot } from "./lib/repo-root.js";
  * `/setup-pi-myself --check` is the read-only doctor instead: `runDoctor` (pure
  * over injected tool names, file reader, and spawn) reports `ok`/`warn` per
  * check — stale roles (the script's own `--check`), review/reason model family,
- * companion tools, tracker docs, a duplicate global+project install, and
- * runtime state git does not ignore — each warning with its fix.
+ * companion tools, the `srcwalk` tool against the CLI it runs, tracker docs, a
+ * globally installed pi-myself (ADR 0007), and runtime state git does not
+ * ignore — each warning with its fix.
  */
 
 /** Long enough for any real provisioning run; a wedged child must not freeze the TUI forever. */
 export const SETUP_TIMEOUT_MS = 60_000;
 
 export const NEXT_STEPS =
-	"Remaining setup: /skill:setup-matt-pocock-skills in each repo (tracker, domain docs, triage labels). Once per machine: pi install npm:@heyhuynhgiabuu/pi-task (the task tool the roles run on) and pi install git:github.com/sting8k/pi-workspace-memory (memory records).";
+	"Run /reload before the roles are usable: pi-task builds the task tool's agent list when it registers, so this session still shows the set it loaded with. Remaining setup: /skill:setup-matt-pocock-skills in each repo (tracker, domain docs, triage labels). Once per machine: pi install npm:@heyhuynhgiabuu/pi-task (the task tool the roles run on) and pi install git:github.com/sting8k/pi-workspace-memory (memory records).";
 
 /** The notice for one run of the script: its own output on success, the reason it did not finish otherwise. */
 export function setupReport(result: Pick<SpawnSyncReturns<string>, "status" | "signal" | "error" | "stdout" | "stderr">): {
@@ -71,8 +72,18 @@ export interface DoctorFinding {
 const READ_TIER = ["explore", "scout"] as const;
 const REASON_TIER = ["general", "designer", "ultra-verifier"] as const;
 const REVIEW_TIER = ["reviewer", "ultra-scout"] as const;
-/** Any one of these is a web tool: pi-search and the other web-research packages name theirs differently. */
+/** Any one of these counts as a web tool: the harness installs `pi-web-access`, and the alternates are accepted so a host running a different web-research package is not warned. */
 const WEB_TOOLS = ["web_search", "websearch", "fetch_content", "web_fetch"] as const;
+/**
+ * `srcwalk` is the one companion whose tool is a passthrough to a binary that
+ * ships separately: `pi-srcwalk` v2 declares neither a dependency nor a bin, and
+ * its tool runs whatever `srcwalk` is on PATH. A registered tool is therefore no
+ * evidence the tool works — it fails on every call with "binary not found" — so
+ * the doctor probes the binary, and only when the tool is registered, because
+ * the companion is optional (`CHILD-CONTRACT.md` prefers it "when installed").
+ */
+const SRCWALK_TOOL = "srcwalk";
+const SRCWALK_SOURCE = "npm:@sting8k/pi-srcwalk";
 const TRACKER_DOCS = ["docs/agents/issue-tracker.md", "docs/agents/domain.md"] as const;
 /** One probe path per runtime-state entry git must ignore, and the .gitignore line that covers it. */
 const RUNTIME_STATE: ReadonlyArray<readonly [probe: string, line: string]> = [
@@ -80,6 +91,7 @@ const RUNTIME_STATE: ReadonlyArray<readonly [probe: string, line: string]> = [
 	[".pi/task-exits/x", ".pi/task-exits/"],
 	[".pi/artifacts/x", ".pi/artifacts/"],
 	[".pi/task-session-history.json", ".pi/task-session-history.json"],
+	[".pi/task-registry.json", ".pi/task-registry.json"],
 	[".pi/git/x", ".pi/git/"],
 	[".pi/npm/x", ".pi/npm/"],
 ];
@@ -178,7 +190,7 @@ function checkCompanions(inputs: DoctorInputs): DoctorFinding {
 	}
 	if (!WEB_TOOLS.some((name) => tools.has(name))) {
 		missing.push(`a web tool (${WEB_TOOLS.join(", ")})`);
-		fixes.push("pi install npm:@heyhuynhgiabuu/pi-search (or any web-research package)");
+		fixes.push("pi install npm:pi-web-access");
 	}
 	if (missing.length === 0) return { status: "ok", check: "companions", detail: "task, memory_search, and a web tool are registered" };
 	return {
@@ -187,6 +199,37 @@ function checkCompanions(inputs: DoctorInputs): DoctorFinding {
 		detail: `not registered in this session: ${missing.join("; ")}`,
 		fix: `${fixes.join("; ")}, then /reload`,
 	};
+}
+
+/**
+ * The tool is a passthrough, so a registered `srcwalk` proves only that
+ * `pi-srcwalk` is installed — not that the CLI it runs is. Absence is not a
+ * finding: the companion is optional and the child contract says "when
+ * installed", so a host that wants no code-intelligence tool is left alone.
+ */
+function checkSrcwalk(inputs: DoctorInputs): DoctorFinding {
+	if (!inputs.toolNames.includes(SRCWALK_TOOL)) {
+		return {
+			status: "ok",
+			check: SRCWALK_TOOL,
+			detail: "not installed — optional; the child contract prefers it only when the host has it",
+		};
+	}
+	const probe = inputs.spawn(SRCWALK_TOOL, ["--version"], inputs.repoRoot);
+	if (probe.error) {
+		const missing = (probe.error as NodeJS.ErrnoException).code === "ENOENT";
+		return {
+			status: "warn",
+			check: SRCWALK_TOOL,
+			detail: missing
+				? `the ${SRCWALK_TOOL} tool is registered but the CLI it runs is not on PATH: every call fails with "binary not found"`
+				: `the ${SRCWALK_TOOL} tool is registered but probing the CLI failed (${probe.error.message})`,
+			fix: missing
+				? `npm install -g ${SRCWALK_TOOL}, then /reload (or pi remove ${SRCWALK_SOURCE} to drop the tool)`
+				: `check that \`${SRCWALK_TOOL} --version\` runs in a shell, then /reload`,
+		};
+	}
+	return { status: "ok", check: SRCWALK_TOOL, detail: `the ${SRCWALK_TOOL} tool and the CLI it runs are both present` };
 }
 
 function checkTrackerDocs(inputs: DoctorInputs): DoctorFinding {
@@ -216,20 +259,23 @@ function checkInstallScope(inputs: DoctorInputs): DoctorFinding {
 	const globalSettings = join(inputs.agentDir, "settings.json");
 	const globalSource = piMyselfSource(inputs.readFile(globalSettings));
 	const projectSource = piMyselfSource(inputs.readFile(join(inputs.repoRoot, ".pi", "settings.json")));
-	if (globalSource !== undefined && projectSource !== undefined) {
+	if (globalSource !== undefined) {
+		// ADR 0007: pi-myself carries process, so it stays per-repo. A global entry
+		// reaches every repository on the machine rather than the ones that opted in,
+		// which project trust enforces. A project entry beside it is neither a second
+		// load to fear nor a conflict: the same identity is deduped (project wins) and
+		// a different one is fatal at startup, not resolved by load order.
 		return {
 			status: "warn",
 			check: "install scope",
-			detail: `pi-myself is installed globally (${globalSettings}) and in this project (.pi/settings.json): its extensions, tools, and commands load twice`,
-			fix: `keep the project install: pi remove ${globalSource}`,
+			detail: `pi-myself is installed globally (${globalSettings}): its workflow policy and guard would load in every repository, not only the ones that opted in${projectSource === undefined ? "" : `, and this project declares it too (${projectSource})`}`,
+			fix:
+				projectSource === undefined
+					? `pi remove ${globalSource}, then install it in this project: pi install ${globalSource} -l`
+					: `keep the project install: pi remove ${globalSource}`,
 		};
 	}
-	const where =
-		projectSource !== undefined
-			? "this project"
-			: globalSource !== undefined
-				? "globally"
-				: "neither settings file (a local path or checkout)";
+	const where = projectSource !== undefined ? "this project" : "neither settings file (a local path or checkout)";
 	return { status: "ok", check: "install scope", detail: `installed once: ${where}` };
 }
 
@@ -249,11 +295,17 @@ function checkGitignore(inputs: DoctorInputs): DoctorFinding {
 	const ignored = new Set((result.stdout ?? "").split("\n").map((line) => line.trim()));
 	const missing = RUNTIME_STATE.filter(([probe]) => !ignored.has(probe)).map(([, line]) => line);
 	if (missing.length === 0) return { status: "ok", check: "gitignore", detail: "pi runtime state is ignored by git" };
+	// ADR 0008: a consuming repository ignores its whole .pi/ with one line, so the
+	// blanket fix is right there. The checkout is the exception — its .pi/ is the
+	// package source — and only there do the individual runtime paths need naming.
+	const inCheckout = resolve(inputs.repoRoot) === resolve(inputs.packageRoot);
 	return {
 		status: "warn",
 		check: "gitignore",
 		detail: `git would track pi runtime state: ${missing.join(", ")}`,
-		fix: `add to .gitignore:\n${missing.join("\n")}`,
+		fix: inCheckout
+			? `add to .gitignore:\n${missing.join("\n")}`
+			: `add to .gitignore (one line: a consuming repository's .pi/ is local state, ADR 0008):\n.pi/*`,
 	};
 }
 
@@ -264,6 +316,7 @@ export function runDoctor(inputs: DoctorInputs): DoctorFinding[] {
 		checkRoles(inputs),
 		checkModelTiers(inputs),
 		checkCompanions(inputs),
+		checkSrcwalk(inputs),
 		checkTrackerDocs(inputs),
 		checkInstallScope(inputs),
 		checkGitignore(inputs),

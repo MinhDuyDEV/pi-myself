@@ -66,5 +66,10 @@ test("a successful run names the companions the roles depend on", () => {
 	assert.equal(ok.type, "info");
 	assert.match(ok.message, /setup-project: 7 created/);
 	assert.match(ok.message, /pi install npm:@heyhuynhgiabuu\/pi-task/, "the roles are dead without the task tool");
+	assert.match(
+		ok.message,
+		/\/reload/,
+		"pi-task freezes the task tool's agent list at registration, so the session that provisioned cannot see what it wrote",
+	);
 	assert.match(ok.message, /\/skill:setup-matt-pocock-skills/);
 });

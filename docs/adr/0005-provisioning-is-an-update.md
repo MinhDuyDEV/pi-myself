@@ -2,6 +2,8 @@
 
 Supersedes the "Provisioned copies are the project's" decision of 2026-09-15 (`docs/history.md`), including its "refresh drift" rules for task roles. Decided 2026-09-26 in two steps: "Provisioning becomes an update" (user decision) and "Provisioning keeps what the project wrote" (audit S1–S15, baseline v2).
 
+**Note (2026-09-27):** the consequence "the baseline file must be committed" is narrowed by ADR 0008 — a consuming repository ignores its own `.pi/` wholesale, so the baseline is per machine. Decisions 3 and 4 below (baseline v2, nothing dropped silently) are unchanged.
+
 ## Context
 
 pi-task loads task roles only from a repository's own `.pi/agents/`, never from an installed package, so `/setup-pi-myself` (`scripts/setup-project.mjs`) copies the roles into every consuming repo. From 2026-09-15 a rerun was a conservative merge: a role the project had touched or deleted was kept, so a harness fix could sit behind a stale copy until someone read a diff and merged by hand.

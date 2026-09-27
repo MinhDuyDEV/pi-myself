@@ -6,26 +6,39 @@ The philosophy: **one process, one vocabulary**. Matt's 25 promoted skills plus 
 
 ## Install
 
-pi-myself is a **per-project package** — run this in each repository that should use the harness (not globally: installing it user-scope while also working inside its checkout loads two copies of the extensions and conflicts the `tracker`/`skill` tools):
+pi-myself is a **per-project package**, and the split is deliberate: **it carries process**, so it stays per-repo and its workflow policy reaches only the repositories that opted in; the **companions are host tools**, so they live in the global settings and every repository shares one copy. Two things follow — a global pi-myself would impose that process on every repository on the machine, and a second copy under a different identity (a global install beside a checkout) does not merely conflict: pi 0.87.1 exits at startup once extensions register the same tool name twice (ADR 0007).
+
+**Once per machine** — set up once, never repeated per repository:
+
+```bash
+pi install npm:@heyhuynhgiabuu/pi-task                # task tool + role catalog
+pi install git:github.com/sting8k/pi-workspace-memory # durable memory records
+pi install npm:pi-web-access                          # web research: one search tool + one URL reader
+pi install npm:@sting8k/pi-srcwalk                    # optional: the srcwalk tool
+npm install -g srcwalk                                # ...and the CLI that tool runs
+```
+
+`pi update --extensions` refreshes all of them together, so an update is one command too. `pi-srcwalk` is optional and two-part: the pi package registers the tool, the global CLI is what it runs, and without the CLI every call fails.
+
+**In each repository that should use the harness** — one command, then the two below:
 
 ```bash
 pi install git:github.com/MinhDuyDEV/pi-myself -l
-pi install npm:@heyhuynhgiabuu/pi-task -l      # task tool + role catalog
-pi install git:github.com/sting8k/pi-workspace-memory # durable memory records (global, once per machine)
-pi install npm:@heyhuynhgiabuu/pi-search              # or any web-research package you already run,
-                                                      # e.g. pi-web-access — the harness is name-agnostic
 ```
 
-(`-l` = project-local. `pi-task`, `pi-workspace-memory`, and the web-research package may stay global; `pi-myself` should be project-local.)
-
-Then inside the repository, once:
+Then inside the repository, in order:
 
 ```text
-/setup-pi-myself                  # provisions .pi/agents/: the task roles
-/skill:setup-matt-pocock-skills   # per-repo config for the process core (issue tracker, domain docs, triage labels)
+# 1. start pi here and accept the "Trust project folder?" prompt —
+#    the -l install just created .pi/settings.json, which is what raises it
+/setup-pi-myself                  # 2. provisions .pi/agents/ and ignores .pi/ in git
+/reload                           # 3. so the task tool lists the roles it just wrote
+/skill:setup-matt-pocock-skills   # 4. per-repo config for the process core (issue tracker, domain docs, triage labels)
 ```
 
-pi-task loads task roles only from a repository's own `.pi/agents/`, never from an installed package, so `/setup-pi-myself` (a command the `provision` extension registers) copies them in. Nothing else is copied: skills, prompts, and extensions arrive with the package, and the workflow policy is injected by the `policy` extension from the installed package's `.pi/policy/WORKFLOW.md` into every parent turn (ADR 0003). After `pi update --extensions`, run it again: **a rerun is an update, not a merge.** Every role file is rewritten from the package — roster, body, `tools`, `skills`, `disallowed_tools`, `readonly` — and only `model`, `thinking`, and `max_turns` can survive from the project's copy, and only when the project chose them: a value that still equals what the package shipped last time follows the package, so a tier-model change reaches every repo. A copy the project changed in any other line is refreshed too, but never silently: it is first saved beside itself as `<name>.local` (the previous backup is overwritten), and a symlinked role is replaced by a file with the link kept as `<name>.local`, never written through. A role the package stops shipping is removed when untouched and kept, reported, when the project edited it; a role the project added is left alone. An `APPEND_SYSTEM.md` an older version copied in is removed, because it would stand in for the injected policy (an edited one is kept as `APPEND_SYSTEM.md.local`); a repository's own `APPEND_SYSTEM.md` is left alone, and so is `settings.json` (pi defaults `enableSkillCommands` to true, and it only drives autocomplete). `/setup-pi-myself --check` diagnoses without writing anything. It records what it shipped in `.pi/pi-myself-provisioned.json` — commit that file; it is what tells a project edit apart from the package's own previous version, and a project's own model apart from the package default. Repo-specific rules belong in `AGENTS.md`, the context file pi loads by default (an `AGENTS.override.md` beside it takes its place). `pi-task` provides the `task` tool; `pi-workspace-memory` (formerly `pi-memory-md`) provides the `memory_*` tools the `memory` skill uses; any web-research package supplies the tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here. Tasks that declare skills resolve only in **trusted** projects — pi asks for project trust on the first interactive session in a new repo.
+Steps 1 and 3 are not optional: pi loads none of a repository's `.pi/` until the folder is trusted, and pi-task builds the `task` tool's agent list when it registers, so the session that provisioned still shows the set it loaded with.
+
+pi-task loads task roles only from a repository's own `.pi/agents/`, never from an installed package, so `/setup-pi-myself` (a command the `provision` extension registers) copies them in. Nothing else is copied: skills, prompts, and extensions arrive with the package, and the workflow policy is injected by the `policy` extension from the installed package's `.pi/policy/WORKFLOW.md` into every parent turn (ADR 0003). After `pi update --extensions`, run it again: **a rerun is an update, not a merge.** Every role file is rewritten from the package — roster, body, `tools`, `skills`, `disallowed_tools`, `readonly` — and only `model`, `thinking`, and `max_turns` can survive from the project's copy, and only when the project chose them: a value that still equals what the package shipped last time follows the package, so a tier-model change reaches every repo. A copy the project changed in any other line is refreshed too, but never silently: it is first saved beside itself as `<name>.local` (the previous backup is overwritten), and a symlinked role is replaced by a file with the link kept as `<name>.local`, never written through. A role the package stops shipping is removed when untouched and kept, reported, when the project edited it; a role the project added is left alone. An `APPEND_SYSTEM.md` an older version copied in is removed, because it would stand in for the injected policy (an edited one is kept as `APPEND_SYSTEM.md.local`); a repository's own `APPEND_SYSTEM.md` is left alone, and so is `settings.json` (pi defaults `enableSkillCommands` to true, and it only drives autocomplete). `/setup-pi-myself --check` diagnoses without writing anything. It records what it shipped in `.pi/pi-myself-provisioned.json` — the baseline that tells a project edit apart from the package's own previous version, and a project's own model apart from the package default. Nothing under `.pi/` is committed: the run adds `.pi/*` to the repository's `.gitignore` when no line already covers it (ADR 0008), because the declaration, the baseline, the roles, and pi's runtime state are all local to the machine that installed the harness. `.pi/*` rather than `.pi/` leaves the directory includable, so a team that wants the declaration shared adds `!.pi/settings.json`. Repo-specific rules belong in `AGENTS.md`, the context file pi loads by default (an `AGENTS.override.md` beside it takes its place). `pi-task` provides the `task` tool; `pi-workspace-memory` (formerly `pi-memory-md`) provides the `memory_*` tools the `memory` skill uses; any web-research package supplies the tools the scout role uses. Provider auth lives in `~/.pi/agent/auth.json`; no model providers are vendored here. Tasks that declare skills resolve only in **trusted** projects — pi asks for project trust on the first interactive session in a new repo.
 
 ## What the harness contributes
 
@@ -95,4 +108,4 @@ npm run sync:check               # vendored lock integrity
 
 ## License
 
-MIT. The vendored `vendor/mattpocock-skills/` tree is [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), see its LICENSE. Harness pieces are adapted from [pikit](https://github.com/heyhuynhgiabuu/pikit) (MIT).
+MIT. The vendored `vendor/mattpocock-skills/` tree is [mattpocock/skills](https://github.com/mattpocock/skills) (MIT), see its LICENSE.

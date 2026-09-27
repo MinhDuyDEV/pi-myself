@@ -16,8 +16,9 @@ A pi coding-agent harness built around mattpocock/skills as the process core.
 | D1 | Work tracking | **Matt's tracker.** `docs/agents/issue-tracker.md` picks GitHub, GitLab, or local `.scratch/`; the `tracker` tool runs its field operations. pikit's `.pi/artifacts/` files are dropped. |
 | D2 | Upstream distribution | **Vendored** at `vendor/mattpocock-skills/`. `scripts/sync-skills.mjs` re-clones it; `skills-lock.json` hashes each registered skill (promoted + beta; beta is user-invoked except `pr`) and digests every vendored file. `misc/`, `deprecated/` unregistered. Never edit it; adapt in the harness layer. |
 | D3 | Subagents | **pi-task as-is**; we own the roles in `.pi/agents/` (ADRs 0004–0006). |
-| D4 | Memory | **pi-workspace-memory as-is** (global). The harness owns the discipline (`memory` skill, parent-only writes), not the storage (ADR 0002). |
-| D5 | Harness scope | **Only what Matt's skills lack on pi.** A local skill or prompt survives only if it encodes a harness mechanism or a host fact the model cannot infer (dropped 2026-09-14: `tps`, `shortcut-continue`, `.pi/cli/`, `/fix`, `api-and-interface-design`, `deprecation-and-migration`; `install-git-hooks` returned 2026-09-26 in `commit-guardrails`, a mechanism). **Stack-companion clause (2026-09-26, user decision, reversible):** `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, and `test-proof-debt-audit` stay although they carry craft rather than a host fact. The first three are model-invoked and load only when a task touches their domain; the last is human-run. Where a vendored skill owns the overlapping process they defer to it (`codebase-design`, `tdd`, `research`), and no two own one rule (boundary validation is `security-and-hardening`'s). Dropping one is a catalog row and a directory. |
+| D4 | Memory | **pi-workspace-memory as-is**. The harness owns the discipline (`memory` skill, parent-only writes), not the storage (ADR 0002). |
+| D5 | Harness scope | **Only what Matt's skills lack on pi.** A local skill or prompt survives only if it encodes a harness mechanism or a host fact the model cannot infer (dated drops and returns: `docs/history.md`). **Stack-companion clause (2026-09-26, user decision, reversible):** `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, and `test-proof-debt-audit` stay although they carry craft rather than a host fact. The first three are model-invoked and load only when a task touches their domain; the last is human-run. Where a vendored skill owns the overlapping process they defer to it (`codebase-design`, `tdd`, `research`), and no two own one rule (boundary validation is `security-and-hardening`'s). Dropping one is a catalog row and a directory. |
+| D6 | Install scope | **pi-myself project-scoped** (it carries process; project trust makes the policy opt-in per repo). **Companions global** (host tools, one copy per machine, refreshed by the same `pi update --extensions`). ADR 0007. |
 
 Consequences:
 
@@ -81,8 +82,6 @@ pi-myself/
 - **Tests**: the local-skill description rules and the stale-count gate (§7).
 - **Skill content rule**: a local skill keeps a section only if no other loaded text says it.
 
-Dropped: themes, `DESIGN.md`, sprint templates, `bin/cli.js`, `safety/`, `todo.ts`, `herdr-agent-state.ts`; reasons in `docs/history.md`.
-
 ## 7. Test gates
 
 `npm run check` (lint, both typechecks, `npm test`, `sync:check`, `agents:check`) is the gate CI runs on Node 22.18.0 and 22.20.0; test names state each rule.
@@ -109,4 +108,5 @@ Dated entries, oldest first: `docs/history.md`.
 - `recall`: cache budget counts source bytes; LRU order untested; files over 40 MB skipped; `expand` indices can shift if a task starts or another process writes an older session (headings show entry times).
 - `skill-tool` ignores per-directory ignore files pi honours.
 - pi-task's SDK fallback loads no extensions in a child (no guard, `skill` tool, tracker; its role body is the whole prompt). `guard` misses shell writes.
+- `pi-srcwalk` wraps a separately-installed `srcwalk` CLI; the wrapper's commands are unchecked against the CLI's version.
 - `.scratch/` recall provenance; themes; a cross-project memory tier; `pi-review-loop`, `pi-pretty`, `pi-diff`.

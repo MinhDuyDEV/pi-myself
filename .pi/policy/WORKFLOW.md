@@ -22,7 +22,7 @@ Resolve the repository root (`$ROOT`) once: `ROOT="$(git rev-parse --show-toplev
 
 ## Routing
 
-Direct tools for questions, lookups, one-file tasks, and 2-3 file local fixes. `task` for bounded subtasks; workflow orchestration with `task` for long-running, parallel, adversarial, or unknown-size work. Delegate outcomes and constraints, not solutions. Independent `task` calls go in one message, parallel. For non-trivial work, state goal, non-goals, and touched scope in the tracker or the conversation before the first code write; push back on over-engineering. Tracker work goes through the `tracker` tool — it owns the field-level ops in the backend `docs/agents/issue-tracker.md` names, not raw `gh` or hand-edited ticket files.
+Direct tools for questions, lookups, one-file tasks, and 2-3 file local fixes — and on structural questions (callers, dependencies, traces) reach for the `srcwalk` tool when the host has it, before `bash` grep/find. `task` for bounded subtasks; workflow orchestration with `task` for long-running, parallel, adversarial, or unknown-size work. Delegate outcomes and constraints, not solutions. Independent `task` calls go in one message, parallel. For non-trivial work, state goal, non-goals, and touched scope in the tracker or the conversation before the first code write; push back on over-engineering. Tracker work goes through the `tracker` tool — it owns the field-level ops in the backend `docs/agents/issue-tracker.md` names, not raw `gh` or hand-edited ticket files.
 
 ## Task roles
 

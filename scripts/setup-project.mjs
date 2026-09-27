@@ -10,7 +10,9 @@
  * runs copied that policy into `.pi/APPEND_SYSTEM.md`; this script removes such
  * a copy (an edited one is kept as APPEND_SYSTEM.md.local) and never touches a
  * repository's own APPEND_SYSTEM.md. settings.json is not touched either: pi
- * defaults `enableSkillCommands` to true, and it only drives autocomplete.
+ * defaults `enableSkillCommands` to true, and it only drives autocomplete. The
+ * one file a run may add to is .gitignore: a consuming repository ignores its
+ * own .pi/ wholesale (ADR 0008), and the line is appended once, never edited.
  *
  * A rerun is an UPDATE, not a merge. The package owns each role file — the
  * roster, the body, and every frontmatter line that shapes what a child may do
@@ -55,6 +57,41 @@ const targetPi = join(targetRoot, ".pi");
 
 /** Frontmatter a project owns per role; every other line comes from the package. */
 export const PROJECT_OWNED_FIELDS = Object.freeze(["model", "thinking", "max_turns"]);
+
+/**
+ * ADR 0008: a consuming repository's `.pi/` is local state — the declaration,
+ * the baseline, the roles, and pi's runtime state — so one ignore line covers
+ * all of it. `.pi/*` rather than `.pi/`: the directory itself stays includable,
+ * so a team that wants the declaration shared can add `!.pi/settings.json`
+ * without fighting the pattern. The package checkout is exempt, because there
+ * `.pi/` is the package source.
+ */
+const GITIGNORE_MARKER = "# pi-myself: .pi/ is local harness state, not source (ADR 0008)";
+const GITIGNORE_LINE = ".pi/*";
+/** Any of these already covers the repository's `.pi/`. */
+export const GITIGNORE_COVERING_LINES = Object.freeze([".pi/*", "/.pi/*", ".pi/", "/.pi/", ".pi"]);
+
+/** Does this `.gitignore` text already ignore the repository's `.pi/`? */
+export function ignoresPiState(text) {
+	return text
+		.split("\n")
+		.map((line) => line.trim())
+		.some((line) => !line.startsWith("#") && GITIGNORE_COVERING_LINES.includes(line));
+}
+
+/**
+ * Whether two roots are the same directory. A string comparison is not enough:
+ * `/var/...` and `/private/var/...` are one directory on macOS, so a checkout
+ * reached through a symlink would stop looking like the package and the run
+ * would ignore the package's own source.
+ */
+function sameRoot(a, b) {
+	try {
+		return realpathSync.native(a) === realpathSync.native(b);
+	} catch {
+		return a === b;
+	}
+}
 
 /**
  * The workflow policy's opening line (the policy extension's STALE_COPY_MARKER;
@@ -315,11 +352,25 @@ for (const [rel, previous] of Object.entries(shippedBefore)) {
 	}
 }
 
-// 4. baseline for the next run (skipped in the checkout: the package is not its own consumer)
-if (targetRoot !== packageRoot) {
+// 4. .pi/ is local state in a consuming repository (ADR 0008). The checkout is
+// exempt: there .pi/ holds the package source, and only the runtime paths inside
+// it are ignored.
+if (!sameRoot(targetRoot, packageRoot)) {
+	const rel = ".gitignore";
+	const target = join(targetRoot, rel);
+	const existing = existsSync(target) ? readFileSync(target, "utf8") : "";
+	if (!ignoresPiState(existing)) {
+		const prefix = existing === "" ? "" : existing.endsWith("\n") ? `${existing}\n` : `${existing}\n\n`;
+		fsWrite.write(target, `${prefix}${GITIGNORE_MARKER}\n${GITIGNORE_LINE}\n`);
+		record([existing === "" ? "created" : "updated", "pi state (.pi/) is local, not source"], rel);
+	}
+}
+
+// 5. baseline for the next run (skipped in the checkout: the package is not its own consumer)
+if (!sameRoot(targetRoot, packageRoot)) {
 	const files = Object.fromEntries(Object.entries(shippedNow).sort(([a], [b]) => a.localeCompare(b)));
 	const note =
-		"Written by /setup-pi-myself: per role, the sha256 of the file pi-myself shipped (model, thinking and max_turns lines removed) and the values it shipped for those fields. Commit it: it tells a project edit apart from the package's own previous version (only an edit is backed up as <name>.local) and a project's own model/thinking/max_turns apart from the package's default (only the project's choice is kept).";
+		"Written by /setup-pi-myself: per role, the sha256 of the file pi-myself shipped (model, thinking and max_turns lines removed) and the values it shipped for those fields. It tells a project edit apart from the package's own previous version (only an edit is backed up as <name>.local) and a project's own model/thinking/max_turns apart from the package's default (only the project's choice is kept). Local state, never committed: .pi/ is gitignored in a consuming repository (ADR 0008).";
 	const body = `${JSON.stringify({ note, version: 2, files }, null, "\t")}\n`;
 	if (!existsSync(BASELINE) || readFileSync(BASELINE, "utf8") !== body) {
 		if (CHECK) console.log(`${LINE_PREFIX}updated  pi-myself-provisioned.json (the baseline a real run records)`);
@@ -339,7 +390,7 @@ if (CHECK) {
 	console.log(`setup-project: ${summary}`);
 }
 
-// 5. memory slug check (pi-workspace-memory keys memory by the git root's folder
+// 6. memory slug check (pi-workspace-memory keys memory by the git root's folder
 //    name, so two repos with the same folder name silently share one memory).
 //    Only a first run can tell: afterwards the records are this repo's own.
 const memory = memorySlugStatus(targetRoot);

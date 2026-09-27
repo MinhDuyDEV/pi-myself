@@ -14,7 +14,15 @@ import provisionExtension, { type DoctorFinding, type DoctorInputs, type DoctorS
 const REPO = "/repo";
 const PKG = "/pkg";
 const AGENT_DIR = "/home/me/.pi/agent";
-const IGNORED = [".pi/sessions/x", ".pi/task-exits/x", ".pi/artifacts/x", ".pi/task-session-history.json", ".pi/git/x", ".pi/npm/x"];
+const IGNORED = [
+	".pi/sessions/x",
+	".pi/task-exits/x",
+	".pi/artifacts/x",
+	".pi/task-session-history.json",
+	".pi/task-registry.json",
+	".pi/git/x",
+	".pi/npm/x",
+];
 
 const role = (model: string) => `---\ndescription: a role\nmodel: ${model}\n---\nbody\n`;
 
@@ -35,12 +43,12 @@ function healthyFiles(): Record<string, string> {
 const done = (stdout: string, status = 0): DoctorSpawnResult => ({ status, signal: null, error: undefined, stdout, stderr: "" });
 
 function inputs(
-	overrides: { files?: Record<string, string>; tools?: string[]; spawn?: DoctorInputs["spawn"]; trusted?: boolean } = {},
+	overrides: { files?: Record<string, string>; tools?: string[]; spawn?: DoctorInputs["spawn"]; trusted?: boolean; repoRoot?: string } = {},
 ): DoctorInputs {
 	const files = overrides.files ?? healthyFiles();
 	return {
 		projectTrusted: overrides.trusted ?? true,
-		repoRoot: REPO,
+		repoRoot: overrides.repoRoot ?? REPO,
 		packageRoot: PKG,
 		agentDir: AGENT_DIR,
 		nodePath: "/usr/bin/node",
@@ -65,7 +73,7 @@ test("a healthy project gets one ok per check and no warning", () => {
 	const findings = runDoctor(inputs());
 	assert.deepEqual(
 		findings.map((f) => `${f.status} ${f.check}`),
-		["ok trust", "ok roles", "ok model tiers", "ok companions", "ok tracker docs", "ok install scope", "ok gitignore"],
+		["ok trust", "ok roles", "ok model tiers", "ok companions", "ok srcwalk", "ok tracker docs", "ok install scope", "ok gitignore"],
 	);
 });
 
@@ -151,6 +159,48 @@ test("each missing companion tool is named with its install command", () => {
 	}
 });
 
+test("the srcwalk tool without the CLI it runs is a warning; absence is not", () => {
+	// pi-srcwalk is a passthrough, so a registered tool proves only that the
+	// package is installed: every call fails while the binary is off PATH.
+	// Absence stays ok — the companion is optional and the child contract
+	// prefers it only "when installed".
+	const without = ["read", "task", "memory_search", "web_search"];
+	assert.equal(finding(runDoctor(inputs({ tools: without })), "srcwalk").status, "ok");
+
+	const tools = [...without, "srcwalk"];
+	const missing = finding(
+		runDoctor(
+			inputs({
+				tools,
+				spawn: (command) =>
+					command === "srcwalk"
+						? { ...done(""), error: Object.assign(new Error("spawnSync srcwalk ENOENT"), { code: "ENOENT" }) }
+						: done("setup-project --check: current\n"),
+			}),
+		),
+		"srcwalk",
+	);
+	assert.equal(missing.status, "warn");
+	assert.match(missing.detail, /not on PATH/);
+	assert.match(missing.fix ?? "", /npm install -g srcwalk/);
+
+	const hung = finding(
+		runDoctor(
+			inputs({
+				tools,
+				spawn: (command) =>
+					command === "srcwalk"
+						? { ...done(""), status: null, error: Object.assign(new Error("spawnSync srcwalk ETIMEDOUT"), { code: "ETIMEDOUT" }) }
+						: done("setup-project --check: current\n"),
+			}),
+		),
+		"srcwalk",
+	);
+	assert.equal(hung.status, "warn");
+	assert.match(hung.detail, /probing the CLI failed/);
+	assert.doesNotMatch(hung.detail, /not on PATH/, "a timeout is not a missing binary");
+});
+
 test("missing tracker or domain docs point at /skill:setup-matt-pocock-skills", () => {
 	const files = healthyFiles();
 	delete files[`${REPO}/docs/agents/domain.md`];
@@ -160,16 +210,30 @@ test("missing tracker or domain docs point at /skill:setup-matt-pocock-skills", 
 	assert.match(docs.fix ?? "", /\/skill:setup-matt-pocock-skills/);
 });
 
-test("pi-myself installed both globally and in the project is a warning", () => {
+test("a globally installed pi-myself is a warning; project-scoped is not", () => {
 	const files = healthyFiles();
+	const projectOnly = finding(runDoctor(inputs({ files })), "install scope");
+	assert.equal(projectOnly.status, "ok");
+	assert.match(projectOnly.detail, /installed once: this project/);
+
+	// ADR 0007: the package carries process, so a global entry is the warning —
+	// with or without a project copy beside it (the pair is deduped or fatal, never
+	// the "loads twice" conflict this check used to name).
 	files[`${AGENT_DIR}/settings.json`] = JSON.stringify({ packages: [{ source: "git:github.com/MinhDuyDEV/pi-myself" }] });
-	const scope = finding(runDoctor(inputs({ files })), "install scope");
-	assert.equal(scope.status, "warn");
-	assert.match(scope.detail, /globally .* and in this project/);
-	assert.match(scope.fix ?? "", /pi remove git:github\.com\/MinhDuyDEV\/pi-myself/);
+	const both = finding(runDoctor(inputs({ files })), "install scope");
+	assert.equal(both.status, "warn");
+	assert.match(both.detail, /installed globally/);
+	assert.match(both.detail, /this project declares it too/);
+	assert.match(both.fix ?? "", /keep the project install: pi remove git:github\.com\/MinhDuyDEV\/pi-myself/);
+
+	// no project declaration: the fix installs it here rather than keeping a copy that is not there
+	files[`${REPO}/.pi/settings.json`] = JSON.stringify({ packages: ["npm:@heyhuynhgiabuu/pi-task"] });
+	const globalOnly = finding(runDoctor(inputs({ files })), "install scope");
+	assert.equal(globalOnly.status, "warn");
+	assert.match(globalOnly.fix ?? "", /pi install git:github\.com\/MinhDuyDEV\/pi-myself -l/);
 
 	files[`${AGENT_DIR}/settings.json`] = "{ not json";
-	assert.equal(finding(runDoctor(inputs({ files })), "install scope").status, "ok", "an unreadable settings file is not a duplicate");
+	assert.equal(finding(runDoctor(inputs({ files })), "install scope").status, "ok", "an unreadable settings file declares no install");
 });
 
 test("runtime state git does not ignore is listed as the .gitignore lines to add", () => {
@@ -186,8 +250,21 @@ test("runtime state git does not ignore is listed as the .gitignore lines to add
 	assert.deepEqual(gitCalls[0], ["check-ignore", ...IGNORED]);
 	const ignore = finding(findings, "gitignore");
 	assert.equal(ignore.status, "warn");
-	assert.match(ignore.fix ?? "", /\.pi\/task-exits\/\n.*\.pi\/artifacts\/\n.*\.pi\/task-session-history\.json/);
-	assert.doesNotMatch(ignore.fix ?? "", /\.pi\/sessions\//);
+	assert.match(ignore.detail, /\.pi\/task-exits\/.*\.pi\/artifacts\/.*\.pi\/task-session-history\.json/);
+	assert.doesNotMatch(ignore.detail, /\.pi\/sessions\//);
+	// ADR 0008: a consuming repository ignores its whole .pi/ with one line, so the
+	// fix is the blanket pattern rather than the list of paths that happen to leak.
+	assert.match(ignore.fix ?? "", /\.pi\/\*/, "a consuming repo gets the one-line fix");
+	assert.doesNotMatch(ignore.fix ?? "", /\.pi\/task-exits\//, "and not the per-path list the checkout needs");
+
+	// the checkout is the exception: there .pi/ is the package source, so the
+	// individual runtime paths are what has to be named
+	const partial = (command: string) =>
+		command === "git" ? done(".pi/sessions/x\n.pi/git/x\n.pi/npm/x\n") : done("setup-project --check: current\n");
+	const checkout = finding(runDoctor(inputs({ repoRoot: PKG, spawn: partial })), "gitignore");
+	assert.equal(checkout.status, "warn");
+	assert.match(checkout.fix ?? "", /\.pi\/task-exits\/\n.*\.pi\/artifacts\/\n.*\.pi\/task-session-history\.json/);
+	assert.doesNotMatch(checkout.fix ?? "", /\.pi\/\*/, "the checkout must not ignore its own source");
 
 	const notRepo = runDoctor(
 		inputs({ spawn: (command) => (command === "git" ? { ...done(""), status: 128, stderr: "fatal: not a git repository" } : done("")) }),
