@@ -43,7 +43,7 @@ A child's `blocked` result arguing, with evidence and the smallest alternative, 
 _Avoid_: "pushback", "objection" (they name a tone; a challenge names an evidence bar)
 
 **Model tier**:
-One of three groups of task roles that run one model: **read** (`explore`, `scout`), **reason** (`general`, `designer`, `ultra-verifier`), **review** (`reviewer`, `ultra-scout`). The **review family** (the leading letters of the review tier's model name, `kimi` in `opencode-go/kimi-k3`) must differ from the **reason family**, so a judge does not share its author's blind spots (ADR 0006).
+One of three groups of task roles defined by what they may do: **read** (`explore`, `scout`) never changes code, **reason** (`general`, `designer`, `ultra-verifier`) changes or designs, **review** (`reviewer`, `ultra-scout`) judges and never writes (ADR 0006). A tier may mix models, each picked per role (ADR 0009). A **model family** is the leading letters of a model name's last segment (`deepseek` in `vector/ocg/deepseek-v4.1-flash`); the `reviewer`'s must differ from every reason-tier role's, so the merge gate does not share its author's blind spots.
 _Avoid_: "tier" alone (see Flagged ambiguities)
 
 **Stack companion**:

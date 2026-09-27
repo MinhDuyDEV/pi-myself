@@ -1,7 +1,7 @@
 ---
 description: Verify a /skill:ultra-review report: freeze and preflight, one disposition per finding, only confirmed owner-clean fixes, targeted validation, a completion table. Launched only by /skill:ultra-review-receive.
-model: opencode-go/deepseek-v4-flash
-thinking: max
+model: vector/claude-opus-5-5
+thinking: high
 proactive: false
 max_turns: 50
 disallowed_tools: memory_write, memory_delete, ask_user

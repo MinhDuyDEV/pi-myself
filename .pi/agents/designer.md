@@ -1,7 +1,7 @@
 ---
 description: PROACTIVE — Produce one independent interface or architecture design candidate under a stated constraint with deep-module vocabulary and trade-offs; read-only; several run in parallel for design-it-twice; not implementation, review, or repository mapping.
-model: opencode-go/deepseek-v4-flash
-thinking: max
+model: vector/claude-opus-5-5
+thinking: xhigh
 readonly: true
 proactive: true
 max_turns: 30

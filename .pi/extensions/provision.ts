@@ -20,7 +20,8 @@ import { packageRoot, resolveRepoRoot } from "./lib/repo-root.js";
  *
  * `/setup-pi-myself --check` is the read-only doctor instead: `runDoctor` (pure
  * over injected tool names, file reader, and spawn) reports `ok`/`warn` per
- * check — stale roles (the script's own `--check`), review/reason model family,
+ * check — stale roles (the script's own `--check`), the reviewer's model family
+ * against the reason tier (ADR 0009),
  * companion tools, the `srcwalk` tool against the CLI it runs, tracker docs, a
  * globally installed pi-myself (ADR 0007), and runtime state git does not
  * ignore — each warning with its fix.
@@ -71,7 +72,8 @@ export interface DoctorFinding {
 
 const READ_TIER = ["explore", "scout"] as const;
 const REASON_TIER = ["general", "designer", "ultra-verifier"] as const;
-const REVIEW_TIER = ["reviewer", "ultra-scout"] as const;
+/** The one review-tier role the family rule binds (ADR 0009). */
+const REVIEWER = "reviewer";
 /** Any one of these counts as a web tool: the harness installs `pi-web-access`, and the alternates are accepted so a host running a different web-research package is not warned. */
 const WEB_TOOLS = ["web_search", "websearch", "fetch_content", "web_fetch"] as const;
 /**
@@ -142,37 +144,43 @@ function checkRoles(inputs: DoctorInputs): DoctorFinding {
 	};
 }
 
+/**
+ * ADR 0009: the `reviewer` — the merge gate, and both `code-review` axes — runs
+ * a model family different from every reason-tier role, since any of them may
+ * have authored what it judges. A tier may mix models; `ultra-scout` (an opt-in
+ * sweep whose findings the `ultra-verifier` dispositions) and the read tier are
+ * not compared.
+ */
 function checkModelTiers(inputs: DoctorInputs): DoctorFinding {
-	const tier = (names: readonly string[]) =>
+	const withModels = (names: readonly string[]) =>
 		names.flatMap((name) => {
 			const model = roleModel(inputs, name);
 			return model === undefined ? [] : [{ name, family: modelFamily(model) }];
 		});
-	const reason = tier(REASON_TIER);
-	const review = tier(REVIEW_TIER);
-	if (reason.length === 0 || review.length === 0) {
+	const reason = withModels(REASON_TIER);
+	const reviewer = withModels([REVIEWER])[0];
+	if (reason.length === 0 || reviewer === undefined) {
 		return {
 			status: "warn",
 			check: "model tiers",
-			detail: `no model: line to compare in .pi/agents/ for the ${reason.length === 0 ? "reason" : "review"} tier`,
+			detail: `no model: line to compare in .pi/agents/ for ${reason.length === 0 ? "the reason tier" : REVIEWER}`,
 			fix: "run /setup-pi-myself",
 		};
 	}
-	const reasonFamilies = new Set(reason.map((role) => role.family));
-	const shared = review.filter((role) => reasonFamilies.has(role.family));
+	const shared = reason.filter((role) => role.family === reviewer.family);
 	const describe = (roles: typeof reason) => roles.map((role) => `${role.name} (${role.family})`).join(", ");
 	if (shared.length > 0) {
 		return {
 			status: "warn",
 			check: "model tiers",
-			detail: `the review tier shares the reason tier's model family, and with it the author's blind spots: ${describe(shared)} vs ${describe(reason)}`,
-			fix: `set a different-family model: in .pi/agents/ for the review tier (${REVIEW_TIER.join(", ")}) or the reason tier (${REASON_TIER.join(", ")})`,
+			detail: `the reviewer shares a reason-tier model family, and with it the author's blind spots: ${describe([reviewer])} vs ${describe(shared)}`,
+			fix: `set a model: in .pi/agents/${REVIEWER}.md whose family differs from every reason-tier role (${REASON_TIER.join(", ")}), or move those roles off it`,
 		};
 	}
 	return {
 		status: "ok",
 		check: "model tiers",
-		detail: `review ${[...new Set(review.map((r) => r.family))].join("/")} ≠ reason ${[...reasonFamilies].join("/")} (read tier: ${READ_TIER.join(", ")} not compared)`,
+		detail: `${REVIEWER} ${reviewer.family} ≠ reason ${[...new Set(reason.map((role) => role.family))].join("/")} (not compared: ultra-scout, read tier ${READ_TIER.join(", ")})`,
 	};
 }
 

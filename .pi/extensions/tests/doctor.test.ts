@@ -137,13 +137,34 @@ test("a script that could not run is reported the way /setup-pi-myself reports i
 	assert.match(finding(crashed, "roles").detail, /setup-project failed \(exit 1\):\nboom/);
 });
 
-test("the review tier sharing the reason tier's model family is a warning naming both", () => {
+test("the reviewer sharing a reason-tier model family is a warning naming both (ADR 0009)", () => {
 	const files = healthyFiles();
-	files[`${REPO}/.pi/agents/ultra-scout.md`] = role("other-provider/deepseek-r2");
+	files[`${REPO}/.pi/agents/reviewer.md`] = role("other-provider/deepseek-r2");
 	const tiers = finding(runDoctor(inputs({ files })), "model tiers");
 	assert.equal(tiers.status, "warn");
-	assert.match(tiers.detail, /ultra-scout \(deepseek\)/);
+	assert.match(tiers.detail, /reviewer \(deepseek\)/);
+	assert.match(tiers.detail, /general \(deepseek\)/);
 	assert.match(tiers.fix ?? "", /model:/);
+});
+
+test("the reviewer is compared with every reason-tier role, and ultra-scout with none (ADR 0009)", () => {
+	// A mixed reason tier: any of its roles may have authored what the reviewer
+	// judges, so one shared family with any of them is a shared blind spot.
+	const mixed = healthyFiles();
+	mixed[`${REPO}/.pi/agents/designer.md`] = role("vector/claude-opus-5-5");
+	mixed[`${REPO}/.pi/agents/reviewer.md`] = role("vector/claude-sonnet-5");
+	const clash = finding(runDoctor(inputs({ files: mixed })), "model tiers");
+	assert.equal(clash.status, "warn");
+	assert.match(clash.detail, /designer \(claude\)/);
+	assert.doesNotMatch(clash.detail, /general/, "only the roles that share the family are named");
+
+	mixed[`${REPO}/.pi/agents/reviewer.md`] = role("vector/gpt-5.6-sol");
+	assert.equal(finding(runDoctor(inputs({ files: mixed })), "model tiers").status, "ok");
+
+	// ultra-review is an opt-in sweep, not the merge gate: its scouts may share the author's family.
+	const scouts = healthyFiles();
+	scouts[`${REPO}/.pi/agents/ultra-scout.md`] = role("vector/ocg/deepseek-v4.1-flash");
+	assert.equal(finding(runDoctor(inputs({ files: scouts })), "model tiers").status, "ok");
 });
 
 test("each missing companion tool is named with its install command", () => {

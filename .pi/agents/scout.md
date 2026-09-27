@@ -1,7 +1,7 @@
 ---
 description: PROACTIVE — Official docs, API/library behavior, external web evidence with citations, answered in conversation or written as one cited report file when the prompt names a path; not repository mapping or implementation.
-model: opencode-go/deepseek-v4-flash
-thinking: high
+model: vector/mimo-v2.6-flash
+thinking: medium
 proactive: true
 max_turns: 40
 skills: research, source-driven-development

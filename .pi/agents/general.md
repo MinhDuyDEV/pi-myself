@@ -1,7 +1,7 @@
 ---
 description: PROACTIVE — Bounded multi-step implementation or mixed research-and-fix within the scope the prompt sets, including one spec ticket inside a worktree the parent created, landing a branch, or notes-only exploration; not repository-only mapping or docs-only research.
-model: opencode-go/deepseek-v4-flash
-thinking: max
+model: vector/deepseek-v4.1-flash
+thinking: high
 proactive: true
 max_turns: 50
 skills: tdd, verification-before-completion

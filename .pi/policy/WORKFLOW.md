@@ -26,7 +26,7 @@ Direct tools for questions, lookups, one-file tasks, and 2-3 file local fixes �
 
 ## Task roles
 
-With `pi-task` installed, the `task` tool runs the seven roles in `.pi/agents/`, in three model tiers — **read** (maps or searches, never changes code), **reason** (changes, designs), and **review** (judges, on a different model family from the reason tier so the reviewer does not share the author's blind spots):
+With `pi-task` installed, the `task` tool runs the seven roles in `.pi/agents/`, in three model tiers — **read** (maps or searches, never changes code), **reason** (changes, designs), and **review** (judges; the `reviewer` runs a model family no reason-tier role uses, so it does not share the author's blind spots). A tier may mix models, each picked for its role's workload (ADR 0009):
 
 | Agent | Tier | Use for |
 | --- | --- | --- |

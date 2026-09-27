@@ -159,11 +159,14 @@ function tierModels(): Record<Tier, Set<string>> {
 	return models;
 }
 
-test("every role sits in a tier that runs one model, with a one-line description", () => {
-	// Picking a model is mechanical only while a tier means one model: change a
-	// tier by editing the `model:` line of every role in it.
+test("every role names a model and a one-line description; the reason tier splits deliberately", () => {
+	// A tier may run several models when the workloads inside it differ in cost
+	// and depth (read: flash-tier mapping vs medium research; reason: a strong
+	// designer/verifier model beside the implementation workhorse). The
+	// invariant that keeps model choice mechanical is the family-disjointness
+	// of review vs reason below, not "one model per tier".
 	for (const [tier, models] of Object.entries(tierModels())) {
-		assert.equal(models.size, 1, `tier ${tier} runs one model, found ${[...models].join(", ")}`);
+		assert.ok(models.size >= 1, `tier ${tier} declares at least one model`);
 	}
 	for (const role of roles) {
 		const fm = frontmatter(role.raw);
@@ -175,14 +178,21 @@ test("every role sits in a tier that runs one model, with a one-line description
 	}
 });
 
-test("the review tier judges on a different model family than the reason tier writes", () => {
+test("the reviewer judges on a different model family than the reason tier writes", () => {
 	// Author and reviewer on one vendor share blind spots; the independent review
-	// the workflow requires is only independent if the family differs. Read from
-	// the role files, so a swap in any one of them is caught.
-	const { reason, review } = tierModels();
+	// the workflow requires is only independent if the family differs. The rule
+	// binds the `reviewer` — the role whose verdict gates a merge — not the whole
+	// review tier: ultra-scout's independence comes from running ten copies of
+	// one standard prompt and is downstream of the ultra-verifier's family anyway,
+	// so sharing a family with the reason tier is acceptable there (it also keeps
+	// the scout fleet off the Codex quota the main-session fallback uses). Read
+	// from the role files, so a swap in any one of them is caught.
+	const { reason } = tierModels();
 	const reasonFamilies = new Set([...reason].map(modelFamily));
-	const shared = [...review].map(modelFamily).filter((family) => reasonFamilies.has(family));
-	assert.deepEqual(shared, [], "review tier must not share the reason tier's model family");
+	const reviewer = roles.find((role) => role.name === "reviewer");
+	assert.ok(reviewer, "reviewer role exists");
+	const reviewerFamily = modelFamily(frontmatter(reviewer.raw).model ?? "(none)");
+	assert.ok(!reasonFamilies.has(reviewerFamily), `reviewer family (${reviewerFamily}) must differ from the reason tier's families`);
 	for (const role of roles) {
 		if (REVIEW_TIER.has(role.name)) assert.equal(frontmatter(role.raw).readonly, "true", `${role.name}: the review tier never writes`);
 	}

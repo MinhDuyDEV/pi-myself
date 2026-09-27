@@ -1,7 +1,7 @@
 ---
 description: Static read-only bug-hunting scout for /skill:ultra-review; inspects the repository production surface and reports every bug candidate with evidence, never filtering speculative or low-confidence findings. Launched only by that skill.
-model: opencode-go/kimi-k3
-thinking: max
+model: vector/ocg/deepseek-v4.1-flash
+thinking: high
 readonly: true
 proactive: false
 max_turns: 45
