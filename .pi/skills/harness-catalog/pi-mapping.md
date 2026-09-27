@@ -79,6 +79,12 @@ prompt; a child given none returns `blocked` with the seams it proposes.
 | frontier query | `tracker` op `gh-frontier` with `parent` = the spec's issue number; `frontier` for the local `.scratch/` backend. Both hold back `needs-triage`, `needs-info`, and `ready-for-human` tickets |
 | worktree per implementer | the WIP cap's isolated-checkout exception, stated once in the workflow policy under `## Task roles` |
 
+The skill's ticket graph has no path back from an implementer that finds its ticket stands on a
+wrong choice. On pi that implementer returns a challenge, which the parent settles as the workflow
+policy says before merging that branch or launching a frontier ticket downstream of the challenged
+choice: tickets built on the old choice are updated through `tracker` first, so the next
+implementer reads the new decision instead of the old one.
+
 ## `wayfinder`
 
 The skill fires a research subagent per `research` ticket that "captures its findings on a throwaway
@@ -127,6 +133,15 @@ agent-dir file in the table above. Two rules the skill states in its own terms:
 
 Its guardrail finding — a repo with no pre-commit hook and no CI job running the check command — is
 answered for this harness by the `commit-guardrails` skill.
+
+Orchestration leaves its own record next to the session logs: `.pi/task-session-history.json` holds
+each task's role (`agentType`) and `reportedStatus`, and a HerdR or tmux child's transcript sits
+under `.pi/artifacts/tasks/sessions/` (an SDK child leaves none). Judge orchestration by outcome,
+never by activity: a challenge that changed a decision, a review whose findings changed the diff. A
+challenge that recurs across sessions is the brief's fault, not the child's. An optional review
+whose runs rarely change the result is a candidate to narrow or drop; a gate the workflow policy
+requires (the `reviewer` before merge-ready) earns its keep on rare catches and stays. The usual fix
+removes or narrows a mechanism rather than adding one.
 
 ## `claude-handoff`
 

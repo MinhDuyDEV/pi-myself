@@ -52,12 +52,19 @@ const PATH_TOKEN = /`([A-Za-z0-9_.@-][A-Za-z0-9_.@/-]*\/[A-Za-z0-9_.@-]+\.(?:md|
  * (2026-09-26) for the child contract's `bash` timeout rule, when the contract
  * still lived there: a hung gate costs a blocked child, which is worth more
  * than the ~40 tokens a turn the extra line adds. The child contract rides in
- * every child's role body, so it gets a budget of its own.
+ * every child's role body, so it gets a budget of its own. Both rose on
+ * 2026-09-27 (user decision) for the challenge protocol — constraint labels,
+ * how a vendored skill's own brief format fits them, and the settle-and-deliver
+ * rule — written out in full rather than compressed to fit: 12,500 → 14,000 for
+ * the policy and 2,500 → 3,200 for the contract. The protocol itself grew the
+ * policy by ~1,800 bytes (~450 tokens a parent turn) and the contract by ~800
+ * (~200 tokens a child); a brief that turns a parachute into a requirement
+ * costs whole task runs, not tokens.
  */
 const BYTE_BUDGET: Record<string, number> = {
 	"AGENTS.md": 6_000,
-	".pi/policy/WORKFLOW.md": 12_500,
-	".pi/policy/CHILD-CONTRACT.md": 2_500,
+	".pi/policy/WORKFLOW.md": 14_000,
+	".pi/policy/CHILD-CONTRACT.md": 3_200,
 };
 
 /**

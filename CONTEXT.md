@@ -38,6 +38,10 @@ _Avoid_: "APPEND_SYSTEM" (the copied file it replaced; a repo's own `.pi/APPEND_
 The rules every task child obeys (scope, no spawning, no questions to the user, no memory writes, evidence, `blocked`, the `Status:` report line). One source, `.pi/policy/CHILD-CONTRACT.md`, spliced by `npm run agents:sync` into the end of each role body. The **workflow policy** never reaches a child (ADR 0004); what else it sees depends on pi-task's backend — on HerdR or tmux, pi's base prompt, `AGENTS.md`, the skills list, and what loaded extensions add; on the SDK fallback, its role body replaces pi's base prompt and no extensions load.
 _Avoid_: "child rules in the workflow policy" (a child never sees it)
 
+**Challenge**:
+A child's `blocked` result arguing, with evidence and the smallest alternative, that a `Decision` or `Choice` in its brief cannot meet the task's goal; a child whose job builds nothing on that constraint (reading, reviewing, one design candidate) reports it as a finding instead. A brief labels each constraint it adds `Requirement:` (the user asked for it), `Decision:` (a spec, ticket, or ADR settled it; a pointer to one counts), or `Choice:` (the parent or an earlier task picked it). The parent rules on a challenge — a changed requirement or ADR decision is the user's to make — records the ruling where the plan lives, and delivers it by `task_id`.
+_Avoid_: "pushback", "objection" (they name a tone; a challenge names an evidence bar)
+
 **Model tier**:
 One of three groups of task roles that run one model: **read** (`explore`, `scout`), **reason** (`general`, `designer`, `ultra-verifier`), **review** (`reviewer`, `ultra-scout`). The **review family** (the leading letters of the review tier's model name, `kimi` in `opencode-go/kimi-k3`) must differ from the **reason family**, so a judge does not share its author's blind spots (ADR 0006).
 _Avoid_: "tier" alone (see Flagged ambiguities)

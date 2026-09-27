@@ -221,6 +221,52 @@ test("every role ends with the generated child contract, identical to its one so
 	assert.match(source, /Status: success/, "the contract's report line uses pi-task's own status wording");
 });
 
+test("a child may challenge its brief, and the parent labels constraints and settles the challenge", () => {
+	// A choice one task made, handed on unlabelled, becomes the next task's
+	// requirement: each later child optimises it instead of asking whether it
+	// meets the goal. Both halves must survive a budget trim — the child's right
+	// to challenge (bounded, so it never becomes a duty to object) and the
+	// parent's labels, its settle-and-deliver rule, and what reaches the user.
+	// The labels have to fit the vendored skills' own brief formats too, so a
+	// pointer to a spec, ticket, or ADR stands for its constraints.
+	const labels = /`Requirement:`.+`Decision:`.+`Choice:`/;
+	const contract = readFileSync(CONTRACT_SOURCE, "utf8");
+	assert.match(contract, labels, "the contract tells a child what the labels are");
+	assert.match(
+		contract,
+		/pointer to a spec, ticket, or ADR counts as a `Decision`/,
+		"a vendored skill's pointer brief still reads as labelled",
+	);
+	assert.match(
+		contract,
+		/an unlabelled constraint cannot meet the task's goal, return `blocked` with a challenge/,
+		"a child may challenge a choice",
+	);
+	assert.match(
+		contract,
+		/builds nothing on the constraint[^\n]*finish instead/,
+		"a reading, reviewing, or design child reports and finishes",
+	);
+	assert.match(
+		contract,
+		/merely different and also sound is a caveat, not a challenge/,
+		"a challenge needs a failing goal, not a preference",
+	);
+	assert.match(contract, /Once the parent rules, follow the ruling/, "an overruled challenger carries on instead of blocking again");
+	const policy = readFileSync(join(ROOT, ".pi", "policy", "WORKFLOW.md"), "utf8");
+	assert.match(policy, labels, "the policy names the three constraint labels");
+	assert.match(policy, /vendored skill prescribes the brief[^\n]*its content wins/, "a skill's own brief format outranks the labels");
+	const settle = policy.match(/^A child's \*\*challenge\*\*[^\n]*$/m)?.[0] ?? "";
+	assert.match(settle, /is the user's to make/, "a changed requirement or ADR decision goes to the user");
+	assert.match(settle, /to a challenger that blocked, whatever the ruling/, "every ruling reaches a blocked challenger, kept or changed");
+	assert.match(settle, /`task_id`/, "a ruling is delivered by task_id");
+	assert.match(settle, /SDK backend can neither resume nor steer/, "the SDK fallback is named where the parent reads it");
+	assert.match(policy, /final report[^\n]*challenge/, "the final report names the challenges and open disagreement");
+	// A designer's constraint is the experiment itself, so it answers a failing
+	// one with a trade-off and still returns its candidate.
+	assert.match(ownBody(readFileSync(join(AGENTS, "designer.md"), "utf8")), /constraint is the experiment, not a choice to challenge/);
+});
+
 test("a declared skill is named on the body's Load first line, because skills: only lists it", () => {
 	// pi-task passes a declared skill's path; loading stays progressive (pi-task
 	// README), and the child cannot see its own frontmatter. Without the line a
