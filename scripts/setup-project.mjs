@@ -66,7 +66,7 @@ export const PROJECT_OWNED_FIELDS = Object.freeze(["model", "thinking", "max_tur
  * without fighting the pattern. The package checkout is exempt, because there
  * `.pi/` is the package source.
  */
-const GITIGNORE_MARKER = "# pi-myself: .pi/ is local harness state, not source (ADR 0008)";
+const GITIGNORE_MARKER = "# pi-myself: .pi/ is local harness state";
 const GITIGNORE_LINE = ".pi/*";
 /** Any of these already covers the repository's `.pi/`. */
 export const GITIGNORE_COVERING_LINES = Object.freeze([".pi/*", "/.pi/*", ".pi/", "/.pi/", ".pi"]);

@@ -482,8 +482,9 @@ test("a consuming repo ignores its whole .pi/ with one line; the package checkou
 	runScript(target);
 	const ignore = readFileSync(join(target, ".gitignore"), "utf8");
 	assert.match(ignore, /^\.pi\/\*$/m, "one line covers declaration, baseline, roles and runtime state");
-	assert.match(ignore, /ADR 0008/);
-	assert.match(ignore, /^# /m, "the line is marked, so a reader knows what added it");
+	// The comment names what added the line and nothing else: the ADR it comes
+	// from lives in this package, not in the repository that reads the file.
+	assert.match(ignore, /^# pi-myself: /m, "the line is marked, so a reader knows what added it");
 
 	// appended once, never edited or duplicated
 	assert.match(runScript(target), /\b0 created, 0 updated\b/, "a rerun adds nothing");
