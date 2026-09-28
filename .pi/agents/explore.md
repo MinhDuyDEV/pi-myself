@@ -1,6 +1,6 @@
 ---
 description: PROACTIVE — Read-only repository mapping with path:line evidence when the repo is unfamiliar or the question spans modules; not external docs, implementation, or a single known path.
-model: vector/mimo-v2.6-flash
+model: vector/oc/mimo-v2.6-flash
 thinking: low
 readonly: true
 proactive: true

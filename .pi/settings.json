@@ -1,6 +1,6 @@
 {
 	"defaultProvider": "vector",
-	"defaultModel": "claude-opus-5-5",
+	"defaultModel": "cc/claude-opus-5-5",
 	"defaultThinkingLevel": "medium",
 	"enableSkillCommands": true,
 	"skills": [

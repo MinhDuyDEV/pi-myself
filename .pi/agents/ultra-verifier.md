@@ -1,6 +1,6 @@
 ---
 description: Verify a /skill:ultra-review report: freeze and preflight, one disposition per finding, only confirmed owner-clean fixes, targeted validation, a completion table. Launched only by /skill:ultra-review-receive.
-model: vector/claude-opus-5-5
+model: vector/cc/claude-opus-5-5
 thinking: high
 proactive: false
 max_turns: 50

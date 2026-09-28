@@ -1,6 +1,6 @@
 ---
 description: PROACTIVE — Official docs, API/library behavior, external web evidence with citations, answered in conversation or written as one cited report file when the prompt names a path; not repository mapping or implementation.
-model: vector/mimo-v2.6-flash
+model: vector/oc/mimo-v2.6-flash
 thinking: medium
 proactive: true
 max_turns: 40

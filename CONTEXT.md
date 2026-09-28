@@ -43,7 +43,7 @@ A child's `blocked` result arguing, with evidence and the smallest alternative, 
 _Avoid_: "pushback", "objection" (they name a tone; a challenge names an evidence bar)
 
 **Model tier**:
-One of three groups of task roles defined by what they may do: **read** (`explore`, `scout`) never changes code, **reason** (`general`, `designer`, `ultra-verifier`) changes or designs, **review** (`reviewer`, `ultra-scout`) judges and never writes (ADR 0006). A tier may mix models, each picked per role (ADR 0009). A **model family** is the leading letters of a model name's last segment (`deepseek` in `vector/ocg/deepseek-v4.1-flash`); the `reviewer`'s must differ from every reason-tier role's, so the merge gate does not share its author's blind spots.
+One of three groups of task roles defined by what they may do: **read** (`explore`, `scout`) never changes code, **reason** (`general`, `designer`, `ultra-verifier`) changes or designs, **review** (`reviewer`, `ultra-scout`) judges and never writes (ADR 0006). A tier may mix models, each picked per role (ADR 0009). A **model family** is the leading letters of a model name's last segment (`deepseek` in `vector/oc/deepseek-v4.1-flash`); the `reviewer`'s must differ from every reason-tier role's, so the merge gate does not share its author's blind spots.
 _Avoid_: "tier" alone (see Flagged ambiguities)
 
 **Stack companion**:
