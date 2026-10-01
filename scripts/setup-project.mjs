@@ -14,6 +14,13 @@
  * one file a run may add to is .gitignore: a consuming repository ignores its
  * own .pi/ wholesale (ADR 0008), and the line is appended once, never edited.
  *
+ * One migration reaches outside .pi/: mattpocock/skills renamed the domain
+ * glossary from CONTEXT.md to GLOSSARY.md and reads only the new name, so a
+ * root CONTEXT.md is moved (`git mv` when git tracks it) and the pointer in
+ * docs/agents/domain.md follows. Nothing under the new name is overwritten, and
+ * a multi-context map (CONTEXT-MAP.md) is named, never moved: its per-context
+ * files and links move with it, which is a job for a human or the agent.
+ *
  * A rerun is an UPDATE, not a merge. The package owns each role file — the
  * roster, the body, and every frontmatter line that shapes what a child may do
  * (tools, skills, disallowed_tools, readonly, proactive) — so a harness fix
@@ -40,9 +47,10 @@
  *
  * `--check` (anywhere in argv) is the dry run: every line a real run would
  * print, prefixed `[check]`, and nothing written — no role, no `.local`, no
- * baseline, no APPEND_SYSTEM.md removal. It exits 1 when a real run would
- * change anything, 0 when the project is current.
+ * baseline, no APPEND_SYSTEM.md removal, no glossary move. It exits 1 when a
+ * real run would change anything, 0 when the project is current.
  */
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { basename, isAbsolute, join, relative, resolve } from "node:path";
@@ -130,6 +138,17 @@ const fsWrite = {
 	remove(path) {
 		pendingWrites++;
 		if (!CHECK) rmSync(path);
+	},
+	/** `git mv` for a file git tracks, so the move reaches the index as a rename;
+	 * a plain rename otherwise. Returns whether the move is (or would be) staged. */
+	move(from, to) {
+		pendingWrites++;
+		const git = (args) => spawnSync("git", args, { cwd: targetRoot, stdio: "ignore" }).status === 0;
+		const tracked = git(["ls-files", "--error-unmatch", "--", from]);
+		if (CHECK) return tracked;
+		const staged = tracked && git(["mv", "--", from, to]);
+		if (!staged) renameSync(from, to);
+		return staged;
 	},
 };
 const LINE_PREFIX = CHECK ? "[check] " : "";
@@ -366,7 +385,51 @@ if (!sameRoot(targetRoot, packageRoot)) {
 	}
 }
 
-// 5. baseline for the next run (skipped in the checkout: the package is not its own consumer)
+// 5. the domain glossary — upstream renamed CONTEXT.md to GLOSSARY.md and its
+// skills read only the new name, so a file left under the old one is a glossary
+// nothing consults. The move is the one upstream prescribes. The old name is
+// matched as a directory entry, exactly: on a case-insensitive filesystem an
+// unrelated `context.md` would otherwise answer to it. The new name is tested
+// the way the filesystem would resolve it, so nothing is ever overwritten.
+{
+	const rootEntries = existsSync(targetRoot) ? readdirSync(targetRoot) : [];
+	if (rootEntries.includes("CONTEXT.md")) {
+		const to = join(targetRoot, "GLOSSARY.md");
+		if (lstatExists(to)) {
+			record(["kept", "GLOSSARY.md already exists and is the one the skills read: merge by hand, then delete CONTEXT.md"], "CONTEXT.md");
+		} else {
+			const staged = fsWrite.move(join(targetRoot, "CONTEXT.md"), to);
+			record(["updated", `moved from CONTEXT.md${staged ? " with git mv" : ""}: mattpocock/skills reads only the new name`], "GLOSSARY.md");
+		}
+	}
+	if (rootEntries.includes("CONTEXT-MAP.md")) {
+		record(
+			[
+				"kept",
+				"a multi-context layout is moved by hand: git mv the map to GLOSSARY-MAP.md and each per-context CONTEXT.md it lists to GLOSSARY.md, then update the map's links",
+			],
+			"CONTEXT-MAP.md",
+		);
+	}
+	// docs/agents/domain.md tells the skills where the glossary is; upstream's new
+	// template differs from the old one in these two names only.
+	const rel = "docs/agents/domain.md";
+	const target = join(targetRoot, rel);
+	if (existsSync(target)) {
+		const text = readFileSync(target, "utf8");
+		const renamed = text.replaceAll("CONTEXT-MAP.md", "GLOSSARY-MAP.md").replaceAll("CONTEXT.md", "GLOSSARY.md");
+		if (renamed !== text) {
+			if (lstatSync(target).isSymbolicLink()) {
+				record(["kept", "a symlink whose target still names CONTEXT.md: update it there"], rel);
+			} else {
+				fsWrite.write(target, renamed);
+				record(["updated", "names GLOSSARY.md now, as the skills do"], rel);
+			}
+		}
+	}
+}
+
+// 6. baseline for the next run (skipped in the checkout: the package is not its own consumer)
 if (!sameRoot(targetRoot, packageRoot)) {
 	const files = Object.fromEntries(Object.entries(shippedNow).sort(([a], [b]) => a.localeCompare(b)));
 	const note =
@@ -390,7 +453,7 @@ if (CHECK) {
 	console.log(`setup-project: ${summary}`);
 }
 
-// 6. memory slug check (pi-workspace-memory keys memory by the git root's folder
+// 7. memory slug check (pi-workspace-memory keys memory by the git root's folder
 //    name, so two repos with the same folder name silently share one memory).
 //    Only a first run can tell: afterwards the records are this repo's own.
 const memory = memorySlugStatus(targetRoot);

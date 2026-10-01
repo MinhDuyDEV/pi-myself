@@ -1,5 +1,5 @@
 import { type SpawnSyncReturns, spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { agentDir } from "./lib/agent-dir.js";
@@ -14,9 +14,10 @@ import { packageRoot, resolveRepoRoot } from "./lib/repo-root.js";
  * No session-start check: rerunning the command IS the update path, and the
  * script owns the outcome. It refreshes the roles from the package — keeping a
  * `model`, `thinking`, or `max_turns` the project chose — backs up a copy the
- * project changed in any other line as `.local` first, and removes an
+ * project changed in any other line as `.local` first, removes an
  * APPEND_SYSTEM.md an older run copied (the `policy` extension injects the
- * workflow now). settings.json is not touched.
+ * workflow now), and moves a root CONTEXT.md to GLOSSARY.md, the only name the
+ * vendored skills read since upstream renamed it. settings.json is not touched.
  *
  * `/setup-pi-myself --check` is the read-only doctor instead: `runDoctor` (pure
  * over injected tool names, file reader, and spawn) reports `ok`/`warn` per
@@ -61,6 +62,8 @@ export interface DoctorInputs {
 	agentDir: string;
 	nodePath: string;
 	toolNames: readonly string[];
+	/** The names in the repository root, spelled as the directory lists them. */
+	rootEntries: readonly string[];
 	readFile(path: string): string | undefined;
 	spawn(command: string, args: readonly string[], cwd: string): DoctorSpawnResult;
 }
@@ -89,15 +92,10 @@ const SRCWALK_TOOL = "srcwalk";
 const SRCWALK_SOURCE = "npm:@sting8k/pi-srcwalk";
 const DOMAIN_DOC = "docs/agents/domain.md";
 const TRACKER_DOCS = ["docs/agents/issue-tracker.md", DOMAIN_DOC] as const;
-/**
- * mattpocock/skills renamed the domain glossary: the skills read `GLOSSARY.md`
- * (or `GLOSSARY-MAP.md` and one `GLOSSARY.md` per context) and no longer look
- * at the old names, so a file left under one is a glossary nothing consults.
- */
-const RENAMED_DOMAIN_DOCS: ReadonlyArray<readonly [old: string, renamed: string]> = [
-	["CONTEXT.md", "GLOSSARY.md"],
-	["CONTEXT-MAP.md", "GLOSSARY-MAP.md"],
-];
+/** The context files pi may load for a repository; `/setup-pi-myself` never edits them, so a stale mention is the repository's to fix. */
+const CONTEXT_FILES = ["AGENTS.md", "CLAUDE.md"] as const;
+/** The glossary's names before mattpocock/skills renamed it to `GLOSSARY.md` / `GLOSSARY-MAP.md`. */
+const OLD_GLOSSARY_NAME = /\bCONTEXT(?:-MAP)?\.md\b/;
 /** One probe path per runtime-state entry git must ignore, and the .gitignore line that covers it. */
 const RUNTIME_STATE: ReadonlyArray<readonly [probe: string, line: string]> = [
 	[".pi/sessions/x", ".pi/sessions/"],
@@ -257,25 +255,47 @@ function checkTrackerDocs(inputs: DoctorInputs): DoctorFinding {
 	return { status: "warn", check: "tracker docs", detail: `missing: ${missing.join(", ")}`, fix: "run /skill:setup-matt-pocock-skills" };
 }
 
-/** A glossary still under its pre-rename name, or a `domain.md` written before the rename that still points the skills at one. */
+/**
+ * mattpocock/skills renamed the domain glossary and reads only the new names,
+ * so a file left under an old one is a glossary nothing consults.
+ * `/setup-pi-myself` moves a root `CONTEXT.md` and renames the pointer in
+ * `domain.md`; what it leaves to a human is named as such: two files to merge,
+ * a multi-context map, a mention in the repository's own context file. The old
+ * names are matched against the root listing, exactly as the command matches
+ * them: on a case-insensitive filesystem an unrelated `context.md` reads as
+ * `CONTEXT.md`.
+ */
 function checkDomainDocs(inputs: DoctorInputs): DoctorFinding {
-	const old = RENAMED_DOMAIN_DOCS.filter(([name]) => inputs.readFile(join(inputs.repoRoot, name)) !== undefined);
-	const stalePointer = /\bCONTEXT(?:-MAP)?\.md\b/.test(inputs.readFile(join(inputs.repoRoot, DOMAIN_DOC)) ?? "");
-	if (old.length === 0 && !stalePointer) {
-		return { status: "ok", check: "domain docs", detail: "no glossary under a name the skills stopped reading" };
-	}
+	const read = (name: string) => inputs.readFile(join(inputs.repoRoot, name));
 	const detail: string[] = [];
-	const fix: string[] = [];
-	if (old.length > 0) {
-		detail.push(`the skills read only GLOSSARY.md / GLOSSARY-MAP.md, so nothing consults ${old.map(([name]) => name).join(" or ")}`);
-		fix.push(
-			`${old.map(([name, renamed]) => `git mv ${name} ${renamed}`).join("; ")} (merge by hand where the new name already exists; a map's per-context CONTEXT.md files move too)`,
+	const byCommand: string[] = []; // what a /setup-pi-myself run does
+	const byHand: string[] = [];
+	if (inputs.rootEntries.includes("CONTEXT.md")) {
+		if (read("GLOSSARY.md") === undefined) {
+			detail.push("the skills read only GLOSSARY.md, so nothing consults CONTEXT.md");
+			byCommand.push("moves CONTEXT.md to GLOSSARY.md");
+		} else {
+			detail.push("CONTEXT.md sits beside GLOSSARY.md, and the skills read only GLOSSARY.md");
+			byHand.push("merge CONTEXT.md into GLOSSARY.md by hand, then delete it");
+		}
+	}
+	if (inputs.rootEntries.includes("CONTEXT-MAP.md")) {
+		detail.push("the skills read only GLOSSARY-MAP.md, so nothing consults CONTEXT-MAP.md or the per-context files it lists");
+		byHand.push(
+			"git mv CONTEXT-MAP.md GLOSSARY-MAP.md and each per-context CONTEXT.md it lists to GLOSSARY.md, then update the map's links",
 		);
 	}
-	if (stalePointer) {
+	if (OLD_GLOSSARY_NAME.test(read(DOMAIN_DOC) ?? "")) {
 		detail.push(`${DOMAIN_DOC} still points the skills at CONTEXT.md`);
-		fix.push("rerun /skill:setup-matt-pocock-skills to rewrite it");
+		byCommand.push(`renames the pointer in ${DOMAIN_DOC}`);
 	}
+	const mentions = CONTEXT_FILES.filter((file) => OLD_GLOSSARY_NAME.test(read(file) ?? ""));
+	if (mentions.length > 0) {
+		detail.push(`${mentions.join(" and ")} still ${mentions.length === 1 ? "names" : "name"} CONTEXT.md`);
+		byHand.push(`edit the mention in ${mentions.join(" and ")}: the glossary is GLOSSARY.md now`);
+	}
+	if (detail.length === 0) return { status: "ok", check: "domain docs", detail: "no glossary under a name the skills stopped reading" };
+	const fix = byCommand.length > 0 ? [`run /setup-pi-myself (it ${byCommand.join(" and ")})`, ...byHand] : byHand;
 	return { status: "warn", check: "domain docs", detail: detail.join("; "), fix: fix.join("; then ") };
 }
 
@@ -377,12 +397,21 @@ export function doctorReport(findings: readonly DoctorFinding[]): { message: str
 	return { message: `${lines.join("\n")}\n\n${summary}`, type: warnings > 0 ? "warning" : "info" };
 }
 
+/** A directory's entries, or none when it cannot be read. */
+function listDirectory(path: string): string[] {
+	try {
+		return readdirSync(path);
+	} catch {
+		return [];
+	}
+}
+
 export default function provisionExtension(pi: ExtensionAPI): void {
 	const pkg = packageRoot(import.meta.url);
 
 	pi.registerCommand("setup-pi-myself", {
 		description:
-			"Provision or update this repository for pi-myself: refresh the task roles (keeping a model, thinking, or max_turns the project chose; a copy changed in any other line is kept as .local) and remove an APPEND_SYSTEM.md an older run copied (the workflow is injected now). A project-added role and settings.json are never touched. `--check`: a read-only doctor that reports what is stale or missing, with fixes, and writes nothing",
+			"Provision or update this repository for pi-myself: refresh the task roles (keeping a model, thinking, or max_turns the project chose; a copy changed in any other line is kept as .local), remove an APPEND_SYSTEM.md an older run copied (the workflow is injected now), and move a glossary still named CONTEXT.md to GLOSSARY.md (git mv when tracked, never over an existing file). A project-added role and settings.json are never touched. `--check`: a read-only doctor that reports what is stale or missing, with fixes, and writes nothing",
 		async handler(args, ctx) {
 			const root = resolveRepoRoot(ctx.cwd);
 			if (args.trim().split(/\s+/).includes("--check")) {
@@ -393,6 +422,7 @@ export default function provisionExtension(pi: ExtensionAPI): void {
 					agentDir: agentDir(),
 					nodePath: process.execPath,
 					toolNames: pi.getAllTools().map((tool) => tool.name),
+					rootEntries: listDirectory(root),
 					readFile: (path) => {
 						try {
 							return readFileSync(path, "utf8");

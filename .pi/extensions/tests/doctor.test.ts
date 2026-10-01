@@ -43,17 +43,31 @@ function healthyFiles(): Record<string, string> {
 const done = (stdout: string, status = 0): DoctorSpawnResult => ({ status, signal: null, error: undefined, stdout, stderr: "" });
 
 function inputs(
-	overrides: { files?: Record<string, string>; tools?: string[]; spawn?: DoctorInputs["spawn"]; trusted?: boolean; repoRoot?: string } = {},
+	overrides: {
+		files?: Record<string, string>;
+		tools?: string[];
+		spawn?: DoctorInputs["spawn"];
+		trusted?: boolean;
+		repoRoot?: string;
+		rootEntries?: string[];
+	} = {},
 ): DoctorInputs {
 	const files = overrides.files ?? healthyFiles();
+	const repoRoot = overrides.repoRoot ?? REPO;
 	return {
 		projectTrusted: overrides.trusted ?? true,
-		repoRoot: overrides.repoRoot ?? REPO,
+		repoRoot,
 		packageRoot: PKG,
 		agentDir: AGENT_DIR,
 		nodePath: "/usr/bin/node",
 		toolNames: overrides.tools ?? ["read", "task", "memory_search", "web_search"],
 		readFile: (path) => files[path],
+		// the root listing, spelled as the directory spells it: by default the files given directly under the root
+		rootEntries:
+			overrides.rootEntries ??
+			Object.keys(files)
+				.filter((path) => path.startsWith(`${repoRoot}/`) && !path.slice(repoRoot.length + 1).includes("/"))
+				.map((path) => path.slice(repoRoot.length + 1)),
 		spawn:
 			overrides.spawn ??
 			((command, args) => {
@@ -241,30 +255,54 @@ test("missing tracker or domain docs point at /skill:setup-matt-pocock-skills", 
 	assert.match(docs.fix ?? "", /\/skill:setup-matt-pocock-skills/);
 });
 
-test("a glossary under a name the skills stopped reading is a warning with the move to make", () => {
+test("a glossary under a name the skills stopped reading is a warning, and the fix is the command that moves it", () => {
 	// mattpocock/skills renamed CONTEXT.md / CONTEXT-MAP.md to GLOSSARY.md /
-	// GLOSSARY-MAP.md and reads only the new names: a file left under an old one
-	// is a glossary nothing consults, and a domain.md written before the rename
-	// still points the skills at it.
+	// GLOSSARY-MAP.md and reads only the new names. /setup-pi-myself moves a root
+	// CONTEXT.md and renames the pointer in domain.md, so for those two the fix is
+	// the command. What it never does is named as hand work: merging two files,
+	// moving a multi-context map, editing the repository's own context file.
 	const files = healthyFiles();
 	files[`${REPO}/CONTEXT.md`] = "# glossary\n";
 	const renamed = finding(runDoctor(inputs({ files })), "domain docs");
 	assert.equal(renamed.status, "warn");
 	assert.match(renamed.detail, /nothing consults CONTEXT\.md/);
-	assert.match(renamed.fix ?? "", /git mv CONTEXT\.md GLOSSARY\.md/);
-	assert.doesNotMatch(renamed.fix ?? "", /CONTEXT-MAP/, "only the file that is there is named");
-	assert.doesNotMatch(renamed.fix ?? "", /setup-matt-pocock-skills/, "a current domain.md needs no rewrite");
+	assert.match(renamed.fix ?? "", /run \/setup-pi-myself/);
+	assert.doesNotMatch(renamed.fix ?? "", /by hand|CONTEXT-MAP/, "only what is there is named");
 
-	files[`${REPO}/CONTEXT-MAP.md`] = "# map\n";
-	assert.match(finding(runDoctor(inputs({ files })), "domain docs").fix ?? "", /git mv CONTEXT-MAP\.md GLOSSARY-MAP\.md/);
+	// both names present: the command never overwrites, so the merge is a human's
+	files[`${REPO}/GLOSSARY.md`] = "# newer glossary\n";
+	const both = finding(runDoctor(inputs({ files })), "domain docs");
+	assert.equal(both.status, "warn");
+	assert.match(both.fix ?? "", /merge CONTEXT\.md into GLOSSARY\.md by hand/);
+	assert.doesNotMatch(both.fix ?? "", /setup-pi-myself/);
+
+	const mapped = healthyFiles();
+	mapped[`${REPO}/CONTEXT-MAP.md`] = "# map\n";
+	assert.match(finding(runDoctor(inputs({ files: mapped })), "domain docs").fix ?? "", /git mv CONTEXT-MAP\.md GLOSSARY-MAP\.md/);
 
 	const stale = healthyFiles();
 	stale[`${REPO}/docs/agents/domain.md`] = "- **`CONTEXT.md`** at the repo root, or\n";
 	const pointer = finding(runDoctor(inputs({ files: stale })), "domain docs");
 	assert.equal(pointer.status, "warn");
 	assert.match(pointer.detail, /docs\/agents\/domain\.md/);
-	assert.match(pointer.fix ?? "", /\/skill:setup-matt-pocock-skills/);
-	assert.doesNotMatch(pointer.fix ?? "", /git mv/, "no old file, no move");
+	assert.match(pointer.fix ?? "", /run \/setup-pi-myself/);
+
+	// the repository's own context file is never edited by the command: the mention is named
+	const mentioned = healthyFiles();
+	mentioned[`${REPO}/AGENTS.md`] = "Single-context: `CONTEXT.md` at the repo root.\n";
+	const context = finding(runDoctor(inputs({ files: mentioned })), "domain docs");
+	assert.equal(context.status, "warn");
+	assert.match(context.detail, /AGENTS\.md still names CONTEXT\.md/);
+	assert.match(context.fix ?? "", /edit the mention in AGENTS\.md/);
+	assert.doesNotMatch(context.fix ?? "", /setup-pi-myself/);
+
+	// On a case-insensitive filesystem an unrelated lowercase context.md answers
+	// to the old name when read. It is not the glossary and the command never
+	// moves it, so the directory's own spelling decides.
+	const lower = healthyFiles();
+	lower[`${REPO}/CONTEXT.md`] = "notes\n";
+	const entries = ["context.md", "docs", ".pi"];
+	assert.equal(finding(runDoctor(inputs({ files: lower, rootEntries: entries })), "domain docs").status, "ok");
 });
 
 test("a globally installed pi-myself is a warning; project-scoped is not", () => {

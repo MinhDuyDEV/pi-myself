@@ -4,6 +4,8 @@ Supersedes the "Provisioned copies are the project's" decision of 2026-09-15 (`d
 
 **Note (2026-09-27):** the consequence "the baseline file must be committed" is narrowed by ADR 0008 — a consuming repository ignores its own `.pi/` wholesale, so the baseline is per machine. Decisions 3 and 4 below (baseline v2, nothing dropped silently) are unchanged.
 
+**Note (2026-10-01):** a run also follows upstream's rename of the domain glossary (user decision): a root `CONTEXT.md` is moved to `GLOSSARY.md`, with `git mv` when git tracks it, and the pointer in `docs/agents/domain.md` is renamed with it. It is the one write outside `.pi/` and `.gitignore`, and decision 4 governs it: nothing already under the new name is overwritten, a linked `domain.md` is not replaced, and a multi-context `CONTEXT-MAP.md` is named for a move by hand. The repository's own context file is never edited; the doctor names a mention it still carries.
+
 ## Context
 
 pi-task loads task roles only from a repository's own `.pi/agents/`, never from an installed package, so `/setup-pi-myself` (`scripts/setup-project.mjs`) copies the roles into every consuming repo. From 2026-09-15 a rerun was a conservative merge: a role the project had touched or deleted was kept, so a harness fix could sit behind a stale copy until someone read a diff and merged by hand.

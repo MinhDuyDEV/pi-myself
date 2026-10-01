@@ -507,3 +507,82 @@ test("a consuming repo ignores its whole .pi/ with one line; the package checkou
 	assert.match(check.stdout, /^\[check\] created\s+\.gitignore \(/m, "the dry run names the ignore line");
 	assert.ok(!existsSync(join(fresh, ".gitignore")), "a check writes nothing");
 });
+
+// mattpocock/skills renamed the domain glossary (CONTEXT.md → GLOSSARY.md) and
+// reads only the new name, so a file left under the old one is a glossary
+// nothing consults. The move is the one upstream prescribes, so a run makes it.
+const GLOSSARY_TEXT = "# Shop\n\nSells things.\n\n## Language\n\n**Order**:\nA request to buy.\n";
+const OLD_DOMAIN_DOC = "- **`CONTEXT.md`** at the repo root, or\n- **`CONTEXT-MAP.md`** at the repo root if it exists\n";
+const NEW_DOMAIN_DOC = "- **`GLOSSARY.md`** at the repo root, or\n- **`GLOSSARY-MAP.md`** at the repo root if it exists\n";
+
+test("a glossary still named CONTEXT.md moves to GLOSSARY.md, and the domain doc's pointer follows", () => {
+	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	writeFileSync(join(target, "CONTEXT.md"), GLOSSARY_TEXT);
+	mkdirSync(join(target, "docs", "agents"), { recursive: true });
+	writeFileSync(join(target, "docs", "agents", "domain.md"), OLD_DOMAIN_DOC);
+
+	// the dry run names both changes and makes neither
+	const check = runCheck([target, "--check"]);
+	assert.equal(check.status, 1, "a pending move is a pending change");
+	assert.match(check.stdout, /^\[check\] updated\s+GLOSSARY\.md \(moved from CONTEXT\.md/m);
+	assert.match(check.stdout, /^\[check\] updated\s+docs\/agents\/domain\.md \(/m);
+	assert.ok(existsSync(join(target, "CONTEXT.md")) && !existsSync(join(target, "GLOSSARY.md")), "a check moves nothing");
+	assert.equal(readFileSync(join(target, "docs", "agents", "domain.md"), "utf8"), OLD_DOMAIN_DOC);
+
+	const output = runScript(target);
+	assert.match(output, /^updated\s+GLOSSARY\.md \(moved from CONTEXT\.md/m);
+	assert.ok(!existsSync(join(target, "CONTEXT.md")), "the old name is gone");
+	assert.equal(readFileSync(join(target, "GLOSSARY.md"), "utf8"), GLOSSARY_TEXT, "moved, never rewritten");
+	assert.equal(readFileSync(join(target, "docs", "agents", "domain.md"), "utf8"), NEW_DOMAIN_DOC, "the pointer names what the skills read");
+
+	// a rerun has nothing left to do
+	assert.doesNotMatch(runScript(target), /GLOSSARY|domain\.md/);
+	assert.equal(runCheck([target, "--check"]).status, 0, "current once moved");
+});
+
+test("a tracked glossary moves with git mv, so the rename is staged and its history follows", () => {
+	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	// a machine's signing or hook settings must not decide this test
+	const git = (...args: string[]) =>
+		execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: target, encoding: "utf8" });
+	git("init", "-q");
+	writeFileSync(join(target, "CONTEXT.md"), GLOSSARY_TEXT);
+	git("add", "CONTEXT.md");
+	git("-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-q", "-m", "glossary");
+
+	assert.match(runScript(target), /^updated\s+GLOSSARY\.md \(moved from CONTEXT\.md with git mv/m);
+	assert.match(
+		git("status", "--porcelain"),
+		/^R {2}CONTEXT\.md -> GLOSSARY\.md$/m,
+		"a staged rename, not a delete beside an untracked file",
+	);
+});
+
+test("a move never overwrites: an existing GLOSSARY.md, a multi-context map, and a linked domain doc are kept and named", () => {
+	// both names present: which one is current is a judgement, so nothing is touched
+	const both = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	writeFileSync(join(both, "CONTEXT.md"), "old\n");
+	writeFileSync(join(both, "GLOSSARY.md"), "new\n");
+	assert.match(runScript(both), /^kept\s+CONTEXT\.md \(GLOSSARY\.md already exists/m);
+	assert.equal(readFileSync(join(both, "CONTEXT.md"), "utf8"), "old\n");
+	assert.equal(readFileSync(join(both, "GLOSSARY.md"), "utf8"), "new\n");
+	assert.equal(runCheck([both, "--check"]).status, 0, "nothing a run would change, so the project is current");
+
+	// a multi-context layout is a map plus the per-context files it links to: moved by hand
+	const mapped = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	const map = "# Context Map\n\n- [Ordering](./src/ordering/CONTEXT.md): orders\n";
+	writeFileSync(join(mapped, "CONTEXT-MAP.md"), map);
+	assert.match(runScript(mapped), /^kept\s+CONTEXT-MAP\.md \(a multi-context layout is moved by hand/m);
+	assert.equal(readFileSync(join(mapped, "CONTEXT-MAP.md"), "utf8"), map);
+	assert.ok(!existsSync(join(mapped, "GLOSSARY-MAP.md")));
+
+	// a linked domain doc is the project's chosen location: never replaced by a file
+	const linked = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	const shared = join(mkdtempSync(join(tmpdir(), "pi-myself-shared-")), "domain.md");
+	writeFileSync(shared, OLD_DOMAIN_DOC);
+	mkdirSync(join(linked, "docs", "agents"), { recursive: true });
+	symlinkSync(shared, join(linked, "docs", "agents", "domain.md"));
+	assert.match(runScript(linked), /^kept\s+docs\/agents\/domain\.md \(a symlink/m);
+	assert.ok(lstatSync(join(linked, "docs", "agents", "domain.md")).isSymbolicLink(), "still the project's link");
+	assert.equal(readFileSync(shared, "utf8"), OLD_DOMAIN_DOC, "the shared target is never written");
+});
