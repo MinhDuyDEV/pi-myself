@@ -39,7 +39,7 @@ The rules every task child obeys (scope, no spawning, no questions to the user, 
 _Avoid_: "child rules in the workflow policy" (a child never sees it)
 
 **Challenge**:
-A child's `blocked` result arguing, with evidence and the smallest alternative, that a `Decision` or `Choice` in its brief cannot meet the task's goal; a child whose job builds nothing on that constraint (reading, reviewing, one design candidate) reports it as a finding instead. A brief labels each constraint it adds `Requirement:` (the user asked for it), `Decision:` (a spec, ticket, or ADR settled it; a pointer to one counts), or `Choice:` (the parent or an earlier task picked it). The parent rules on a challenge — a changed requirement or ADR decision is the user's to make — records the ruling where the plan lives, and delivers it by `task_id`.
+A child's `blocked` result arguing, with evidence and the smallest alternative, that a `Decision` or `Choice` in its brief cannot meet the task's goal; a child whose job builds nothing on that constraint (reading, reviewing, one design candidate) reports it as a finding instead. A brief labels each constraint it adds `Requirement:` (the user asked for it), `Decision:` (a spec, ticket, or ADR settled it; a pointer to one counts), or `Choice:` (the parent or an earlier task picked it). The parent rules on a challenge — a changed requirement or ADR decision is the user's to make — records the ruling where the plan lives, and delivers it by `task_id`. How the code inside a child's scope is organised is never a challenge: a `Choice` about it is a suggestion the child may replace, reporting what it chose.
 _Avoid_: "pushback", "objection" (they name a tone; a challenge names an evidence bar)
 
 **Model tier**:

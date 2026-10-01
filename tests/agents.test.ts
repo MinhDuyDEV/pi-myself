@@ -277,6 +277,60 @@ test("a child may challenge its brief, and the parent labels constraints and set
 	assert.match(ownBody(readFileSync(join(AGENTS, "designer.md"), "utf8")), /constraint is the experiment, not a choice to challenge/);
 });
 
+test("a brief constrains the contract, the child organises its own code, and the reviewer judges the contract", () => {
+	// A plan detailed enough to be the implementation written in prose turns a
+	// guess made before reading the source into a constraint, and "merely
+	// different is a caveat" then makes the child build it beside the
+	// abstraction that already fits. Three halves must survive a budget trim:
+	// the parent constrains only what other work relies on, the child decides
+	// how the code inside its scope is organised (and reports it), and the
+	// reviewer holds the change to the contract, not to a plan's wording.
+	const contract = readFileSync(CONTRACT_SOURCE, "utf8");
+	const local = contract.match(/^- How the code inside your scope is organised[^\n]*$/m)?.[0] ?? "";
+	assert.match(local, /is yours to decide/, "internal organisation belongs to the child");
+	assert.match(local, /`Choice` or unlabelled instruction about it is a suggestion/, "a brief's guess about it does not bind");
+	assert.match(local, /report what you chose and why/, "the child says what it decided");
+	assert.match(
+		local,
+		/behaviour other code relies on, a shared interface, or an agreed invariant[^\n]*challenge it/,
+		"anything other work relies on still goes through a challenge",
+	);
+	const policy = readFileSync(join(ROOT, ".pi", "policy", "WORKFLOW.md"), "utf8");
+	assert.match(
+		policy,
+		/constrain what other work relies on[^\n]*leave how the code inside the scope is organised to the child/,
+		"the parent constrains the contract, not the implementation",
+	);
+	assert.match(
+		ownBody(readFileSync(join(AGENTS, "reviewer.md"), "utf8")),
+		/never against a plan's wording/,
+		"a simpler implementation that honours the contract is not a finding",
+	);
+});
+
+test("a brief says what is unverified, no step exists only for the plan, and a bridge names what removes it", () => {
+	// A choice handed on as if it were known sends a child building on thin ice.
+	// A step that exists only because the plan has phases leaves an old and a
+	// new path alive, and the next agent reads running code and green tests as
+	// the design. The completion gate is where a bridge is caught: the writer,
+	// the reviewer, and the parent all load it.
+	const policy = readFileSync(join(ROOT, ".pi", "policy", "WORKFLOW.md"), "utf8");
+	assert.match(policy, /`Choice:`[^\n]*say so when it is unverified/, "an unverified choice is named as one");
+	const sequencing = policy.match(/a step that exists only for the plan[^\n]*/)?.[0] ?? "";
+	assert.match(sequencing, /make linked changes in one unit/, "linked changes are made together");
+	assert.match(sequencing, /`to-tickets`' wide refactor/, "upstream's expand–contract exception stands");
+	const gate = readFileSync(join(ROOT, ".pi", "skills", "verification-before-completion", "SKILL.md"), "utf8");
+	assert.match(gate, /\*\*A bridge stayed unmarked\*\*/, "the bar check reads the diff for transitional code");
+	assert.match(gate, /no comment naming the ticket or condition that removes it/);
+	for (const role of ["general", "reviewer"]) {
+		assert.match(
+			ownBody(readFileSync(join(AGENTS, `${role}.md`), "utf8")),
+			/^Load first: [^\n]*`verification-before-completion`/m,
+			`${role} loads the gate that carries the check`,
+		);
+	}
+});
+
 test("a declared skill is named on the body's Load first line, because skills: only lists it", () => {
 	// pi-task passes a declared skill's path; loading stays progressive (pi-task
 	// README), and the child cannot see its own frontmatter. Without the line a

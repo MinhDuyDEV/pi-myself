@@ -27,7 +27,7 @@ A required check that ran but whose evidence could not be collected (output lost
 
 ## Bar Check
 
-A green check proves nothing if the diff lowered the bar to reach it. Before any completion claim, read `git diff` (staged and unstaged, against the branch point) for these six moves:
+A green check proves nothing if the diff lowered the bar to reach it. Before any completion claim, read `git diff` (staged and unstaged, against the branch point) for these seven moves:
 
 1. **A test got easier** — `.skip`/`.todo`/`xit` added, a test file deleted, assertions removed from tests that stayed.
 2. **A checker got silenced** — new `@ts-ignore`, `@ts-expect-error`, `eslint-disable`, `biome-ignore`, `istanbul ignore`, `nosemgrep`, `gitleaks:allow`, `# type: ignore`, `# noqa`.
@@ -35,8 +35,9 @@ A green check proves nothing if the diff lowered the bar to reach it. Before any
 4. **Work is unfinished** — a stub that throws, an empty `catch`, a `TODO` standing where the implementation should be.
 5. **An exception appeared** — a new allowlist entry or ignore pattern nobody asked for.
 6. **A baseline got regenerated** — snapshot, golden, fixture, or screenshot files rewritten (`-u`, `--update-snapshots`) so a failing comparison now matches.
+7. **A bridge stayed unmarked** — an adapter, compatibility branch, or second code path that exists only to carry a transition, with no comment naming the ticket or condition that removes it. Running code and green tests outlive the memory that it was temporary: the next reader takes both paths for the design.
 
-Tightening the bar is silent; loosening it is loud. Every hit is either reverted or named in the final message with its reason (for a regenerated baseline, the behavior change that motivated it). A hit the task did not call for makes the work `partial`, not done.
+Tightening the bar is silent; loosening it is loud. Every hit is either reverted or named in the final message with its reason (for a regenerated baseline, the behavior change that motivated it; for a bridge, after marking it in the code). A hit the task did not call for makes the work `partial`, not done.
 
 ## Red Flags
 

@@ -32,8 +32,8 @@ name a mechanism pi lacks — read it from this skill's own directory.
 | --- | --- | --- |
 | Shape the idea into a spec | human | `/skill:to-spec` |
 | Spec into tickets | human | `/skill:to-tickets` |
-| Execute the work, one ticket at a time | human | `/skill:implement` |
-| Execute a whole spec in parallel worktrees, onto one integration branch | human | `/skill:implement-spec` |
+| Execute the work, one ticket at a time (the default when each slice reshapes the next) | human | `/skill:implement` |
+| Execute a whole spec in parallel worktrees, onto one integration branch (tickets with stable, independent boundaries) | human | `/skill:implement-spec` |
 | Prove it done | human | `/verify` |
 | Independent review before merge | model | `code-review` plus a `reviewer` task |
 | Write a PR body | model | `pr` |
