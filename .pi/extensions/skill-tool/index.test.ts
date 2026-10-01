@@ -74,8 +74,8 @@ test("skill tool: lists exactly the model-invoked set, loads bodies, refuses use
 		assert.equal(refused.details.loaded, false);
 		assert.match(refused.content[0].text, /\/skill:wayfinder/, "user-invoked names hand the human the slash command");
 
-		// implement and implement-spec write model-invoked skills as slash commands
-		// (`/tdd`, `/code-review`); the guideline reaches every session and child
+		// implement writes model-invoked skills as slash commands (`/tdd`,
+		// `/code-review`); the guideline reaches every session and child
 		// that has this tool, including those that never see the workflow policy.
 		assert.ok(
 			(tool.promptGuidelines ?? []).some(

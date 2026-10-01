@@ -47,7 +47,7 @@ When unsure, write an `event`. Merge a cluster of related records with `memory_w
 
 ## Boundary with the other tiers
 
-- Project **vocabulary** belongs in `CONTEXT.md` (domain-modeling), not here.
+- Project **vocabulary** belongs in `GLOSSARY.md` (domain-modeling), not here.
 - **Decisions with real tradeoffs** belong in `docs/adr/`, not here.
 - **Work units** belong in the issue tracker, not here.
 - **Research reports** the `research` skill produces belong in the repo as files; memory may hold a one-line `event` pointing at the path.

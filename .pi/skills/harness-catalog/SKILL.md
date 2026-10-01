@@ -32,10 +32,12 @@ name a mechanism pi lacks — read it from this skill's own directory.
 | --- | --- | --- |
 | Shape the idea into a spec | human | `/skill:to-spec` |
 | Spec into tickets | human | `/skill:to-tickets` |
-| Execute the work | human | `/skill:implement` |
-| Execute tickets in parallel worktrees | human | `/skill:implement-spec` |
+| Execute the work, one ticket at a time | human | `/skill:implement` |
+| Execute a whole spec in parallel worktrees, onto one integration branch | human | `/skill:implement-spec` |
 | Prove it done | human | `/verify` |
 | Independent review before merge | model | `code-review` plus a `reviewer` task |
+| Write a PR body | model | `pr` |
+| Look back on a session and improve the agent's environment | human | `/skill:retro` |
 | Behaviour change, test first | model | `tdd` |
 | Completion gate | model | `verification-before-completion` |
 | Build to understand | model | `prototype` |
@@ -60,8 +62,6 @@ name a mechanism pi lacks — read it from this skill's own directory.
 | Hand off to a background agent | human | `/skill:claude-handoff` |
 | Recover compacted context | model | the `recall` tool |
 | Keep a durable learning | model | `memory` |
-| Write a PR body | model | `pr` |
-| Land a merge conflict | model | `resolving-merge-conflicts` |
 
 ## Setup and provisioning
 
@@ -75,7 +75,6 @@ name a mechanism pi lacks — read it from this skill's own directory.
 | Steps only a human can perform | model | `wizard` |
 | Design a recurring workflow loop | human | `/skill:loop-me` |
 | Project vocabulary and glossary | model | `domain-modeling` |
-| Retrospective over past sessions | human | `/skill:retro` |
 
 ## Writing and teaching
 

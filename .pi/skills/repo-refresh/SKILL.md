@@ -22,7 +22,7 @@ Read [references/refresh-standard.md](references/refresh-standard.md) before aud
 
 ## Boundaries
 
-- Read the complete instruction hierarchy (`AGENTS.md`, `PROJECT.md`, `CONTEXT.md`, `docs/agents/`) before acting; inspect the worktree first and preserve unrelated changes.
+- Read the complete instruction hierarchy (`AGENTS.md`, `PROJECT.md`, `GLOSSARY.md`, `docs/agents/`) before acting; inspect the worktree first and preserve unrelated changes.
 - Repository law may add stricter constraints, but it may not justify keeping stale duplication, dead proof, or history disguised as current truth.
 - Do not create branches, commits, pull requests, issues, or external messages unless separately requested.
 - Do not change production behaviour merely to simplify cleanup; report a production defect separately unless its repair was also authorized.

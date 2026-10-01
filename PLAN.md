@@ -6,7 +6,7 @@ How pi-myself is shaped now; a change that contradicts this file updates it in t
 
 A pi coding-agent harness built around mattpocock/skills as the process core.
 
-- **Core (process)**: the vendored upstream skills, 25 promoted plus the 9 beta skills of `skills/in-progress/`, consumed verbatim, never forked.
+- **Core (process)**: the vendored upstream skills, 27 promoted plus the 6 beta skills of `skills/in-progress/`, consumed verbatim, never forked.
 - **Harness (runtime)**: extensions, task roles, local skills, prompts, scripts, tests; adapted from pikit (heyhuynhgiabuu/pikit) only where Matt's skills need pi support.
 
 ## 2. Decisions
@@ -14,7 +14,7 @@ A pi coding-agent harness built around mattpocock/skills as the process core.
 | # | Decision | Choice |
 |---|---|---|
 | D1 | Work tracking | **Matt's tracker.** `docs/agents/issue-tracker.md` picks GitHub, GitLab, or local `.scratch/`; the `tracker` tool runs its field operations. pikit's `.pi/artifacts/` files are dropped. |
-| D2 | Upstream distribution | **Vendored** at `vendor/mattpocock-skills/`. `scripts/sync-skills.mjs` re-clones it; `skills-lock.json` hashes each registered skill (promoted + beta; beta is user-invoked except `pr`) and digests every vendored file. `misc/`, `deprecated/` unregistered. Never edit it; adapt in the harness layer. |
+| D2 | Upstream distribution | **Vendored** at `vendor/mattpocock-skills/`. `scripts/sync-skills.mjs` re-clones it; `skills-lock.json` hashes each registered skill (promoted + beta; beta is all user-invoked) and digests every vendored file. `misc/`, `deprecated/` unregistered. Never edit it; adapt in the harness layer. |
 | D3 | Subagents | **pi-task as-is**; we own the roles in `.pi/agents/` (ADRs 0004–0006, 0009). |
 | D4 | Memory | **pi-workspace-memory as-is**. The harness owns the discipline (`memory` skill, parent-only writes), not the storage (ADR 0002). |
 | D5 | Harness scope | **Only what Matt's skills lack on pi.** A local skill or prompt survives only if it encodes a harness mechanism or a host fact the model cannot infer (dated drops and returns: `docs/history.md`). **Stack-companion clause (2026-09-26, user decision, reversible):** `typescript-coding-standards`, `security-and-hardening`, `source-driven-development`, and `test-proof-debt-audit` stay although they carry craft rather than a host fact. The first three are model-invoked and load only when a task touches their domain; the last is human-run. Where a vendored skill owns the overlapping process they defer to it (`codebase-design`, `tdd`, `research`), and no two own one rule (boundary validation is `security-and-hardening`'s). Dropping one is a catalog row and a directory. |
@@ -30,21 +30,21 @@ Consequences:
 
 | Tier | Owner | Contents |
 |---|---|---|
-| **Domain** | Matt's conventions | `CONTEXT.md`, `docs/adr/`, `docs/agents/` (written by `/skill:setup-matt-pocock-skills`) |
+| **Domain** | Matt's conventions | `GLOSSARY.md`, `docs/adr/`, `docs/agents/` (written by `/skill:setup-matt-pocock-skills`) |
 | **Work tracking** | Matt's issue tracker | specs, tickets, blocking edges, triage roles; local default `.scratch/<feature>/issues/` (gitignored) |
 | **Harness** | pi-myself | `pi-workspace-memory` records (`state` facts, `event` findings; outside git) and `recall` over session history |
 
-Memory distils; it points at `CONTEXT.md`, tracker state, or a report instead of copying them.
+Memory distils; it points at `GLOSSARY.md`, tracker state, or a report instead of copying them.
 
 ## 4. Architecture
 
 ```
 pi-myself/
 ├── package.json         # pi.{extensions,skills,prompts}; npm scripts
-├── PLAN.md  AGENTS.md  PROJECT.md  README.md  CONTEXT.md
+├── PLAN.md  AGENTS.md  PROJECT.md  README.md  GLOSSARY.md
 ├── docs/                # adr/ (decisions), agents/ (skill config), history.md
 ├── vendor/mattpocock-skills/   # read-only upstream; guard refuses writes
-│   └── skills/          # engineering (18) + productivity (7) promoted; in-progress (9) beta
+│   └── skills/          # engineering (20) + productivity (7) promoted; in-progress (6) beta
 ├── .pi/
 │   ├── policy/          # WORKFLOW.md (parent) · CHILD-CONTRACT.md (roles)
 │   ├── extensions/      # policy, guard, host-commands, skill-tool/, tracker/,
@@ -101,7 +101,6 @@ Dated entries, oldest first: `docs/history.md`.
 ## 9. Deferred / open
 
 - Tracker, unverified leads: `gh-block` re-posts links; a failed `gh repo view` makes own `owner/repo#N` refs foreign.
-- A real `npm run sync:skills` re-clone has not run since the staged swap (S16); tests use a local fake upstream.
 - The GitHub write path is tested against a fake `gh` only (live needs `delete_repo`), including a native parent found by the `/parent` endpoint (its 404 and answer shape were checked live; a parent in another repository is fake-only) and the task-list fallback.
 - GitHub body edits (gists, `gh-note`, the task-list fallback) lack `If-Match`; serialise map edits in one session.
 - `gh-frontier`/`gh-triage` fail past ~40,000 issues; `gh-triage` reads 40 `needs-info` threads a call; `gh-comment` may hit a PR.

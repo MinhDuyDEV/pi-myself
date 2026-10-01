@@ -15,7 +15,7 @@ const CURRENT_STATE_DOCS = [
 	"README.md",
 	"AGENTS.md",
 	"PROJECT.md",
-	"CONTEXT.md",
+	"GLOSSARY.md",
 	".pi/policy/WORKFLOW.md",
 	".pi/policy/CHILD-CONTRACT.md",
 	".pi/agents/README.md",

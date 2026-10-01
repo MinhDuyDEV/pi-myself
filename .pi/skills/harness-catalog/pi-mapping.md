@@ -10,15 +10,14 @@ script that reads stdin) without a row in the table below.
 
 ## Invocation classes decide who can start the work
 
-The main flow (`grill-with-docs` → `to-spec` → `to-tickets` → `implement`), `wayfinder`, `triage`,
-`improve-codebase-architecture`, and the router `ask-matt` are **user-invoked**. pi exposes each as
-`/skill:<name>` and the model cannot call it: when a request maps onto one of them, naming the
-command for the human is the handoff. The `harness-catalog` skill holds the situation-to-command
-table. In the `in-progress` (beta) bucket, `pr` is the one model-invoked skill; the rest are
-user-invoked.
+The main flow (`grill-with-docs` → `to-spec` → `to-tickets` → `implement` or `implement-spec` →
+`retro`), `wayfinder`, `triage`, `improve-codebase-architecture`, and the router `ask-matt` are
+**user-invoked**. pi exposes each as `/skill:<name>` and the model cannot call it: when a request
+maps onto one of them, naming the command for the human is the handoff. The `harness-catalog` skill
+holds the situation-to-command table. The `in-progress` (beta) bucket is all user-invoked.
 
 The skills often write a command bare. A **model-invoked** skill written as a slash command
-(`/tdd`, `/code-review` inside `implement`, `implement-spec`, `loop-me`) means "call the `skill`
+(`/tdd` and `/code-review` inside `implement`, `/grilling` inside `loop-me`) means "call the `skill`
 tool with that name" — never hand it to the human. A **user-invoked** one typed bare by the human
 (`/grill-with-docs`) is rewritten to `/skill:grill-with-docs` by the harness's `host-commands`
 extension when no command or prompt owns the name; `/skill:<name>` always works.
@@ -73,11 +72,14 @@ prompt; a child given none returns `blocked` with the seams it proposes.
 
 | The skill says | On pi |
 | --- | --- |
-| implementer subagent | a `general` task per ticket, with `cwd` set to a worktree the **parent** created via `git worktree add` — pi-task never creates or removes worktrees |
-| merger subagent | a `general` task in the shape the prompt names: land the branch |
+| integration branch | a branch the **parent** creates before the first worktree; every ticket branch starts from it and lands on it |
+| implementer subagent | a `general` task per ticket, with `cwd` set to a worktree the **parent** created via `git worktree add` — pi-task never creates or removes worktrees. The prompt names the integration branch: the implementer checks its base against it and merges its tip before reporting done |
+| merger subagent | a `general` task in the shape the prompt names: land the branch on the integration branch |
 | exploration subagent | a `general` task, notes-only shape |
 | frontier query | `tracker` op `gh-frontier` with `parent` = the spec's issue number; `frontier` for the local `.scratch/` backend. Both hold back `needs-triage`, `needs-info`, and `ready-for-human` tickets |
 | worktree per implementer | the WIP cap's isolated-checkout exception, stated once in the workflow policy under `## Task roles` |
+| resolve each ticket the way the tracker closes work | `tracker` op `gh-resolve`, or `resolve` for the local backend, by the **parent** |
+| a draft PR | only when `docs/agents/issue-tracker.md` closes work through PRs or the user asks for one: the parent runs `gh pr create --draft` after the first landing and `gh pr ready` at the end, since the `tracker` tool refuses pull requests |
 
 The skill's ticket graph has no path back from an implementer that finds its ticket stands on a
 wrong choice. On pi that implementer returns a challenge, which the parent settles as the workflow

@@ -12,7 +12,7 @@ Two durable files make a future session understand this repository without re-ex
 | `AGENTS.md` (or `CLAUDE.md`) | How to work here: real commands, gates, paths that must not be edited, repo-specific constraints | this prompt, always |
 | `PROJECT.md` | What lives where: what the repo ships, entry points, subsystem boundaries, generated/runtime state, sensitive areas | this prompt, with `--map` |
 
-Vocabulary and decisions are the third layer and are not written here: `CONTEXT.md` and `docs/adr/` belong to `domain-modeling` (reached through `/skill:grill-with-docs`). Durable host or environment facts discovered on the way are proposed as memory records at the end (the `memory` skill owns that tier); never written into these files.
+Vocabulary and decisions are the third layer and are not written here: `GLOSSARY.md` and `docs/adr/` belong to `domain-modeling` (reached through `/skill:grill-with-docs`). Durable host or environment facts discovered on the way are proposed as memory records at the end (the `memory` skill owns that tier); never written into these files.
 
 The prose standard is the `writing-for-agents` skill (load it once before drafting). `verification-before-completion` loads at completion.
 
@@ -33,7 +33,7 @@ Delegate the reading to one `explore` task (read-only, `path:line` evidence); th
 - test locations and the focused/full test, typecheck, lint, and build commands the repo actually declares;
 - generated, vendored, sensitive, or runtime-state paths;
 - CI commands and contribution rules;
-- what the existing `AGENTS.md`/`CLAUDE.md`, README, `PROJECT.md`, `CONTEXT.md`, and `docs/agents/` already say.
+- what the existing `AGENTS.md`/`CLAUDE.md`, README, `PROJECT.md`, `GLOSSARY.md`, and `docs/agents/` already say.
 
 Ask for a thorough pass on an unfamiliar or multi-subsystem repo, a medium pass otherwise.
 

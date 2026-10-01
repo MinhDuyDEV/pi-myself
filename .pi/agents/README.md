@@ -32,7 +32,7 @@ Read-tier roles are `readonly: true` except `scout`, whose only write is the one
 
 pi-task parses frontmatter line by line: one-line `description`, comma-separated `tools` / `skills`. Honoured fields: `description`, `model`, `thinking`, `readonly`, `proactive`, `hidden`, `tools`, `disallowed_tools`, `skills`, `fast`, `max_turns`. `skills:` names resolve against pi's registry and an unknown name fails the launch. `readonly: true` denies write/edit/apply_patch but not `bash` or `tracker`. Recursive `task` delegation is always blocked in children.
 
-`skills:` is **not a preload**. pi-task validates each name and passes its path with `--skill`, but loading stays progressive (pi-task README): the child sees the skill in its list and reads the body only when told to. So every declared skill is named on the body's `Load first:` line, which the child contract tells the child to act on before starting; a skill a role needs in one shape only — the merge shape's `resolving-merge-conflicts` — is named where that shape is described. Memory reads need no skill: the contract carries them.
+`skills:` is **not a preload**. pi-task validates each name and passes its path with `--skill`, but loading stays progressive (pi-task README): the child sees the skill in its list and reads the body only when told to. So every declared skill is named on the body's `Load first:` line, which the child contract tells the child to act on before starting; a skill a role needs in one shape only (`scout`'s `research`, in the report shape) is named there with that condition. Memory reads need no skill: the contract carries them.
 
 Mechanical denies back the contract's prose: every role carries `disallowed_tools: memory_write, memory_delete, ask_user` (only the parent writes memory; a child's question would wait in a pane nobody answers until the hard timeout), and the roles that must not change state also deny `tracker` or leave it off their allowlist. `max_turns` is the soft limit pi-task enforces on terminal backends — HerdR, this harness's primary backend, or tmux: at the limit it steers a wrap-up and allows ten grace turns, well before the 30-minute `PI_TASK_HARD_TIMEOUT_MINUTES` ceiling that stops a child without a result. SDK and foreground runs have no turn limit.
 
@@ -46,9 +46,9 @@ pi-task never creates, merges, or removes worktrees. For parallel mutating work 
 
 **Steering is a job.** A `task` call carrying a running task's `task_id` delivers its prompt into the live run on HerdR or tmux (pi-task answers "delivered the follow-up prompt"; `lifecycle/task-resume.js`), and one carrying a settled task's `task_id` reopens that saved session, context included. The SDK fallback supports neither (nor `cancel`): a ruling there reaches the challenger as a fresh task whose prompt carries its evidence, and a running SDK writer it touches finishes first and is then briefed again. This is how the parent sends a changed decision to the tasks it touches — a new instruction, never a status check.
 
-Two or more `general` implementers on one spec, end to end:
+Two or more `general` implementers on one spec (`implement-spec`), end to end:
 
-1. `git worktree add ../<repo>-t<n> -b ticket-<n>` once per takeable ticket, then launch every `general` task in one message, each with its own `cwd` and that ticket's pointer.
+1. Create the integration branch, then `git worktree add ../<repo>-t<n> -b ticket-<n> <integration-branch>` once per takeable ticket, and launch every `general` task in one message, each with its own `cwd`, that ticket's pointer, and the integration branch's name. Each implementer merges that branch's tip into its own before reporting done.
 2. Let every writer stop before reviewing: a `reviewer` task reads a branch only after its task settled, never a live one.
 3. Land branches one at a time with a `general` "land a branch" task and rerun the declared gates after each landing, so a conflict belongs to the branch that caused it.
 4. `git worktree remove ../<repo>-t<n>` once its branch has landed; the branch itself stays for the parent's normal flow.

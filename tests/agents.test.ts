@@ -457,6 +457,32 @@ test("the catalog's actor column matches each skill's invocation class", () => {
 	assert.deepEqual(offenders, []);
 });
 
+test("every name a catalog row offers still exists", () => {
+	// The actor check skips a name the lock does not know ("a tool, role, or
+	// command"), so the row for a skill upstream removed
+	// (`resolving-merge-conflicts`) kept routing to nothing. A row may name a
+	// skill, a task role, a tool, a prompt, or the provision command.
+	const catalog = readFileSync(join(ROOT, ".pi", "skills", "harness-catalog", "SKILL.md"), "utf8");
+	const prompts = new Set(
+		readdirSync(join(ROOT, ".pi", "prompts"))
+			.filter((file) => file.endsWith(".md"))
+			.map((file) => `/${file.slice(0, -".md".length)}`),
+	);
+	const exists = (token: string): boolean => {
+		if (token.startsWith("/skill:")) return skillExists(token.slice("/skill:".length));
+		if (token.startsWith("/")) return prompts.has(token) || token === "/setup-pi-myself";
+		return skillExists(token) || ROSTER.includes(token) || KNOWN_TOOLS.has(token);
+	};
+	const offenders: string[] = [];
+	for (const row of catalog.matchAll(/^\|[^|\n]*\| (?:human|model) \|([^\n]*)\|$/gm)) {
+		for (const span of (row[1] ?? "").matchAll(/`([^`]+)`/g)) {
+			const token = (span[1] ?? "").split(" ")[0] ?? ""; // `/setup-pi-myself --check` → the command
+			if (!exists(token)) offenders.push(token);
+		}
+	}
+	assert.deepEqual(offenders, [], "a catalog row names a skill, role, tool, or command that no longer exists");
+});
+
 test("the catalog routes every discoverable skill", () => {
 	// A registered skill with no catalog row is a skill nobody invokes: this is
 	// how eight skills stayed invisible until the catalog existed.

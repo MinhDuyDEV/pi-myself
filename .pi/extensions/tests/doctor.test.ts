@@ -73,7 +73,17 @@ test("a healthy project gets one ok per check and no warning", () => {
 	const findings = runDoctor(inputs());
 	assert.deepEqual(
 		findings.map((f) => `${f.status} ${f.check}`),
-		["ok trust", "ok roles", "ok model tiers", "ok companions", "ok srcwalk", "ok tracker docs", "ok install scope", "ok gitignore"],
+		[
+			"ok trust",
+			"ok roles",
+			"ok model tiers",
+			"ok companions",
+			"ok srcwalk",
+			"ok tracker docs",
+			"ok domain docs",
+			"ok install scope",
+			"ok gitignore",
+		],
 	);
 });
 
@@ -229,6 +239,32 @@ test("missing tracker or domain docs point at /skill:setup-matt-pocock-skills", 
 	assert.equal(docs.status, "warn");
 	assert.match(docs.detail, /docs\/agents\/domain\.md/);
 	assert.match(docs.fix ?? "", /\/skill:setup-matt-pocock-skills/);
+});
+
+test("a glossary under a name the skills stopped reading is a warning with the move to make", () => {
+	// mattpocock/skills renamed CONTEXT.md / CONTEXT-MAP.md to GLOSSARY.md /
+	// GLOSSARY-MAP.md and reads only the new names: a file left under an old one
+	// is a glossary nothing consults, and a domain.md written before the rename
+	// still points the skills at it.
+	const files = healthyFiles();
+	files[`${REPO}/CONTEXT.md`] = "# glossary\n";
+	const renamed = finding(runDoctor(inputs({ files })), "domain docs");
+	assert.equal(renamed.status, "warn");
+	assert.match(renamed.detail, /nothing consults CONTEXT\.md/);
+	assert.match(renamed.fix ?? "", /git mv CONTEXT\.md GLOSSARY\.md/);
+	assert.doesNotMatch(renamed.fix ?? "", /CONTEXT-MAP/, "only the file that is there is named");
+	assert.doesNotMatch(renamed.fix ?? "", /setup-matt-pocock-skills/, "a current domain.md needs no rewrite");
+
+	files[`${REPO}/CONTEXT-MAP.md`] = "# map\n";
+	assert.match(finding(runDoctor(inputs({ files })), "domain docs").fix ?? "", /git mv CONTEXT-MAP\.md GLOSSARY-MAP\.md/);
+
+	const stale = healthyFiles();
+	stale[`${REPO}/docs/agents/domain.md`] = "- **`CONTEXT.md`** at the repo root, or\n";
+	const pointer = finding(runDoctor(inputs({ files: stale })), "domain docs");
+	assert.equal(pointer.status, "warn");
+	assert.match(pointer.detail, /docs\/agents\/domain\.md/);
+	assert.match(pointer.fix ?? "", /\/skill:setup-matt-pocock-skills/);
+	assert.doesNotMatch(pointer.fix ?? "", /git mv/, "no old file, no move");
 });
 
 test("a globally installed pi-myself is a warning; project-scoped is not", () => {

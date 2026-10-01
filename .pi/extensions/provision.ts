@@ -23,8 +23,9 @@ import { packageRoot, resolveRepoRoot } from "./lib/repo-root.js";
  * check — stale roles (the script's own `--check`), the reviewer's model family
  * against the reason tier (ADR 0009),
  * companion tools, the `srcwalk` tool against the CLI it runs, tracker docs, a
- * globally installed pi-myself (ADR 0007), and runtime state git does not
- * ignore — each warning with its fix.
+ * glossary under a name the skills stopped reading, a globally installed
+ * pi-myself (ADR 0007), and runtime state git does not ignore — each warning
+ * with its fix.
  */
 
 /** Long enough for any real provisioning run; a wedged child must not freeze the TUI forever. */
@@ -86,7 +87,17 @@ const WEB_TOOLS = ["web_search", "websearch", "fetch_content", "web_fetch"] as c
  */
 const SRCWALK_TOOL = "srcwalk";
 const SRCWALK_SOURCE = "npm:@sting8k/pi-srcwalk";
-const TRACKER_DOCS = ["docs/agents/issue-tracker.md", "docs/agents/domain.md"] as const;
+const DOMAIN_DOC = "docs/agents/domain.md";
+const TRACKER_DOCS = ["docs/agents/issue-tracker.md", DOMAIN_DOC] as const;
+/**
+ * mattpocock/skills renamed the domain glossary: the skills read `GLOSSARY.md`
+ * (or `GLOSSARY-MAP.md` and one `GLOSSARY.md` per context) and no longer look
+ * at the old names, so a file left under one is a glossary nothing consults.
+ */
+const RENAMED_DOMAIN_DOCS: ReadonlyArray<readonly [old: string, renamed: string]> = [
+	["CONTEXT.md", "GLOSSARY.md"],
+	["CONTEXT-MAP.md", "GLOSSARY-MAP.md"],
+];
 /** One probe path per runtime-state entry git must ignore, and the .gitignore line that covers it. */
 const RUNTIME_STATE: ReadonlyArray<readonly [probe: string, line: string]> = [
 	[".pi/sessions/x", ".pi/sessions/"],
@@ -246,6 +257,28 @@ function checkTrackerDocs(inputs: DoctorInputs): DoctorFinding {
 	return { status: "warn", check: "tracker docs", detail: `missing: ${missing.join(", ")}`, fix: "run /skill:setup-matt-pocock-skills" };
 }
 
+/** A glossary still under its pre-rename name, or a `domain.md` written before the rename that still points the skills at one. */
+function checkDomainDocs(inputs: DoctorInputs): DoctorFinding {
+	const old = RENAMED_DOMAIN_DOCS.filter(([name]) => inputs.readFile(join(inputs.repoRoot, name)) !== undefined);
+	const stalePointer = /\bCONTEXT(?:-MAP)?\.md\b/.test(inputs.readFile(join(inputs.repoRoot, DOMAIN_DOC)) ?? "");
+	if (old.length === 0 && !stalePointer) {
+		return { status: "ok", check: "domain docs", detail: "no glossary under a name the skills stopped reading" };
+	}
+	const detail: string[] = [];
+	const fix: string[] = [];
+	if (old.length > 0) {
+		detail.push(`the skills read only GLOSSARY.md / GLOSSARY-MAP.md, so nothing consults ${old.map(([name]) => name).join(" or ")}`);
+		fix.push(
+			`${old.map(([name, renamed]) => `git mv ${name} ${renamed}`).join("; ")} (merge by hand where the new name already exists; a map's per-context CONTEXT.md files move too)`,
+		);
+	}
+	if (stalePointer) {
+		detail.push(`${DOMAIN_DOC} still points the skills at CONTEXT.md`);
+		fix.push("rerun /skill:setup-matt-pocock-skills to rewrite it");
+	}
+	return { status: "warn", check: "domain docs", detail: detail.join("; "), fix: fix.join("; then ") };
+}
+
 /** The `packages` entry of a settings file that installs pi-myself, as its source text. */
 function piMyselfSource(text: string | undefined): string | undefined {
 	if (text === undefined) return undefined;
@@ -326,6 +359,7 @@ export function runDoctor(inputs: DoctorInputs): DoctorFinding[] {
 		checkCompanions(inputs),
 		checkSrcwalk(inputs),
 		checkTrackerDocs(inputs),
+		checkDomainDocs(inputs),
 		checkInstallScope(inputs),
 		checkGitignore(inputs),
 	];

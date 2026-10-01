@@ -43,8 +43,8 @@ interface SkillDetails {
 }
 
 /** Vendored buckets the harness registers: the promoted set (engineering +
- * productivity, listed in plugin.json) plus in-progress (beta; `pr` is
- * model-invoked there, the rest are user-invoked).
+ * productivity, listed in plugin.json) plus in-progress (beta; each skill's
+ * invocation class is read from its own frontmatter, never from its bucket).
  * `misc/` and `deprecated/` stay unregistered. Keep in step with package.json
  * `pi.skills`, `.pi/settings.json`, and scripts/sync-skills.mjs. */
 export const VENDORED_BUCKETS = ["engineering", "productivity", "in-progress"] as const;

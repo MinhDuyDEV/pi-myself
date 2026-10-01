@@ -19,7 +19,7 @@ Each kind of file has one owner. Refresh consolidates *into* these; it never rem
 | Kind | Owner | Files |
 | --- | --- | --- |
 | How to work here | `/init` | `AGENTS.md` (or `CLAUDE.md` alone; a `CLAUDE.md` beside `AGENTS.md` is a deliberate mirror for Claude Code, since pi reads only the first context file in a folder, `AGENTS.md` before `CLAUDE.md`), `PROJECT.md` |
-| Domain | `domain-modeling` (via `grill-with-docs`) | `CONTEXT.md` (or `CONTEXT-MAP.md` + per-context `CONTEXT.md`), `docs/adr/` |
+| Domain | `domain-modeling` (via `grill-with-docs`) | `GLOSSARY.md` (or `GLOSSARY-MAP.md` + per-context `GLOSSARY.md`), `docs/adr/`. The skills read only these names: a `CONTEXT.md` or `CONTEXT-MAP.md` from before upstream renamed them is moved with `git mv`, never kept beside the new one |
 | Process configuration | `setup-matt-pocock-skills` | `docs/agents/issue-tracker.md`, `docs/agents/domain.md`, `docs/agents/triage-labels.md`, the `## Agent skills` block in `AGENTS.md` |
 | Work tracking | the configured tracker | `.scratch/<feature>/{spec.md,map.md,issues/}` for the local backend; GitHub or GitLab issues otherwise |
 | Harness runtime | pi-myself | `.pi/agents/` (provisioned roles, refreshed by `/setup-pi-myself`, not edited; `pi-myself-provisioned.json` is its baseline). `.pi/settings.json` is the repo's own. The workflow policy is injected from the package, so an `APPEND_SYSTEM.md` carrying it is a stale copy `/setup-pi-myself` removes. In a consuming repository `.pi/` is machine state, not docs to consolidate — the run ignores `.pi/*` (ADR 0008); only the pi-myself checkout keeps `.pi/skills/` and `.pi/prompts/` as source |

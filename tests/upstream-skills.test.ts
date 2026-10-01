@@ -115,8 +115,10 @@ test("a skill that sets disable-model-invocation sets it to exactly true", () =>
 });
 
 test("current-state prose about the beta bucket's invocation class matches the lock", () => {
-	// This drift shipped once: the sync added the model-invoked beta skill `pr`
-	// while five spots still said the bucket was "all user-invoked".
+	// This drift shipped in both directions: the sync that added the model-invoked
+	// beta skill `pr` left five spots saying the bucket was "all user-invoked", and
+	// the sync that graduated `pr` out of the bucket left five still naming it the
+	// bucket's model-invoked exception.
 	const lock = JSON.parse(readFileSync(LOCK, "utf8")) as { skills: Record<string, { modelInvoked: boolean; bucket: string }> };
 	const modelInvokedBeta = Object.entries(lock.skills)
 		.filter(([, meta]) => meta.bucket === "beta" && meta.modelInvoked)
@@ -127,16 +129,29 @@ test("current-state prose about the beta bucket's invocation class matches the l
 		"README.md",
 		"AGENTS.md",
 		"PROJECT.md",
-		"CONTEXT.md",
+		"GLOSSARY.md",
 		".pi/policy/WORKFLOW.md",
 		".pi/agents/README.md",
 		".pi/skills/harness-catalog/pi-mapping.md",
 	];
+	// a skill a sentence about the beta bucket singles out as model-invoked
+	const namedException = /except `([a-z0-9-]+)`|`([a-z0-9-]+)`(?:,? which)? is (?:the (?:one|only) )?model-invoked/g;
 	const offenders: string[] = [];
 	for (const doc of docs) {
 		const text = readFileSync(join(ROOT, doc), "utf8");
 		if (modelInvokedBeta.length > 0 && /all user-invoked|every .{0,20}is user-invoked/i.test(text)) {
 			offenders.push(`${doc}: claims the beta bucket is entirely user-invoked but ${modelInvokedBeta.join(", ")} is model-invoked`);
+		}
+		// hard-wrapped prose: a paragraph is one run of text, read a sentence at a time
+		const sentences = text.split(/\n\s*\n/).flatMap((paragraph) => paragraph.replace(/\s*\n\s*/g, " ").split(/(?<=[.;])\s+/));
+		for (const sentence of sentences) {
+			if (!/\bbeta\b|in-progress/.test(sentence)) continue;
+			for (const m of sentence.matchAll(namedException)) {
+				const name = m[1] ?? m[2];
+				if (name !== undefined && !modelInvokedBeta.includes(name)) {
+					offenders.push(`${doc}: names \`${name}\` as a model-invoked beta skill, but the lock records none by that name`);
+				}
+			}
 		}
 	}
 	assert.deepEqual(offenders, []);

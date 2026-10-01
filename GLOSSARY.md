@@ -9,10 +9,10 @@ A pi coding-agent harness built around Matt Pocock's skills as the process core.
 _Avoid_: "skills/" alone (ambiguous with `.pi/skills/`), "fork" (we never fork the text)
 
 **Promoted skill**:
-One of the 25 skills listed in the vendored `.claude-plugin/plugin.json` (the `skills/engineering` + `skills/productivity` trees).
+A skill listed in the vendored `.claude-plugin/plugin.json` (the `skills/engineering` + `skills/productivity` trees).
 
 **Beta skill**:
-A skill under the vendored `skills/in-progress/` tree. Upstream keeps them out of the plugin and they may change or vanish without warning; pi-myself registers them anyway (user-invoked via `/skill:<name>`, except `pr`, which is model-invoked), locks them under `bucket: beta`, and supplies the roles and tools they name. `misc/` and `deprecated/` stay unregistered.
+A skill under the vendored `skills/in-progress/` tree. Upstream keeps them out of the plugin and they may change, graduate into the promoted set, or vanish without warning; pi-myself registers them anyway (all user-invoked, via `/skill:<name>`), locks them under `bucket: beta`, and supplies the roles and tools they name. `misc/` and `deprecated/` stay unregistered.
 _Avoid_: "experimental skill", "unstable"
 
 **Registered set**:
