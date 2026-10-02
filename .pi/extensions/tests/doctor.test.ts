@@ -258,9 +258,10 @@ test("missing tracker or domain docs point at /skill:setup-matt-pocock-skills", 
 test("a glossary under a name the skills stopped reading is a warning, and the fix is the command that moves it", () => {
 	// mattpocock/skills renamed CONTEXT.md / CONTEXT-MAP.md to GLOSSARY.md /
 	// GLOSSARY-MAP.md and reads only the new names. /setup-pi-myself moves a root
-	// CONTEXT.md and renames the pointer in domain.md, so for those two the fix is
-	// the command. What it never does is named as hand work: merging two files,
-	// moving a multi-context map, editing the repository's own context file.
+	// CONTEXT.md, a map with the per-context glossaries it lists, and the pointer
+	// in domain.md, so for those the fix is the command. What it never does is
+	// named as hand work: merging two files, editing the repository's own context
+	// file.
 	const files = healthyFiles();
 	files[`${REPO}/CONTEXT.md`] = "# glossary\n";
 	const renamed = finding(runDoctor(inputs({ files })), "domain docs");
@@ -276,9 +277,28 @@ test("a glossary under a name the skills stopped reading is a warning, and the f
 	assert.match(both.fix ?? "", /merge CONTEXT\.md into GLOSSARY\.md by hand/);
 	assert.doesNotMatch(both.fix ?? "", /setup-pi-myself/);
 
+	// a glossary split per context: the command moves the map and the glossaries it lists
 	const mapped = healthyFiles();
-	mapped[`${REPO}/CONTEXT-MAP.md`] = "# map\n";
-	assert.match(finding(runDoctor(inputs({ files: mapped })), "domain docs").fix ?? "", /git mv CONTEXT-MAP\.md GLOSSARY-MAP\.md/);
+	mapped[`${REPO}/CONTEXT-MAP.md`] = "- [Ordering](./ordering/CONTEXT.md)\n";
+	const map = finding(runDoctor(inputs({ files: mapped })), "domain docs");
+	assert.equal(map.status, "warn");
+	assert.match(map.detail, /nothing consults CONTEXT-MAP\.md/);
+	assert.match(map.fix ?? "", /run \/setup-pi-myself \(it moves CONTEXT-MAP\.md and the per-context glossaries it lists/);
+	assert.doesNotMatch(map.fix ?? "", /by hand/);
+
+	// two maps: the command never overwrites, so the merge is a human's
+	mapped[`${REPO}/GLOSSARY-MAP.md`] = "- [Ordering](./ordering/GLOSSARY.md)\n";
+	const maps = finding(runDoctor(inputs({ files: mapped })), "domain docs");
+	assert.match(maps.fix ?? "", /merge CONTEXT-MAP\.md into GLOSSARY-MAP\.md by hand/);
+	assert.doesNotMatch(maps.fix ?? "", /setup-pi-myself/);
+
+	// a moved map that still lists a CONTEXT.md: a run moves what it can and names what it keeps
+	const partial = healthyFiles();
+	partial[`${REPO}/GLOSSARY-MAP.md`] = "- [Billing](./billing/CONTEXT.md)\n";
+	const listed = finding(runDoctor(inputs({ files: partial })), "domain docs");
+	assert.equal(listed.status, "warn");
+	assert.match(listed.detail, /GLOSSARY-MAP\.md still lists a CONTEXT\.md/);
+	assert.match(listed.fix ?? "", /run \/setup-pi-myself/);
 
 	const stale = healthyFiles();
 	stale[`${REPO}/docs/agents/domain.md`] = "- **`CONTEXT.md`** at the repo root, or\n";

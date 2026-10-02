@@ -4,7 +4,9 @@ Supersedes the "Provisioned copies are the project's" decision of 2026-09-15 (`d
 
 **Note (2026-09-27):** the consequence "the baseline file must be committed" is narrowed by ADR 0008 — a consuming repository ignores its own `.pi/` wholesale, so the baseline is per machine. Decisions 3 and 4 below (baseline v2, nothing dropped silently) are unchanged.
 
-**Note (2026-10-01):** a run also follows upstream's rename of the domain glossary (user decision): a root `CONTEXT.md` is moved to `GLOSSARY.md`, with `git mv` when git tracks it, and the pointer in `docs/agents/domain.md` is renamed with it. It is the one write outside `.pi/` and `.gitignore`, and decision 4 governs it: nothing already under the new name is overwritten, a linked `domain.md` is not replaced, and a multi-context `CONTEXT-MAP.md` is named for a move by hand. The repository's own context file is never edited; the doctor names a mention it still carries.
+**Note (2026-10-01):** a run also follows upstream's rename of the domain glossary (user decision): a root `CONTEXT.md` is moved to `GLOSSARY.md`, with `git mv` when git tracks it, and the pointer in `docs/agents/domain.md` is renamed with it. It is the one write outside `.pi/` and `.gitignore`, and decision 4 governs it: nothing already under the new name is overwritten and a linked `domain.md` is not replaced. The repository's own context file is never edited; the doctor names a mention it still carries.
+
+**Note (2026-10-02):** a glossary split per context moves whole (user decision, after a consuming repository turned out to use one): `CONTEXT-MAP.md` to `GLOSSARY-MAP.md`, each per-context `CONTEXT.md` the map links to, and those links. The map is what says which files are glossaries, so a `CONTEXT.md` it does not list, or one reached through a link out of the repository, is never moved; a context holding both names is kept and stays linked until a human merges it, and the next run then brings the link along.
 
 ## Context
 

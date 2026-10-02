@@ -540,15 +540,19 @@ test("a glossary still named CONTEXT.md moves to GLOSSARY.md, and the domain doc
 	assert.equal(runCheck([target, "--check"]).status, 0, "current once moved");
 });
 
+/** git in `cwd` as a fixed identity; a machine's signing or hook settings must not decide a test. */
+function gitIn(cwd: string): (...args: string[]) => string {
+	const settings = ["commit.gpgsign=false", "core.hooksPath=/dev/null", "user.name=test", "user.email=test@example.com"];
+	return (...args) => execFileSync("git", [...settings.flatMap((setting) => ["-c", setting]), ...args], { cwd, encoding: "utf8" });
+}
+
 test("a tracked glossary moves with git mv, so the rename is staged and its history follows", () => {
 	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
-	// a machine's signing or hook settings must not decide this test
-	const git = (...args: string[]) =>
-		execFileSync("git", ["-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { cwd: target, encoding: "utf8" });
+	const git = gitIn(target);
 	git("init", "-q");
 	writeFileSync(join(target, "CONTEXT.md"), GLOSSARY_TEXT);
 	git("add", "CONTEXT.md");
-	git("-c", "user.name=test", "-c", "user.email=test@example.com", "commit", "-q", "-m", "glossary");
+	git("commit", "-q", "-m", "glossary");
 
 	assert.match(runScript(target), /^updated\s+GLOSSARY\.md \(moved from CONTEXT\.md with git mv/m);
 	assert.match(
@@ -558,7 +562,7 @@ test("a tracked glossary moves with git mv, so the rename is staged and its hist
 	);
 });
 
-test("a move never overwrites: an existing GLOSSARY.md, a multi-context map, and a linked domain doc are kept and named", () => {
+test("a move never overwrites: an existing GLOSSARY.md or GLOSSARY-MAP.md and a linked domain doc are kept and named", () => {
 	// both names present: which one is current is a judgement, so nothing is touched
 	const both = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
 	writeFileSync(join(both, "CONTEXT.md"), "old\n");
@@ -568,13 +572,16 @@ test("a move never overwrites: an existing GLOSSARY.md, a multi-context map, and
 	assert.equal(readFileSync(join(both, "GLOSSARY.md"), "utf8"), "new\n");
 	assert.equal(runCheck([both, "--check"]).status, 0, "nothing a run would change, so the project is current");
 
-	// a multi-context layout is a map plus the per-context files it links to: moved by hand
-	const mapped = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
-	const map = "# Context Map\n\n- [Ordering](./src/ordering/CONTEXT.md): orders\n";
-	writeFileSync(join(mapped, "CONTEXT-MAP.md"), map);
-	assert.match(runScript(mapped), /^kept\s+CONTEXT-MAP\.md \(a multi-context layout is moved by hand/m);
-	assert.equal(readFileSync(join(mapped, "CONTEXT-MAP.md"), "utf8"), map);
-	assert.ok(!existsSync(join(mapped, "GLOSSARY-MAP.md")));
+	// two maps present: the same judgement, so the old map and what only it lists stay put
+	const maps = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	const oldMap = "- [Ordering](./ordering/CONTEXT.md)\n";
+	writeFileSync(join(maps, "CONTEXT-MAP.md"), oldMap);
+	writeFileSync(join(maps, "GLOSSARY-MAP.md"), "- [Billing](./billing/GLOSSARY.md)\n");
+	mkdirSync(join(maps, "ordering"));
+	writeFileSync(join(maps, "ordering", "CONTEXT.md"), "old\n");
+	assert.match(runScript(maps), /^kept\s+CONTEXT-MAP\.md \(GLOSSARY-MAP\.md already exists/m);
+	assert.equal(readFileSync(join(maps, "CONTEXT-MAP.md"), "utf8"), oldMap);
+	assert.ok(existsSync(join(maps, "ordering", "CONTEXT.md")), "a context only the unmoved map lists is not moved");
 
 	// a linked domain doc is the project's chosen location: never replaced by a file
 	const linked = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
@@ -585,4 +592,98 @@ test("a move never overwrites: an existing GLOSSARY.md, a multi-context map, and
 	assert.match(runScript(linked), /^kept\s+docs\/agents\/domain\.md \(a symlink/m);
 	assert.ok(lstatSync(join(linked, "docs", "agents", "domain.md")).isSymbolicLink(), "still the project's link");
 	assert.equal(readFileSync(shared, "utf8"), OLD_DOMAIN_DOC, "the shared target is never written");
+});
+
+test("a multi-context map moves with the per-context glossaries it lists, and its links follow them", () => {
+	// A CONTEXT-MAP.md at the root means the glossary is split: the map links to
+	// one CONTEXT.md per context. Upstream renamed all of them, so the map, each
+	// file it lists, and the links between them move together. Only what the map
+	// lists is a glossary: a CONTEXT.md nobody listed (a vendored package's, say)
+	// stays where it is.
+	const target = mkdtempSync(join(tmpdir(), "pi-myself-project-"));
+	const git = gitIn(target);
+	git("init", "-q");
+	const map = (name: string) =>
+		[
+			"# Context Map",
+			"",
+			"## Contexts",
+			"",
+			`- [Ordering](./src/ordering/${name}): receives and tracks orders`,
+			`- [Billing](src/billing/${name}#language): invoices and payments`,
+			"",
+		].join("\n");
+	writeFileSync(join(target, "CONTEXT-MAP.md"), map("CONTEXT.md"));
+	for (const dir of ["src/ordering", "src/billing", "vendor/lib", "docs/agents"]) mkdirSync(join(target, dir), { recursive: true });
+	writeFileSync(join(target, "src", "ordering", "CONTEXT.md"), "# Ordering\n");
+	writeFileSync(join(target, "src", "billing", "CONTEXT.md"), "# Billing\n");
+	writeFileSync(join(target, "vendor", "lib", "CONTEXT.md"), "# someone else's file\n");
+	writeFileSync(join(target, "docs", "agents", "domain.md"), OLD_DOMAIN_DOC);
+	git("add", "-A");
+	git("commit", "-q", "-m", "multi-context glossary");
+
+	// the dry run names every move and makes none
+	const check = runCheck([target, "--check"]);
+	assert.equal(check.status, 1);
+	assert.match(check.stdout, /^\[check\] updated\s+src\/ordering\/GLOSSARY\.md \(moved from CONTEXT\.md with git mv/m);
+	assert.match(check.stdout, /^\[check\] updated\s+src\/billing\/GLOSSARY\.md \(moved from CONTEXT\.md with git mv/m);
+	assert.match(check.stdout, /^\[check\] updated\s+GLOSSARY-MAP\.md \(moved from CONTEXT-MAP\.md with git mv; 2 links follow/m);
+	assert.equal(git("status", "--porcelain"), "", "a check moves nothing and stages nothing");
+
+	const output = runScript(target);
+	assert.match(output, /^updated\s+GLOSSARY-MAP\.md \(moved from CONTEXT-MAP\.md with git mv; 2 links follow/m);
+	assert.doesNotMatch(output, /still names CONTEXT\.md/, "every listed glossary moved, so nothing is left to finish");
+	const status = git("status", "--porcelain");
+	assert.match(status, /^RM CONTEXT-MAP\.md -> GLOSSARY-MAP\.md$/m, "the map is a staged rename; its link edit is left to review");
+	assert.match(status, /^R {2}src\/ordering\/CONTEXT\.md -> src\/ordering\/GLOSSARY\.md$/m);
+	assert.match(status, /^R {2}src\/billing\/CONTEXT\.md -> src\/billing\/GLOSSARY\.md$/m);
+	assert.doesNotMatch(status, /vendor\/lib/, "a CONTEXT.md the map does not list is not a glossary");
+	assert.equal(readFileSync(join(target, "GLOSSARY-MAP.md"), "utf8"), map("GLOSSARY.md"), "only the link targets changed, anchor kept");
+	assert.equal(readFileSync(join(target, "src", "billing", "GLOSSARY.md"), "utf8"), "# Billing\n", "moved, never rewritten");
+	assert.equal(readFileSync(join(target, "docs", "agents", "domain.md"), "utf8"), NEW_DOMAIN_DOC);
+
+	// a rerun has nothing left to do
+	assert.doesNotMatch(runScript(target), /GLOSSARY|CONTEXT/);
+	assert.equal(runCheck([target, "--check"]).status, 0, "current once moved");
+});
+
+test("the map moves even when a context cannot: what stays is kept, named, and still linked, and a later run finishes it", () => {
+	const parent = mkdtempSync(join(tmpdir(), "pi-myself-parent-"));
+	const target = join(parent, "repo");
+	const links = (ordering: string, done: string, billing: string) =>
+		[
+			`- [Ordering](./ordering/${ordering})`,
+			`- [Billing](./billing/${billing})`,
+			`- [Done](./done/${done})`,
+			"- [Elsewhere](../outside/CONTEXT.md)",
+			"- [Gone](./gone/CONTEXT.md)",
+			"",
+		].join("\n");
+	for (const dir of ["repo/ordering", "repo/billing", "repo/done", "outside"]) mkdirSync(join(parent, dir), { recursive: true });
+	writeFileSync(join(target, "CONTEXT-MAP.md"), links("CONTEXT.md", "CONTEXT.md", "CONTEXT.md"));
+	writeFileSync(join(target, "ordering", "CONTEXT.md"), "# Ordering\n");
+	// both names in one context: which is current is a judgement, so the old file stays and stays linked
+	writeFileSync(join(target, "billing", "CONTEXT.md"), "old\n");
+	writeFileSync(join(target, "billing", "GLOSSARY.md"), "new\n");
+	// moved by hand earlier: only the link is behind
+	writeFileSync(join(target, "done", "GLOSSARY.md"), "# Done\n");
+	// a link out of the repository is not this repository's glossary to move
+	writeFileSync(join(parent, "outside", "CONTEXT.md"), "# Elsewhere\n");
+
+	const output = runScript(target);
+	assert.match(output, /^updated\s+ordering\/GLOSSARY\.md \(moved from CONTEXT\.md/m);
+	assert.match(output, /^kept\s+billing\/CONTEXT\.md \(GLOSSARY\.md already exists/m);
+	assert.match(output, /^updated\s+GLOSSARY-MAP\.md \(moved from CONTEXT-MAP\.md; 2 links follow[^\n]*still names CONTEXT\.md/m);
+	assert.equal(readFileSync(join(target, "GLOSSARY-MAP.md"), "utf8"), links("GLOSSARY.md", "GLOSSARY.md", "CONTEXT.md"));
+	assert.equal(readFileSync(join(target, "billing", "CONTEXT.md"), "utf8"), "old\n");
+	assert.equal(readFileSync(join(target, "billing", "GLOSSARY.md"), "utf8"), "new\n", "never overwritten");
+	assert.equal(readFileSync(join(parent, "outside", "CONTEXT.md"), "utf8"), "# Elsewhere\n", "nothing outside the repository moves");
+	assert.ok(!existsSync(join(parent, "outside", "GLOSSARY.md")));
+
+	// the kept file is named again on every run, until a human settles it
+	assert.match(runScript(target), /^kept\s+billing\/CONTEXT\.md \(/m);
+	// once the merge is made by hand, the next run brings the map's link along
+	rmSync(join(target, "billing", "CONTEXT.md"));
+	assert.match(runScript(target), /^updated\s+GLOSSARY-MAP\.md \(1 link follows/m);
+	assert.equal(readFileSync(join(target, "GLOSSARY-MAP.md"), "utf8"), links("GLOSSARY.md", "GLOSSARY.md", "GLOSSARY.md"));
 });

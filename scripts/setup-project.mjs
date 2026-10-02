@@ -17,9 +17,10 @@
  * One migration reaches outside .pi/: mattpocock/skills renamed the domain
  * glossary from CONTEXT.md to GLOSSARY.md and reads only the new name, so a
  * root CONTEXT.md is moved (`git mv` when git tracks it) and the pointer in
- * docs/agents/domain.md follows. Nothing under the new name is overwritten, and
- * a multi-context map (CONTEXT-MAP.md) is named, never moved: its per-context
- * files and links move with it, which is a job for a human or the agent.
+ * docs/agents/domain.md follows. A glossary split per context moves whole: the
+ * map (CONTEXT-MAP.md to GLOSSARY-MAP.md), each per-context CONTEXT.md the map
+ * links to, and those links. Nothing under a new name is overwritten, and a
+ * CONTEXT.md the map does not list is never touched.
  *
  * A rerun is an UPDATE, not a merge. The package owns each role file — the
  * roster, the body, and every frontmatter line that shapes what a child may do
@@ -53,7 +54,7 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { basename, isAbsolute, join, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const packageRoot = resolve(fileURLToPath(new URL("./", import.meta.url)), "..");
@@ -385,32 +386,117 @@ if (!sameRoot(targetRoot, packageRoot)) {
 	}
 }
 
-// 5. the domain glossary — upstream renamed CONTEXT.md to GLOSSARY.md and its
-// skills read only the new name, so a file left under the old one is a glossary
-// nothing consults. The move is the one upstream prescribes. The old name is
-// matched as a directory entry, exactly: on a case-insensitive filesystem an
-// unrelated `context.md` would otherwise answer to it. The new name is tested
-// the way the filesystem would resolve it, so nothing is ever overwritten.
+// 5. the domain glossary — upstream renamed CONTEXT.md to GLOSSARY.md (and, where
+// the glossary is split per context, CONTEXT-MAP.md to GLOSSARY-MAP.md) and its
+// skills read only the new names, so a file left under an old one is a glossary
+// nothing consults. The moves are the ones upstream prescribes. A glossary is
+// the root file and whatever the map links to, nothing else: a CONTEXT.md nobody
+// listed is someone else's file. An old name is matched as a directory entry,
+// exactly — on a case-insensitive filesystem an unrelated `context.md` would
+// otherwise answer to it — and a new name the way the filesystem would resolve
+// it, so nothing is ever overwritten.
 {
-	const rootEntries = existsSync(targetRoot) ? readdirSync(targetRoot) : [];
-	if (rootEntries.includes("CONTEXT.md")) {
-		const to = join(targetRoot, "GLOSSARY.md");
-		if (lstatExists(to)) {
-			record(["kept", "GLOSSARY.md already exists and is the one the skills read: merge by hand, then delete CONTEXT.md"], "CONTEXT.md");
-		} else {
-			const staged = fsWrite.move(join(targetRoot, "CONTEXT.md"), to);
-			record(["updated", `moved from CONTEXT.md${staged ? " with git mv" : ""}: mattpocock/skills reads only the new name`], "GLOSSARY.md");
+	const OLD = "CONTEXT.md";
+	const NEW = "GLOSSARY.md";
+	const entriesOf = (dir) => {
+		try {
+			return readdirSync(dir);
+		} catch {
+			return [];
+		}
+	};
+	/** "move": only the old name is there. "blocked": both are. "moved": only the new one. "absent": neither. */
+	const stateOf = (dir) => {
+		const renamed = lstatExists(join(dir, NEW));
+		if (entriesOf(dir).includes(OLD)) return renamed ? "blocked" : "move";
+		return renamed ? "moved" : "absent";
+	};
+	/** An existing directory inside the repository, links resolved: a glossary reached through a link out of it is not ours to move. */
+	const insideRepo = (dir) => {
+		try {
+			const rel = relative(realpathSync.native(targetRoot), realpathSync.native(dir));
+			return !rel.startsWith("..") && !isAbsolute(rel);
+		} catch {
+			return false;
+		}
+	};
+	const labelIn = (dir, name) => [relative(targetRoot, dir).split(sep).join("/"), name].filter(Boolean).join("/");
+
+	// Plan before acting, so a dry run and a real run decide the same way: the
+	// root first, then each context the map lists, each directory once.
+	const states = new Map([[targetRoot, stateOf(targetRoot)]]);
+	const stateAt = (dir) => {
+		if (!states.has(dir)) states.set(dir, stateOf(dir));
+		return states.get(dir);
+	};
+
+	const oldMap = join(targetRoot, "CONTEXT-MAP.md");
+	const newMap = join(targetRoot, "GLOSSARY-MAP.md");
+	const hasOldMap = entriesOf(targetRoot).includes("CONTEXT-MAP.md");
+	const hasNewMap = lstatExists(newMap);
+	// the map whose links are followed: the one the skills read when it is there, else the old one about to move
+	let source = hasNewMap ? newMap : hasOldMap ? oldMap : undefined;
+	if (source !== undefined && lstatSync(source).isSymbolicLink()) {
+		// a linked map is the project's chosen location: never moved, never written through
+		const names = (() => {
+			try {
+				return readFileSync(source, "utf8").includes(OLD);
+			} catch {
+				return false;
+			}
+		})();
+		if (source === oldMap || names) record(["kept", "a symlink: move the map, what it lists, and its links by hand"], basename(source));
+		source = undefined;
+	}
+	let plan;
+	if (source !== undefined) {
+		const text = readFileSync(source, "utf8");
+		let followed = 0;
+		const renamed = text.replace(/\]\(((?:[^)\s]*\/)?)CONTEXT\.md((?:#[^)\s]*)?)\)/g, (link, prefix, anchor) => {
+			let dir;
+			try {
+				dir = resolve(targetRoot, decodeURI(prefix));
+			} catch {
+				return link;
+			}
+			if (!insideRepo(dir)) return link;
+			const state = stateAt(dir);
+			if (state !== "move" && state !== "moved") return link;
+			followed++;
+			return `](${prefix}${NEW}${anchor})`;
+		});
+		plan = { text, renamed, followed };
+	}
+
+	for (const [dir, state] of states) {
+		if (state === "move") {
+			const staged = fsWrite.move(join(dir, OLD), join(dir, NEW));
+			record(["updated", `moved from ${OLD}${staged ? " with git mv" : ""}: mattpocock/skills reads only the new name`], labelIn(dir, NEW));
+		} else if (state === "blocked") {
+			record(["kept", `${NEW} already exists and is the one the skills read: merge by hand, then delete ${OLD}`], labelIn(dir, OLD));
 		}
 	}
-	if (rootEntries.includes("CONTEXT-MAP.md")) {
+	if (hasOldMap && hasNewMap) {
 		record(
-			[
-				"kept",
-				"a multi-context layout is moved by hand: git mv the map to GLOSSARY-MAP.md and each per-context CONTEXT.md it lists to GLOSSARY.md, then update the map's links",
-			],
+			["kept", "GLOSSARY-MAP.md already exists and is the one the skills read: merge by hand, then delete CONTEXT-MAP.md"],
 			"CONTEXT-MAP.md",
 		);
 	}
+	if (plan !== undefined) {
+		const moving = source === oldMap;
+		const edited = plan.renamed !== plan.text;
+		if (moving || edited) {
+			const staged = moving && fsWrite.move(oldMap, newMap);
+			if (edited) fsWrite.write(newMap, plan.renamed);
+			const notes = [
+				moving ? `moved from CONTEXT-MAP.md${staged ? " with git mv" : ""}` : undefined,
+				plan.followed > 0 ? `${plan.followed} ${plan.followed === 1 ? "link follows" : "links follow"} the glossaries` : undefined,
+				plan.renamed.includes(OLD) ? `it still names ${OLD} where no glossary could move: finish those by hand` : undefined,
+			];
+			record(["updated", notes.filter(Boolean).join("; ")], "GLOSSARY-MAP.md");
+		}
+	}
+
 	// docs/agents/domain.md tells the skills where the glossary is; upstream's new
 	// template differs from the old one in these two names only.
 	const rel = "docs/agents/domain.md";

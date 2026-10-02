@@ -16,8 +16,10 @@ import { packageRoot, resolveRepoRoot } from "./lib/repo-root.js";
  * `model`, `thinking`, or `max_turns` the project chose — backs up a copy the
  * project changed in any other line as `.local` first, removes an
  * APPEND_SYSTEM.md an older run copied (the `policy` extension injects the
- * workflow now), and moves a root CONTEXT.md to GLOSSARY.md, the only name the
- * vendored skills read since upstream renamed it. settings.json is not touched.
+ * workflow now), and moves a glossary still named CONTEXT.md to GLOSSARY.md, the
+ * only name the vendored skills read since upstream renamed it — the root file,
+ * or a CONTEXT-MAP.md with each per-context file it lists. settings.json is not
+ * touched.
  *
  * `/setup-pi-myself --check` is the read-only doctor instead: `runDoctor` (pure
  * over injected tool names, file reader, and spawn) reports `ok`/`warn` per
@@ -258,12 +260,12 @@ function checkTrackerDocs(inputs: DoctorInputs): DoctorFinding {
 /**
  * mattpocock/skills renamed the domain glossary and reads only the new names,
  * so a file left under an old one is a glossary nothing consults.
- * `/setup-pi-myself` moves a root `CONTEXT.md` and renames the pointer in
- * `domain.md`; what it leaves to a human is named as such: two files to merge,
- * a multi-context map, a mention in the repository's own context file. The old
- * names are matched against the root listing, exactly as the command matches
- * them: on a case-insensitive filesystem an unrelated `context.md` reads as
- * `CONTEXT.md`.
+ * `/setup-pi-myself` moves a root `CONTEXT.md`, a map with the per-context
+ * glossaries it lists, and the pointer in `domain.md`; what it leaves to a
+ * human is named as such: two files to merge, a mention in the repository's own
+ * context file. The old names are matched against the root listing, exactly as
+ * the command matches them: on a case-insensitive filesystem an unrelated
+ * `context.md` reads as `CONTEXT.md`.
  */
 function checkDomainDocs(inputs: DoctorInputs): DoctorFinding {
 	const read = (name: string) => inputs.readFile(join(inputs.repoRoot, name));
@@ -279,11 +281,19 @@ function checkDomainDocs(inputs: DoctorInputs): DoctorFinding {
 			byHand.push("merge CONTEXT.md into GLOSSARY.md by hand, then delete it");
 		}
 	}
+	const newMap = read("GLOSSARY-MAP.md");
 	if (inputs.rootEntries.includes("CONTEXT-MAP.md")) {
-		detail.push("the skills read only GLOSSARY-MAP.md, so nothing consults CONTEXT-MAP.md or the per-context files it lists");
-		byHand.push(
-			"git mv CONTEXT-MAP.md GLOSSARY-MAP.md and each per-context CONTEXT.md it lists to GLOSSARY.md, then update the map's links",
-		);
+		if (newMap === undefined) {
+			detail.push("the skills read only GLOSSARY-MAP.md, so nothing consults CONTEXT-MAP.md or the per-context files it lists");
+			byCommand.push("moves CONTEXT-MAP.md and the per-context glossaries it lists, and updates the map's links");
+		} else {
+			detail.push("CONTEXT-MAP.md sits beside GLOSSARY-MAP.md, and the skills read only GLOSSARY-MAP.md");
+			byHand.push("merge CONTEXT-MAP.md into GLOSSARY-MAP.md by hand, then delete it");
+		}
+	}
+	if (/\bCONTEXT\.md\b/.test(newMap ?? "")) {
+		detail.push("GLOSSARY-MAP.md still lists a CONTEXT.md, which the skills do not read");
+		byCommand.push("moves each glossary the map lists that can move, and names any it keeps");
 	}
 	if (OLD_GLOSSARY_NAME.test(read(DOMAIN_DOC) ?? "")) {
 		detail.push(`${DOMAIN_DOC} still points the skills at CONTEXT.md`);
@@ -411,7 +421,7 @@ export default function provisionExtension(pi: ExtensionAPI): void {
 
 	pi.registerCommand("setup-pi-myself", {
 		description:
-			"Provision or update this repository for pi-myself: refresh the task roles (keeping a model, thinking, or max_turns the project chose; a copy changed in any other line is kept as .local), remove an APPEND_SYSTEM.md an older run copied (the workflow is injected now), and move a glossary still named CONTEXT.md to GLOSSARY.md (git mv when tracked, never over an existing file). A project-added role and settings.json are never touched. `--check`: a read-only doctor that reports what is stale or missing, with fixes, and writes nothing",
+			"Provision or update this repository for pi-myself: refresh the task roles (keeping a model, thinking, or max_turns the project chose; a copy changed in any other line is kept as .local), remove an APPEND_SYSTEM.md an older run copied (the workflow is injected now), and move a glossary still named CONTEXT.md to GLOSSARY.md, a multi-context CONTEXT-MAP.md and the files it lists included (git mv when tracked, never over an existing file). A project-added role and settings.json are never touched. `--check`: a read-only doctor that reports what is stale or missing, with fixes, and writes nothing",
 		async handler(args, ctx) {
 			const root = resolveRepoRoot(ctx.cwd);
 			if (args.trim().split(/\s+/).includes("--check")) {
