@@ -12,14 +12,14 @@ import { packageRoot, resolveRepoRoot } from "./lib/repo-root.js";
  * own `.pi/`: the task roles.
  *
  * No session-start check: rerunning the command IS the update path, and the
- * script owns the outcome. It refreshes the roles from the package — keeping a
- * `model`, `thinking`, or `max_turns` the project chose — backs up a copy the
- * project changed in any other line as `.local` first, removes an
+ * script owns the outcome. It refreshes the roles from the package — `model`
+ * and `thinking` included, keeping only a `max_turns` the project chose — backs
+ * up a copy the project changed in any other line as `.local` first, removes an
  * APPEND_SYSTEM.md an older run copied (the `policy` extension injects the
  * workflow now), and moves a glossary still named CONTEXT.md to GLOSSARY.md, the
  * only name the vendored skills read since upstream renamed it — the root file,
- * or a CONTEXT-MAP.md with each per-context file it lists. settings.json is not
- * touched.
+ * or a CONTEXT-MAP.md with each per-context file it lists. Of settings.json it
+ * writes only the package's default model (ADR 0011).
  *
  * `/setup-pi-myself --check` is the read-only doctor instead: `runDoctor` (pure
  * over injected tool names, file reader, and spawn) reports `ok`/`warn` per
@@ -141,7 +141,18 @@ function checkRoles(inputs: DoctorInputs): DoctorFinding {
 	const result = inputs.spawn(inputs.nodePath, [script, inputs.repoRoot, "--check"], inputs.repoRoot);
 	const output = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
 	if (!result.error && result.status === 0) {
-		const notes = output.split("\n").filter((line) => line.startsWith("note: "));
+		const lines = output.split("\n");
+		const notes = lines.filter((line) => line.startsWith("note: "));
+		// a settings.json the script leaves alone writes nothing, so --check exits 0; the hand fix still has to reach the user (ADR 0011)
+		const settings = lines.filter((line) => /^\[check\] kept\s+settings\.json /.test(line));
+		if (settings.length > 0) {
+			return {
+				status: "warn",
+				check: "roles",
+				detail: ["the task roles match the package, but the default model could not be written:", ...settings, ...notes].join("\n"),
+				fix: "in .pi/settings.json set defaultProvider, defaultModel, defaultThinkingLevel to pi-myself's values by hand",
+			};
+		}
 		return { status: "ok", check: "roles", detail: ["the task roles match the package", ...notes].join("\n") };
 	}
 	if (!result.error && result.status === 1 && /^setup-project --check: /m.test(output)) {
@@ -421,7 +432,7 @@ export default function provisionExtension(pi: ExtensionAPI): void {
 
 	pi.registerCommand("setup-pi-myself", {
 		description:
-			"Provision or update this repository for pi-myself: refresh the task roles (keeping a model, thinking, or max_turns the project chose; a copy changed in any other line is kept as .local), remove an APPEND_SYSTEM.md an older run copied (the workflow is injected now), and move a glossary still named CONTEXT.md to GLOSSARY.md, a multi-context CONTEXT-MAP.md and the files it lists included (git mv when tracked, never over an existing file). A project-added role and settings.json are never touched. `--check`: a read-only doctor that reports what is stale or missing, with fixes, and writes nothing",
+			"Provision or update this repository for pi-myself: refresh the task roles (model and thinking included; only a max_turns the project chose is kept; a copy changed in any other line is kept as .local), set the session's default model in .pi/settings.json (other keys kept), remove an APPEND_SYSTEM.md an older run copied (the workflow is injected now), and move a glossary still named CONTEXT.md to GLOSSARY.md, a multi-context CONTEXT-MAP.md and the files it lists included (git mv when tracked, never over an existing file). A project-added role is never touched. `--check`: a read-only doctor that reports what is stale or missing, with fixes, and writes nothing",
 		async handler(args, ctx) {
 			const root = resolveRepoRoot(ctx.cwd);
 			if (args.trim().split(/\s+/).includes("--check")) {

@@ -8,6 +8,8 @@ Supersedes the "Provisioned copies are the project's" decision of 2026-09-15 (`d
 
 **Note (2026-10-02):** a glossary split per context moves whole (user decision, after a consuming repository turned out to use one): `CONTEXT-MAP.md` to `GLOSSARY-MAP.md`, each per-context `CONTEXT.md` the map links to, and those links. The map is what says which files are glossaries, so a `CONTEXT.md` it does not list, or one reached through a link out of the repository, is never moved; a context holding both names is kept and stays linked until a human merges it, and the next run then brings the link along.
 
+**Note (2026-10-10):** decisions 2 and 5 are superseded by ADR 0011. `model` and `thinking` follow the package on every run, the project owns only `max_turns`, and a run writes the package's default model into `settings.json`. Decision 3's baseline still leaves all three lines out of its hash.
+
 ## Context
 
 pi-task loads task roles only from a repository's own `.pi/agents/`, never from an installed package, so `/setup-pi-myself` (`scripts/setup-project.mjs`) copies the roles into every consuming repo. From 2026-09-15 a rerun was a conservative merge: a role the project had touched or deleted was kept, so a harness fix could sit behind a stale copy until someone read a diff and merged by hand.

@@ -51,7 +51,7 @@ A local skill that carries craft rather than a host fact — `typescript-coding-
 _Avoid_: "textbook skill"
 
 **Provisioning baseline**:
-`.pi/pi-myself-provisioned.json` in a consuming repo: per role, the hash of what the package shipped without its project-owned lines, plus the `model`, `thinking`, and `max_turns` it shipped. It tells a project's edit or choice apart from the package's previous version (ADR 0005).
+`.pi/pi-myself-provisioned.json` in a consuming repo: per role, the hash of what the package shipped without its `model`, `thinking`, and `max_turns` lines, plus the values it shipped for them. It tells a project's edit or choice apart from the package's previous version (ADR 0005).
 
 **Doctor**:
 `/setup-pi-myself --check`: a read-only report on a repo's harness setup, one `ok`/`warn` line per check, each warning with its fix.

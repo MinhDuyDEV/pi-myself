@@ -112,6 +112,20 @@ test("a note from a current --check (a linked .pi/agents outside the repo) reach
 	assert.match(roles.detail, /resolves to \/shared\/roles, outside this repository/);
 });
 
+test("a settings.json a current --check could not update is a warning with the hand fix (ADR 0011)", () => {
+	const kept = "[check] kept     settings.json (not a JSON object: set defaultProvider, defaultModel, defaultThinkingLevel by hand)";
+	const spawn: DoctorInputs["spawn"] = (command, args) =>
+		command === "git"
+			? done(`${args.slice(1).join("\n")}\n`)
+			: done(
+					`${kept}\nsetup-project --check: 0 created, 0 updated, 7 unchanged, 1 kept in /repo/.pi \u2014 dry run, nothing written; current\n`,
+				);
+	const roles = finding(runDoctor(inputs({ spawn })), "roles");
+	assert.equal(roles.status, "warn");
+	assert.match(roles.detail, /settings\.json \(not a JSON object/);
+	assert.match(roles.fix ?? "", /defaultProvider, defaultModel, defaultThinkingLevel/);
+});
+
 test("an untrusted project is a warning: pi loads none of its .pi/ resources", () => {
 	// Without trust pi skips the project's .pi/ settings, extensions, and
 	// APPEND_SYSTEM.md, and a task that declares skills does not resolve.

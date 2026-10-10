@@ -2,6 +2,8 @@
 
 Supersedes the "Task child contract" section the roster consolidation of 2026-09-15 put in `APPEND_SYSTEM.md` (`docs/history.md`, "Roster consolidation"). Decided 2026-09-26 ("The child layer, made real").
 
+**Note (2026-10-10):** the `max_turns` clause of decision 4 is superseded by ADR 0010; no role ships a turn limit.
+
 ## Context
 
 The roster consolidation of 2026-09-15 moved the rules every task child shares (scope, no spawning, evidence, the report) into one place: a `### Task child contract` section of `APPEND_SYSTEM.md`, so role bodies could hold only purpose, input, rules, and output.

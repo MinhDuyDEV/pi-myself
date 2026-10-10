@@ -3,7 +3,6 @@ description: PROACTIVE — Bounded multi-step implementation or mixed research-a
 model: vector/oc/deepseek-v4.1-flash
 thinking: high
 proactive: true
-max_turns: 50
 skills: tdd, verification-before-completion
 disallowed_tools: memory_write, memory_delete, ask_user
 ---

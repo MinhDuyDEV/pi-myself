@@ -358,13 +358,10 @@ test("no child can ask the user, and a role that must not change state cannot re
 	}
 });
 
-test("every role sets max_turns so a long child wraps up before the hard timeout", () => {
-	// pi-task steers a wrap-up at max_turns (terminal backends, HerdR here); the
-	// only other bound is PI_TASK_HARD_TIMEOUT_MINUTES (default 30), which stops
-	// the child wherever it is instead of asking it to report.
+test("no role ships a max_turns: the package sets no turn limit (ADR 0010)", () => {
+	// A consuming project may still set one; provisioning keeps it (ADR 0005).
 	for (const role of roles) {
-		const turns = Number(frontmatter(role.raw).max_turns);
-		assert.ok(Number.isInteger(turns) && turns > 0 && turns <= 100, `${role.name}: max_turns is a positive integer, got ${turns}`);
+		assert.equal(frontmatter(role.raw).max_turns, undefined, `${role.name}: drop max_turns (ADR 0010)`);
 	}
 });
 

@@ -89,7 +89,7 @@ pi-myself/
 - **Vendored parity** (`tests/upstream-skills.test.ts`): pi frontmatter for both buckets, one registered set everywhere, `.pi/settings.json` resource paths resolve, `Call the Skill tool` targets model-invoked, fresh hashes, beta prose matches the lock.
 - **Lock** (`tests/sync-skills.test.ts`, `sync:check`): the whole-tree digest catches any vendored edit, addition, or removal.
 - **Skill tool** (`.pi/extensions/skill-tool/`): loadable set = model-invoked set.
-- **Roles** (`tests/agents.test.ts`, `tests/sync-agents.test.ts`, `agents:check`): roster, a model on every role, `reviewer` family ≠ every reason-tier family, child-contract block = source, `Load first:`, denies, `max_turns`, tool reachability, a mapping section per spawning skill and row per host token, the catalog's actors and coverage.
+- **Roles** (`tests/agents.test.ts`, `tests/sync-agents.test.ts`, `agents:check`): roster, a model on every role, `reviewer` family ≠ every reason-tier family, child-contract block = source, `Load first:`, denies, no `max_turns`, tool reachability, a mapping section per spawning skill and row per host token, the catalog's actors and coverage.
 - **Local skills** (`tests/local-skills.test.ts`): descriptions, no shadowing, links, reachability.
 - **Docs** (`tests/loaded-docs.test.ts`, `tests/docs-counts.test.ts`, `tests/markers.test.ts`): guidance paths resolve, no repeated paragraph, byte budgets, this file ≤ 10,000 bytes, no stale counts, no bare `FIXME`.
 - **Also** in `tests/`: prompts, provisioning, git hooks, the ultra-review scaffold, extension layout. Extension tests sit beside their code.

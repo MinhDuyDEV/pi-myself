@@ -1,9 +1,8 @@
 ---
 description: PROACTIVE — Official docs, API/library behavior, external web evidence with citations, answered in conversation or written as one cited report file when the prompt names a path; not repository mapping or implementation.
-model: vector/oc/mimo-v2.6-flash
-thinking: medium
+model: vector/cc/claude-haiku-5-5
+thinking: high
 proactive: true
-max_turns: 40
 skills: research, source-driven-development
 disallowed_tools: memory_write, memory_delete, ask_user, tracker
 ---

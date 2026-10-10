@@ -1,10 +1,9 @@
 ---
 description: PROACTIVE — Produce one independent interface or architecture design candidate under a stated constraint with deep-module vocabulary and trade-offs; read-only; several run in parallel for design-it-twice; not implementation, review, or repository mapping.
 model: vector/cc/claude-opus-5-5
-thinking: xhigh
+thinking: high
 readonly: true
 proactive: true
-max_turns: 30
 skills: codebase-design
 disallowed_tools: memory_write, memory_delete, ask_user, tracker
 ---

@@ -4,7 +4,6 @@ model: vector/oc/deepseek-v4.1-flash
 thinking: high
 readonly: true
 proactive: false
-max_turns: 45
 disallowed_tools: memory_write, memory_delete, ask_user
 tools: read, bash, srcwalk
 ---

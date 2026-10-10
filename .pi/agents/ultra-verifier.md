@@ -3,7 +3,6 @@ description: Verify a /skill:ultra-review report: freeze and preflight, one disp
 model: vector/cc/claude-opus-5-5
 thinking: high
 proactive: false
-max_turns: 50
 disallowed_tools: memory_write, memory_delete, ask_user
 tools: read, bash, write, edit, srcwalk
 ---
