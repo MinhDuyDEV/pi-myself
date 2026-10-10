@@ -32,6 +32,11 @@ pnpm-debug.log*
 .pi/task-exits/
 .pi/task-session-history.json
 .pi/models-store.json
+.pi/durable/
+
+# Python bytecode (the ultra-review skill's scripts)
+__pycache__/
+*.pyc
 
 # Matt's local-markdown issue tracker (disposable work units)
 .scratch/
