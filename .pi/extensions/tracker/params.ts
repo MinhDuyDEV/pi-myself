@@ -24,6 +24,7 @@ export const TRACKER_OPS = [
 	"gh-show",
 	"gh-create-spec",
 	"gh-create-ticket",
+	"gh-sub-issue",
 	"gh-create-map",
 	"gh-claim",
 	"gh-resolve",
@@ -98,7 +99,7 @@ export const trackerSchema = Type.Object({
 	parent: Optional(
 		Type.String({
 			description:
-				"GitHub parent issue number: the spec issue for to-tickets, the map issue for wayfinder children (gh-create-ticket → sub-issue + Part of line; gh-frontier → scope to that parent's children; gh-note → the map issue to append to, 'ticket' accepted as an alias).",
+				"GitHub parent issue number: the spec issue for to-tickets, the map issue for wayfinder children (gh-create-ticket → sub-issue + Part of line; gh-sub-issue → the parent an existing issue is attached to; gh-frontier → scope to that parent's children; gh-note → the map issue to append to, 'ticket' accepted as an alias).",
 		}),
 	),
 	criteria: Optional(Type.Array(Type.String(), { description: "Acceptance criteria, one per entry (create-ticket → `- [ ]` list)." })),

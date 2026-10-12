@@ -1082,6 +1082,39 @@ function addToMapTaskList(root: string, parent: string, child: string, run: GhRu
 	}
 }
 
+/** gh-sub-issue: the "afterwards" form of the tracker doc's "Make an issue a
+ * sub-issue of a parent" — attach an *existing* issue to a parent
+ * (issue-tracker-github.md: `gh issue create --parent` at creation, `gh issue
+ * edit --add-sub-issue` / the sub_issues endpoint afterwards). gh-create-ticket
+ * is the create-time form; to-tickets reaches for this one when the ticket
+ * already exists. The native edge first, then the doc's `Part of` fallback plus
+ * the map's task list — the same tail create falls back to. The fallback line
+ * carries one parent, so a child naming a different one is refused rather than
+ * silently re-pointed; a native edge needs no line and is never refused. */
+export function ghSubIssueOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
+	const parent = reqNumber(params.parent, "gh-sub-issue parent");
+	const child = reqNumber(params.ticket, "gh-sub-issue ticket");
+	if (parent === child) throw new TrackerError(`an issue cannot be its own sub-issue (parent and ticket are both #${parent})`);
+	const view = issueView(root, child, run);
+	assertNotPullRequest(view, child, "make a sub-issue of");
+	const notes: string[] = [];
+	if (addSubIssue(root, parent, child, run, notes)) return `#${child} is a sub-issue of #${parent}: native edge added.`;
+	const out = [...notes];
+	const named = parentRefs(view.body);
+	if (named.includes(Number(parent))) {
+		out.push(`#${child} already names #${parent} in a Part of line, so that line is the link`);
+	} else if (named.length > 0) {
+		throw new TrackerError(
+			`#${child} already names #${named[0]} as its parent, and the native edge failed: remove that Part of line first`,
+		);
+	} else {
+		run(root, ["issue", "edit", child, "--body-file", "-"], `Part of: #${parent}\n\n${view.body}`);
+		out.push(`Part of: #${parent} written at the top of #${child}'s body`);
+	}
+	out.push(addToMapTaskList(root, parent, child, run));
+	return out.join("\n");
+}
+
 /** gh-create-map: the wayfinder map issue (label `wayfinder:map`). */
 export function ghCreateMapOp(root: string, params: TrackerParams, run: GhRun = ghRun): string {
 	const title = params.title?.trim() || params.feature?.trim() || "";

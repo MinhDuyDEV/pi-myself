@@ -15,6 +15,7 @@ import {
 	ghResolveOp,
 	ghShowOp,
 	ghStatusOp,
+	ghSubIssueOp,
 	ghTickOp,
 	ghTriageOp,
 } from "./github.js";
@@ -267,6 +268,9 @@ export function runOp(root: string, params: TrackerParams): string {
 
 		case "gh-create-ticket":
 			return ghCreateTicketOp(root, params);
+
+		case "gh-sub-issue":
+			return ghSubIssueOp(root, params);
 
 		case "gh-create-map":
 			return ghCreateMapOp(root, params);

@@ -152,3 +152,16 @@ task: write the handoff summary to a file (for example `$TMPDIR/handoff-<name>.m
 human start `pi --name "<name>" @<file>` in a new terminal or HerdR pane. A background `general`
 task fits only a bounded continuation — a child cannot delegate, run `code-review` or
 `implement-spec`, or write memory, and its result returns to this session.
+
+## `chief-of-staff`
+
+A user-invoked mode for one long session: the human starts `/skill:chief-of-staff` and this session
+becomes the chief of staff — the parent that co-ordinates, never a worker. Its translations:
+
+| The skill says | On pi |
+| --- | --- |
+| "co-ordinating subagents" / "All work should be done in subagents" | `task` with one of the roles in `.pi/agents/`; the chief of staff is the parent, and a child never spawns |
+| "Use background agents so you can stay in active dialogue with the user" | background `task`s (the "a background agent" row above): a separate pi process on the HerdR or tmux backend, an in-process session on the SDK backend |
+| "suggest recurring schedules" | pi has no scheduler — a loop worth recurring is a workflow spec from `/skill:loop-me`, run by the human; suggest it, never wait on it |
+| "context pointers" | a child's report path and result, commits, and the `memory` records the parent writes; point, never duplicate |
+| "CODING_STANDARDS.md files" | this harness's enforceable standards are the AGENTS.md guidance and the `typescript-coding-standards` skill; Biome carries the lint-rule half |

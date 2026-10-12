@@ -24,7 +24,7 @@ If you want to keep up with changes to these skills, and any new ones I create, 
 
 ## Installation (30-second setup)
 
-Two ways in, two philosophies. **The [Claude Code plugin](https://code.claude.com/docs/en/plugins)** installs the whole set as a managed, read-only bundle that updates when I ship, so you subscribe rather than fork. **[skills.sh](https://skills.sh/mattpocock/skills)** copies editable skill files into your project, so you can hack on them and make them your own. Pick one: installing both leaves you with every skill twice.
+A plugin updates itself. [skills.sh](https://skills.sh/mattpocock/skills) copies editable files into your project, and you update them by hand. Pick one per agent, because installing both gives you every skill twice.
 
 ### 1. Get the skills
 
@@ -32,42 +32,67 @@ Two ways in, two philosophies. **The [Claude Code plugin](https://code.claude.co
 <summary><strong>Claude Code</strong></summary>
 
 ```bash
-claude plugins install mattpocock-skills
+claude plugin install mattpocock-skills@claude-plugins-official
 ```
 
-Or, from inside a session:
-
-```
-/plugin install mattpocock-skills
-```
-
-It's in Claude Code's official marketplace, so there's nothing to add first, and updates arrive automatically.
+Updates itself by default.
 
 </details>
 
 <details>
-<summary><strong>Codex, and other agents</strong></summary>
+<summary><strong>Codex</strong></summary>
 
 ```bash
-npx skills@latest add mattpocock/skills
+codex plugin marketplace add mattpocock/skills
+codex plugin add mattpocock-skills@mattpocock
 ```
 
-Pick the skills you want, and which coding agents to install them on. **The installer lets you choose which skills to take, so make sure `setup-matt-pocock-skills` is one of them.**
-
-A native Codex plugin is on the roadmap (see [`.agents/adr/0002-ship-as-a-claude-code-plugin.md`](./.agents/adr/0002-ship-as-a-claude-code-plugin.md)).
+Updates itself at startup.
 
 </details>
 
 <details>
-<summary><strong>For tinkerers</strong></summary>
-
-Use the same installer, on any agent, including Claude Code:
+<summary><strong>GitHub Copilot</strong> (CLI and VS Code)</summary>
 
 ```bash
-npx skills@latest add mattpocock/skills
+copilot plugin marketplace add mattpocock/skills
+copilot plugin install mattpocock-skills@mattpocock
 ```
 
-It writes the skills into your repo as ordinary files you own and can edit. Nothing updates behind your back; pull my latest changes when you want them with `npx skills update`.
+Then, once, add to `~/.copilot/settings.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "mattpocock": { "source": { "source": "github", "repo": "mattpocock/skills" }, "autoUpdate": true }
+  }
+}
+```
+
+In VS Code, run **Chat: Install Plugin From Source** and enter `https://github.com/mattpocock/skills`. It updates daily.
+
+</details>
+
+<details>
+<summary><strong>Gemini CLI</strong> (manual updates)</summary>
+
+```bash
+gemini skills install https://github.com/mattpocock/skills.git --path skills/engineering
+gemini skills install https://github.com/mattpocock/skills.git --path skills/productivity
+```
+
+Re-run both commands to update.
+
+</details>
+
+<details>
+<summary><strong>Any other agent, or editable files</strong> (manual updates)</summary>
+
+```bash
+npx skills@latest add mattpocock/skills -a <agent>  # cursor, opencode, devin, windsurf, amp, pi; omit -a to choose
+```
+
+When the installer asks which skills to take, include `setup-matt-pocock-skills`. To update, run `npx skills@latest update`, and re-run `add` to pick up new skills.
 
 </details>
 
@@ -75,7 +100,7 @@ It writes the skills into your repo as ordinary files you own and can edit. Noth
 
 In your agent, run it once per repo. It will:
 
-- Ask you which issue tracker you want to use (GitHub, Linear, or local files)
+- Ask you which issue tracker you want to use (GitHub, GitLab, local files, or anything else you describe)
 - Ask you what labels you apply to tickets when you triage them (`/triage` uses labels)
 - Ask you where you want to save any docs we create
 

@@ -17,6 +17,7 @@ name a mechanism pi lacks — read it from this skill's own directory.
 | --- | --- | --- |
 | Idea or feature, still foggy | human | `/skill:grill-with-docs` |
 | Effort too big for one session | human | `/skill:wayfinder` |
+| A long-running goal to drive in one session, co-ordinating subagents | human | `/skill:chief-of-staff` |
 | Unclear which skill fits | human | `/skill:ask-matt` |
 | Raw incoming issue | human | `/skill:triage` |
 | Hard bug, no diagnosis yet | model | `diagnosing-bugs` |

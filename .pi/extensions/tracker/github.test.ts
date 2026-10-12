@@ -20,6 +20,7 @@ import {
 	ghRun,
 	ghShowOp,
 	ghStatusOp,
+	ghSubIssueOp,
 	ghTickOp,
 	ghTriageOp,
 	issueRefs,
@@ -485,6 +486,78 @@ test("gh-create-ticket: wayfinder child gets a Question body and wayfinder:<type
 	const body = gh.edits.find((e) => e.args[1] === "create")!.input ?? "";
 	assert.match(body, /^Part of: #1\n\n## Question\n\nCSV or TSV\?/);
 	assert.doesNotMatch(body, /Acceptance criteria/);
+});
+
+test("gh-sub-issue: native edge attaches an existing issue to a parent", () => {
+	const gh = fakeGh([
+		{ number: 1, title: "Spec", state: "OPEN", body: "the spec" },
+		{ number: 2, title: "Serve it", state: "OPEN", body: "## What to build\n\nServe it." },
+	]);
+	const out = ghSubIssueOp("/tmp", { op: "gh-sub-issue", ticket: "2", parent: "1" }, gh.run);
+	assert.match(out, /#2 is a sub-issue of #1: native edge added/);
+	assert.deepEqual(gh.posts, ["repos/{owner}/{repo}/issues/1/sub_issues sub_issue_id=1002"]);
+	assert.deepEqual(gh.edits, [], "the child's body is untouched when the native edge lands");
+});
+
+test("gh-sub-issue: a failed native edge falls back to the Part of line, then the map's task list", () => {
+	const gh = fakeGh(
+		[
+			{ number: 1, title: "Spec", state: "OPEN", body: "the spec" },
+			{ number: 2, title: "Serve it", state: "OPEN", body: "## What to build\n\nServe it." },
+		],
+		{ failSubIssuePost: true },
+	);
+	const out = ghSubIssueOp("/tmp", { op: "gh-sub-issue", ticket: "#2", parent: "1" }, gh.run);
+	assert.match(out, /sub-issue of #1: native edge NOT added .*body line is the fallback/);
+	assert.match(out, /Part of: #1 written at the top of #2's body/);
+	// to-tickets attaches to a spec issue, which is no map: reported, never edited
+	assert.match(out, /#1 is not an open wayfinder:map issue, so it was not edited/);
+	const body = gh.edits.find((e) => e.args[1] === "edit")!.input ?? "";
+	assert.match(body, /^Part of: #1\n\n## What to build/);
+
+	const mapGh = fakeGh(
+		[
+			{ number: 3, title: "Map", state: "OPEN", body: "## Tickets", labels: ["wayfinder:map"] },
+			{ number: 4, title: "Child", state: "OPEN", body: "" },
+		],
+		{ failSubIssuePost: true },
+	);
+	assert.match(
+		ghSubIssueOp("/tmp", { op: "gh-sub-issue", ticket: "4", parent: "3" }, mapGh.run),
+		/added #4 to map #3's ## Tickets task list/,
+	);
+});
+
+test("gh-sub-issue: a child that already names the parent is left alone; a different parent is refused", () => {
+	const gh = fakeGh(
+		[
+			{ number: 1, title: "Spec", state: "OPEN", body: "the spec" },
+			{ number: 2, title: "Serve it", state: "OPEN", body: "Part of: #1\n\n## What to build" },
+		],
+		{ failSubIssuePost: true },
+	);
+	assert.match(ghSubIssueOp("/tmp", { op: "gh-sub-issue", ticket: "2", parent: "1" }, gh.run), /already names #1 in a Part of line/);
+	assert.equal(gh.edits.length, 0, "the fallback never writes a second Part of line");
+
+	// the fallback line can carry one parent: an existing different one is named, not overwritten
+	const other = fakeGh(
+		[
+			{ number: 1, title: "Spec", state: "OPEN", body: "" },
+			{ number: 2, title: "T", state: "OPEN", body: "Part of: #9" },
+		],
+		{ failSubIssuePost: true },
+	);
+	assert.throws(() => ghSubIssueOp("/tmp", { op: "gh-sub-issue", ticket: "2", parent: "1" }, other.run), /already names #9/);
+});
+
+test("gh-sub-issue refuses a self-parent, a pull request, and missing numbers", () => {
+	const gh = fakeGh([{ number: 5, title: "T", state: "OPEN", body: "" }]);
+	assert.throws(() => ghSubIssueOp("/tmp", { op: "gh-sub-issue", ticket: "5", parent: "5" }, gh.run), /own sub-issue/);
+	assert.throws(() => ghSubIssueOp("/tmp", { op: "gh-sub-issue", ticket: "5" }, gh.run), /parent requires an issue number/);
+	assert.throws(() => ghSubIssueOp("/tmp", { op: "gh-sub-issue", parent: "1" }, gh.run), /ticket requires an issue number/);
+
+	const pr = fakeGh([{ number: 8, title: "A PR", state: "OPEN", body: "diff", url: "https://github.com/example/repo/pull/8" }]);
+	assert.throws(() => ghSubIssueOp("/tmp", { op: "gh-sub-issue", ticket: "8", parent: "1" }, pr.run), /it is a pull request/);
 });
 
 test("gh-claim refuses an already-claimed issue, else assigns @me", () => {

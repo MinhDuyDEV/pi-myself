@@ -49,6 +49,9 @@ const COVERAGE: Coverage[] = [
 			"create an issue": { ops: ["gh-create-ticket"] },
 			"read an issue": { ops: ["gh-show"] },
 			"list issues": { ops: ["gh-list"] },
+			// The create-time form is gh-create-ticket (created as a sub-issue of
+			// parent); gh-sub-issue is the "afterwards" form for an existing child.
+			"make an issue a sub-issue of a parent": { ops: ["gh-create-ticket", "gh-sub-issue"] },
 			"comment on an issue": { ops: ["gh-comment"] },
 			"apply / remove labels": { ops: ["gh-status"] },
 			close: { ops: ["gh-resolve", "gh-out-of-scope"] },

@@ -6,7 +6,7 @@ How pi-myself is shaped now; a change that contradicts this file updates it in t
 
 A pi coding-agent harness built around mattpocock/skills as the process core.
 
-- **Core (process)**: the vendored upstream skills, 27 promoted plus the 6 beta skills of `skills/in-progress/`, consumed verbatim, never forked.
+- **Core (process)**: the vendored upstream skills, 27 promoted plus the 7 beta skills of `skills/in-progress/`, consumed verbatim, never forked.
 - **Harness (runtime)**: extensions, task roles, local skills, prompts, scripts, tests; adapted from pikit (heyhuynhgiabuu/pikit) only where Matt's skills need pi support.
 
 ## 2. Decisions
@@ -44,7 +44,7 @@ pi-myself/
 ├── PLAN.md  AGENTS.md  PROJECT.md  README.md  GLOSSARY.md
 ├── docs/                # adr/ (decisions), agents/ (skill config), history.md
 ├── vendor/mattpocock-skills/   # read-only upstream; guard refuses writes
-│   └── skills/          # engineering (20) + productivity (7) promoted; in-progress (6) beta
+│   └── skills/          # engineering (20) + productivity (7) promoted; in-progress (7) beta
 ├── .pi/
 │   ├── policy/          # WORKFLOW.md (parent) · CHILD-CONTRACT.md (roles)
 │   ├── extensions/      # policy, guard, host-commands, skill-tool/, tracker/,
